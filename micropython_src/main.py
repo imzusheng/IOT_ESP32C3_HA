@@ -5,9 +5,7 @@ import utils
 from daemon import start_critical_daemon
 import logger
 
-# --- WiFi凭据 ---
-WIFI_SSID = "Lejurobot"
-WIFI_PASSWORD = "Leju2022"
+# --- WiFi配置已移至utils.py的WIFI_CONFIGS数组 ---
 
 def main():
     # ==================================================================
@@ -22,9 +20,10 @@ def main():
     print("="*50)
 
     # ==================================================================
-    # 步骤2: 连接到WiFi网络
+    # 步骤2: 智能WiFi连接（支持多网络配置和重连机制）
     # ==================================================================
-    if not utils.connect_wifi(WIFI_SSID, WIFI_PASSWORD):
+    print("[主程序] 开始WiFi连接，如果未连接将持续重试...")
+    if not utils.wifi_connection_loop():
         print("\n[CRITICAL] WiFi连接失败！主程序将终止。")
         print("[INFO] 守护进程将继续在后台运行以保护系统。")
         return

@@ -28,13 +28,13 @@ CONFIG = {
     # --- LED 和 PWM 相关配置已移至 utils.py ---
 
     # --- 定时器与任务间隔配置 ---
-    'main_interval_ms': 1000,         # 主循环（灯效动画）的更新间隔 (毫秒)
-    'watchdog_interval_ms': 3000,     # 看门狗喂养与监控任务的统一检查间隔 (毫秒)
-    'monitor_interval_ms': 10000,     # 系统状态监控的实际执行间隔 (毫秒)
-    'perf_report_interval_s': 10,     # 内部性能报告的打印间隔 (秒)
+    'main_interval_ms': 5000,         # 主循环（灯效动画）的更新间隔 (毫秒) - 降低频率减少CPU负载
+    'watchdog_interval_ms': 5000,     # 看门狗喂养与监控任务的统一检查间隔 (毫秒) - 降低频率
+    'monitor_interval_ms': 30000,     # 系统状态监控的实际执行间隔 (毫秒) - 增加到30秒
+    'perf_report_interval_s': 30,     # 内部性能报告的打印间隔 (秒) - 增加到30秒
 
     # --- 安全与保护机制配置 ---
-    'temperature_threshold': 60.0,    # 触发“紧急安全模式”的MCU内部温度阈值 (°C)
+    'temperature_threshold': 45.0,    # 触发"紧急安全模式"的MCU内部温度阈值 (°C) - 降低阈值保护硬件
     'wdt_timeout_ms': 10000,          # 看门狗超时时间 (毫秒)
     'blink_interval_ms': 200,         # “紧急安全模式”下，LED交替闪烁的间隔时间 (毫秒)
     'safe_mode_cooldown_ms': 5000,    # 从“紧急安全模式”自动恢复所需的冷却时间 (毫秒)
