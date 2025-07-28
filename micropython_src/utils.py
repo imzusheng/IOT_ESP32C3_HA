@@ -1,12 +1,13 @@
 # utils.py
 """
-通用工具函数模块 (WiFi, NTP, 和 LED 控制)
+通用工具函数模块 (WiFi, NTP, 和 LED 控制) - 异步版本
 """
 import network
 import time
 import ntptime
 import machine
 import esp32
+import uasyncio as asyncio
 
 # --- WiFi & NTP 配置常量 ---
 # WiFi连接超时时间配置
@@ -21,29 +22,11 @@ WIFI_CONNECT_TIMEOUT_S = 15
 # 注意：过短会增加功耗和发热，过长会影响网络恢复速度
 WIFI_RETRY_INTERVAL_S = 60
 
-# WiFi网络扫描重试次数配置
-# 作用：扫描可用WiFi网络失败时的重试次数
-# 推荐值：2-5次，确保扫描可靠性
-# 注意：过多重试会延长连接时间，过少可能错过可用网络
-WIFI_SCAN_RETRY_COUNT = 3
-
-# WiFi扫描重试间隔配置
-# 作用：每次扫描重试之间的等待时间
-# 推荐值：3-10秒，给WiFi模块恢复时间
-# 注意：过短可能导致连续扫描失败，过长会延长总连接时间
-WIFI_SCAN_RETRY_DELAY_S = 5
-
-# NTP时间同步重试次数配置
-# 作用：NTP时间同步失败时的重试次数
-# 推荐值：2-5次，确保时间同步成功率
-# 注意：过多重试会延长启动时间，过少可能导致时间不准确
-NTP_RETRY_COUNT = 3
-
 # NTP重试间隔配置
 # 作用：每次NTP同步重试之间的等待时间
-# 推荐值：1-5秒，给网络和服务器响应时间
-# 注意：过短可能被NTP服务器限制，过长会延长同步时间
-NTP_RETRY_DELAY_S = 2
+# 推荐值：60秒，给网络和服务器充分响应时间
+# 注意：无限重试机制，确保时间最终同步成功
+NTP_RETRY_DELAY_S = 60
 
 # 时区偏移配置
 # 作用：将UTC时间转换为本地时间的小时偏移量
@@ -114,6 +97,19 @@ _effect_mode = 'off'
 # 说明：仅在'breathing'模式下使用，其他模式下忽略
 _brightness = 0       # 当前亮度值（0到MAX_BRIGHTNESS）
 _fade_direction = 1   # 亮度变化方向（1为增加，-1为减少）
+
+# --- 异步任务管理变量 ---
+# 异步任务状态控制
+_tasks_running = False
+_wifi_task = None
+_ntp_task = None
+_led_task = None
+_wifi_connected = False
+_ntp_synced = False
+
+# --- 事件回调函数列表 ---
+_wifi_connected_callbacks = []
+_ntp_synced_callbacks = []
 
 # ==================================================================
 # 新增：LED 控制功能
@@ -195,85 +191,131 @@ def set_effect(mode, led_num=1, brightness_u16=MAX_BRIGHTNESS):
         print(f"[LED] [WARNING] 未知的灯效模式: {mode}")
         _effect_mode = 'off' # 设为安全默认值
 
-def update_led_effect():
-    """
-    根据当前设置的模式更新LED状态。
-    这个函数应该被一个高频定时器（守护进程）周期性调用。
-    对于静态效果（如常亮），此函数不执行任何操作以节省性能。
-    """
-    global _brightness, _fade_direction
-    
-    # 仅当处于'breathing'模式时才执行高频更新，大大降低其他模式下的CPU消耗
-    if _effect_mode == 'breathing':
-        if not _led1_pwm or not _led2_pwm:
-            return
+# 注意：update_led_effect() 函数已被 led_effect_task() 异步任务替代
+# 保留此注释以说明架构变更：从同步定时器调用改为异步任务处理
 
-        _brightness += FADE_STEP * _fade_direction
-        if _brightness >= MAX_BRIGHTNESS:
-            _brightness = MAX_BRIGHTNESS
-            _fade_direction = -1
-        elif _brightness <= 0:
-            _brightness = 0
-            _fade_direction = 1
-        
-        _led1_pwm.duty_u16(_brightness)
-        _led2_pwm.duty_u16(MAX_BRIGHTNESS - _brightness)
-
-def wifi_connecting_blink():
+async def wifi_connecting_blink():
     """
-    WiFi连接时的LED闪烁指示：简化版本，减少CPU消耗
+    WiFi连接时的LED闪烁指示：异步版本
     """
     if not _led1_pwm or not _led2_pwm:
         return
     
-    # 简化闪烁：只闪烁一次，减少sleep时间
+    # 异步闪烁：使用asyncio.sleep实现非阻塞延时
     _led1_pwm.duty_u16(MAX_BRIGHTNESS)
     _led2_pwm.duty_u16(MAX_BRIGHTNESS)
-    time.sleep(0.1)
+    await asyncio.sleep_ms(100)  # 异步等待100ms
     _led1_pwm.duty_u16(0)
     _led2_pwm.duty_u16(0)
-    time.sleep(0.1)
+    await asyncio.sleep_ms(100)  # 异步等待100ms
+
+async def led_effect_task():
+    """
+    LED效果异步任务：处理呼吸灯和其他动态效果
+    """
+    global _brightness, _fade_direction
+    
+    while _tasks_running:
+        try:
+            # 仅当处于'breathing'模式时才执行动画更新
+            if _effect_mode == 'breathing':
+                if _led1_pwm and _led2_pwm:
+                    _brightness += FADE_STEP * _fade_direction
+                    if _brightness >= MAX_BRIGHTNESS:
+                        _brightness = MAX_BRIGHTNESS
+                        _fade_direction = -1
+                    elif _brightness <= 0:
+                        _brightness = 0
+                        _fade_direction = 1
+                    
+                    _led1_pwm.duty_u16(_brightness)
+                    _led2_pwm.duty_u16(MAX_BRIGHTNESS - _brightness)
+                
+                # 呼吸灯更新间隔
+                await asyncio.sleep_ms(50)
+            else:
+                # 非动画模式下，降低检查频率
+                await asyncio.sleep_ms(500)
+        except Exception as e:
+            print(f"[LED] 异步任务错误: {e}")
+            await asyncio.sleep_ms(1000)
 
 # ==================================================================
 # WiFi与NTP功能 (保持不变)
 # ==================================================================
 
-def scan_available_networks():
+async def scan_available_networks():
     """
-    扫描可用的WiFi网络 - 优化版本，增加重试机制
+    扫描可用的WiFi网络 - 异步版本
     返回: 可用网络的SSID列表
     """
     wlan = network.WLAN(network.STA_IF)
     if not wlan.active():
         wlan.active(True)
-        time.sleep(1)  # 等待WiFi模块激活
+        await asyncio.sleep_ms(1000)  # 异步等待WiFi模块激活
     
-    for attempt in range(WIFI_SCAN_RETRY_COUNT):
-        print(f"[WiFi] 正在扫描可用网络... (尝试 {attempt + 1}/{WIFI_SCAN_RETRY_COUNT})")
-        try:
-            networks = wlan.scan()
-            if networks:
-                available_ssids = [net[0].decode('utf-8') for net in networks]
-                print(f"[WiFi] 发现 {len(available_ssids)} 个网络")
-                return available_ssids
-            else:
-                print("[WiFi] 扫描结果为空")
-        except Exception as e:
-            print(f"[WiFi] [ERROR] 扫描网络失败: {e}")
-        
-        if attempt < WIFI_SCAN_RETRY_COUNT - 1:
-            print(f"[WiFi] {WIFI_SCAN_RETRY_DELAY_S}秒后重试扫描...")
-            time.sleep(WIFI_SCAN_RETRY_DELAY_S)
-    
-    print("[WiFi] [ERROR] 多次扫描后仍未发现网络")
-    return []
+    print("[WiFi] 正在扫描可用网络...")
+    try:
+        networks = wlan.scan()
+        if networks:
+            available_ssids = [net[0].decode('utf-8') for net in networks]
+            print(f"[WiFi] 发现 {len(available_ssids)} 个网络")
+            return available_ssids
+        else:
+            print("[WiFi] 扫描结果为空")
+            return []
+    except Exception as e:
+        print(f"[WiFi] [ERROR] 扫描网络失败: {e}")
+        return []
 
-def connect_wifi():
+async def _trigger_wifi_connected_callbacks():
     """
-    WiFi智能连接函数 - 使用新的多网络配置机制
+    触发WiFi连接成功的回调函数
+    """
+    for callback in _wifi_connected_callbacks:
+        try:
+            # 在MicroPython中，直接await调用回调函数
+            # 假设所有注册的回调都是async函数
+            await callback()
+        except Exception as e:
+            print(f"[CALLBACK] WiFi连接回调错误: {e}")
+
+async def _trigger_ntp_synced_callbacks():
+    """
+    触发NTP同步成功的回调函数
+    """
+    for callback in _ntp_synced_callbacks:
+        try:
+            # 在MicroPython中，直接await调用回调函数
+            # 假设所有注册的回调都是async函数
+            await callback()
+        except Exception as e:
+            print(f"[CALLBACK] NTP同步回调错误: {e}")
+
+def register_wifi_connected_callback(callback):
+    """
+    注册WiFi连接成功的回调函数
+    """
+    if callback not in _wifi_connected_callbacks:
+        _wifi_connected_callbacks.append(callback)
+        print(f"[CALLBACK] 已注册WiFi连接回调: {callback.__name__}")
+
+def register_ntp_synced_callback(callback):
+    """
+    注册NTP同步成功的回调函数
+    """
+    if callback not in _ntp_synced_callbacks:
+        _ntp_synced_callbacks.append(callback)
+        print(f"[CALLBACK] 已注册NTP同步回调: {callback.__name__}")
+
+async def connect_wifi():
+    """
+    WiFi智能连接函数 - 异步版本，单次尝试
     从配置数组中搜索并连接可用的WiFi网络
     返回: 连接成功返回True，失败返回False
     """
+    global _wifi_connected
+    
     print("[WiFi] 开始智能WiFi连接...")
     wlan = network.WLAN(network.STA_IF)
     
@@ -284,15 +326,19 @@ def connect_wifi():
     if wlan.isconnected():
         print("[WiFi] 网络已连接。")
         print(f"[WiFi] IP地址: {wlan.ifconfig()[0]}")
+        if not _wifi_connected:
+            _wifi_connected = True
+            # 触发WiFi连接成功回调
+            await _trigger_wifi_connected_callbacks()
         return True
 
     # 扫描可用网络
-    available_networks = scan_available_networks()
+    available_networks = await scan_available_networks()
     if not available_networks:
         print("[WiFi] [ERROR] 未发现任何可用网络")
         return False
 
-    # 尝试连接配置中的网络
+    # 尝试连接配置中的第一个可用网络
     for config in WIFI_CONFIGS:
         ssid = config["ssid"]
         password = config["password"]
@@ -300,62 +346,94 @@ def connect_wifi():
         if ssid in available_networks:
             print(f"[WiFi] 尝试连接到: {ssid}")
             
-            # 开始连接过程，显示LED闪烁指示
+            # 开始连接过程
             wlan.connect(ssid, password)
             
+            # 异步等待连接，使用asyncio.sleep
             start_time = time.time()
-            blink_counter = 0
+            blink_count = 0
             while not wlan.isconnected():
                 if time.time() - start_time > WIFI_CONNECT_TIMEOUT_S:
                     print(f"\n[WiFi] [ERROR] 连接 {ssid} 超时！")
                     break
                 
-                # 减少LED闪烁频率，每3秒闪烁一次
-                blink_counter += 1
-                if blink_counter % 15 == 0:  # 每15个循环（约3秒）闪烁一次
-                    wifi_connecting_blink()
+                # 每2秒闪烁一次LED
+                blink_count += 1
+                if blink_count % 40 == 0:  # 50ms * 40 = 2秒
+                    await wifi_connecting_blink()
                 
-                time.sleep(0.2)  # 短暂等待，减少CPU占用
+                # 异步等待，不阻塞其他任务
+                await asyncio.sleep_ms(50)
             
             if wlan.isconnected():
                 print(f"\n[WiFi] [SUCCESS] 成功连接到: {ssid}")
                 ip_info = wlan.ifconfig()
                 print(f"[WiFi] IP地址: {ip_info[0]}")
-                # 连接成功后关闭LED
-                set_effect('off')
+                _wifi_connected = True
+                # 触发WiFi连接成功回调
+                await _trigger_wifi_connected_callbacks()
                 return True
             else:
-                print(f"[WiFi] [WARNING] 连接 {ssid} 失败，尝试下一个网络")
+                print(f"[WiFi] [WARNING] 连接 {ssid} 失败")
+                # 单次尝试失败后直接退出，不再尝试其他网络
+                break
     
-    print("[WiFi] [ERROR] 所有配置的网络都连接失败")
-    # 连接失败后关闭LED
-    set_effect('off')
+    print("[WiFi] [ERROR] WiFi连接失败")
+    _wifi_connected = False
     return False
 
-def wifi_connection_loop():
+async def wifi_task():
     """
-    WiFi连接循环 - 如果未连接则重试，包含温度保护机制
-    返回: 连接成功返回True
+    WiFi连接异步任务：负责WiFi连接和重连管理
     """
-    retry_count = 0
-    while True:
-        # 检查温度，如果过高则延长等待时间
+    global _wifi_connected
+    
+    # 初次连接尝试
+    print("[WiFi] 启动WiFi连接任务...")
+    await connect_wifi()
+    
+    # 连接监控和重连循环
+    while _tasks_running:
         try:
-            temp = esp32.mcu_temperature()
-            if temp and temp > 42.0:  # 温度超过42度时减少活动
-                print(f"[WiFi] 温度过高 ({temp:.1f}°C)，延长重试间隔到120秒")
-                extended_interval = 120
+            # 检查温度，如果过高则跳过连接尝试
+            try:
+                temp = esp32.mcu_temperature()
+                if temp and temp > 42.0:
+                    print(f"[WiFi] 温度过高 ({temp:.1f}°C)，跳过WiFi连接检查")
+                    await asyncio.sleep(60)  # 高温时延长检查间隔
+                    continue
+            except:
+                pass
+            
+            wlan = network.WLAN(network.STA_IF)
+            if not wlan.isconnected():
+                if _wifi_connected:
+                    print("[WiFi] 检测到WiFi连接丢失，尝试重连...")
+                    _wifi_connected = False
+                    # 设置呼吸灯表示等待连接
+                    set_effect('breathing')
+                
+                # 尝试重连
+                success = await connect_wifi()
+                if success:
+                    print("[WiFi] 重连成功")
+                    # 设置常亮灯表示连接成功
+                    set_effect('single_on', led_num=1)
+                    await asyncio.sleep(60)  # 连接成功后60秒检查一次
+                else:
+                    await asyncio.sleep(WIFI_RETRY_INTERVAL_S)  # 连接失败后等待重试间隔
             else:
-                extended_interval = WIFI_RETRY_INTERVAL_S
-        except:
-            extended_interval = WIFI_RETRY_INTERVAL_S
-        
-        if connect_wifi():
-            return True
-        
-        retry_count += 1
-        print(f"[WiFi] 连接失败 (第{retry_count}次)，{extended_interval}秒后重试...")
-        time.sleep(extended_interval)
+                if not _wifi_connected:
+                    _wifi_connected = True
+                    print("[WiFi] WiFi连接状态已恢复")
+                    set_effect('single_on', led_num=1)
+                
+                # 连接正常时，降低检查频率
+                await asyncio.sleep(30)
+                
+        except Exception as e:
+            print(f"[WiFi] WiFi任务错误: {e}")
+            await asyncio.sleep(10)
 
 
 def get_local_time():
@@ -386,33 +464,197 @@ def format_time(time_tuple):
     except:
         return "时间格式错误"
 
-def sync_ntp_time():
-    """通过NTP同步设备的实时时钟（RTC）并显示本地时间。"""
-    print("\n[NTP] 开始使用 ntptime.settime() 同步网络时间...")
+async def sync_ntp_time():
+    """通过NTP同步设备的实时时钟（RTC）并显示本地时间 - 异步版本
+    单次尝试，不阻塞
+    """
+    global _ntp_synced
     
     wlan = network.WLAN(network.STA_IF)
     if not wlan.isconnected():
         print("[NTP] [ERROR] 未连接到WiFi，无法同步时间。")
         return False
 
-    for i in range(NTP_RETRY_COUNT):
-        try:
-            print(f"[NTP] 正在尝试同步... (第 {i+1}/{NTP_RETRY_COUNT} 次)")
-            ntptime.settime()
+    try:
+        print("[NTP] 正在尝试同步网络时间...")
+        ntptime.settime()
+        
+        if time.localtime()[0] > 2023:
+            utc_time = time.localtime()
+            local_time = get_local_time()
             
-            if time.localtime()[0] > 2023:
-                utc_time = time.localtime()
-                local_time = get_local_time()
-                
-                print("[NTP] [SUCCESS] 时间同步成功！")
-                print(f"[NTP] UTC时间: {format_time(utc_time)}")
-                print(f"[NTP] 本地时间: {format_time(local_time)} (UTC+{TIMEZONE_OFFSET_HOURS})")
-                return True
-        except Exception as e:
-            print(f"[NTP] [WARNING] 时间同步失败: {e}")
-            if i < NTP_RETRY_COUNT - 1:
-                print(f"[NTP] {NTP_RETRY_DELAY_S}秒后重试...")
-                time.sleep(NTP_RETRY_DELAY_S)
+            print("[NTP] [SUCCESS] 时间同步成功！")
+            print(f"[NTP] UTC时间: {format_time(utc_time)}")
+            print(f"[NTP] 本地时间: {format_time(local_time)} (UTC+{TIMEZONE_OFFSET_HOURS})")
+            _ntp_synced = True
+            # 触发NTP同步成功回调
+            await _trigger_ntp_synced_callbacks()
+            return True
+    except Exception as e:
+        print(f"[NTP] [WARNING] 时间同步失败: {e}")
+        return False
+
+async def _on_wifi_connected():
+    """
+    WiFi连接成功后的回调函数：立即尝试NTP同步
+    """
+    print("[NTP] WiFi连接成功，立即尝试时间同步...")
+    await sync_ntp_time()
+
+async def ntp_task():
+    """
+    NTP时间同步异步任务：负责定期同步时间
+    """
+    global _ntp_synced
     
-    print("\n[NTP] [ERROR] 经过多次尝试后，NTP时间同步最终失败！")
-    return False
+    print("[NTP] 启动NTP同步任务...")
+    
+    # 注册WiFi连接成功的回调，实现事件驱动的NTP同步
+    register_wifi_connected_callback(_on_wifi_connected)
+    
+    while _tasks_running:
+        try:
+            # 定期检查并重新同步时间（每24小时）
+            if _wifi_connected and _ntp_synced:
+                # 如果已经同步过，等待24小时后重新同步
+                await asyncio.sleep(24 * 3600)  # 24小时
+                if _wifi_connected:
+                    print("[NTP] 定期重新同步时间...")
+                    _ntp_synced = False  # 重置状态以允许重新同步
+                    await sync_ntp_time()
+            else:
+                # 如果还未同步，等待较短时间后重试
+                await asyncio.sleep(NTP_RETRY_DELAY_S)
+                if _wifi_connected and not _ntp_synced:
+                    await sync_ntp_time()
+                    
+        except Exception as e:
+             print(f"[NTP] NTP任务错误: {e}")
+             await asyncio.sleep(30)
+
+# ==================================================================
+# 异步任务管理器
+# ==================================================================
+
+async def start_all_tasks():
+    """
+    启动所有异步任务
+    """
+    global _tasks_running, _wifi_task, _ntp_task, _led_task
+    
+    print("[ASYNC] 启动异步任务管理器...")
+    _tasks_running = True
+    
+    # 设置初始灯效（呼吸灯表示等待连接）
+    set_effect('breathing')
+    
+    # 创建并启动所有异步任务
+    _wifi_task = asyncio.create_task(wifi_task())
+    _ntp_task = asyncio.create_task(ntp_task())
+    _led_task = asyncio.create_task(led_effect_task())
+    
+    print("[ASYNC] 所有异步任务已启动")
+    
+    # 等待所有任务完成（实际上会一直运行）
+    try:
+        await asyncio.gather(_wifi_task, _ntp_task, _led_task)
+    except Exception as e:
+        print(f"[ASYNC] 任务管理器错误: {e}")
+    finally:
+        await stop_all_tasks()
+
+async def stop_all_tasks():
+    """
+    停止所有异步任务
+    """
+    global _tasks_running, _wifi_task, _ntp_task, _led_task
+    
+    print("[ASYNC] 停止所有异步任务...")
+    _tasks_running = False
+    
+    # 取消所有任务
+    for task in [_wifi_task, _ntp_task, _led_task]:
+        if task and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+    
+    print("[ASYNC] 所有异步任务已停止")
+
+def get_system_status():
+    """
+    获取系统状态信息
+    返回: 包含系统状态的字典
+    """
+    status = {
+        'wifi_connected': _wifi_connected,
+        'ntp_synced': _ntp_synced,
+        'tasks_running': _tasks_running,
+        'current_time': None,
+        'ip_address': None,
+        'temperature': None
+    }
+    
+    # 获取当前时间
+    if _ntp_synced:
+        try:
+            local_time = get_local_time()
+            status['current_time'] = format_time(local_time)
+        except:
+            status['current_time'] = "时间获取失败"
+    
+    # 获取IP地址
+    if _wifi_connected:
+        try:
+            wlan = network.WLAN(network.STA_IF)
+            if wlan.isconnected():
+                status['ip_address'] = wlan.ifconfig()[0]
+        except:
+            pass
+    
+    # 获取温度
+    try:
+        status['temperature'] = esp32.mcu_temperature()
+    except:
+        pass
+    
+    return status
+
+def print_system_status():
+    """
+    打印系统状态报告
+    """
+    status = get_system_status()
+    print("\n" + "="*50)
+    print("           系统状态报告")
+    print("="*50)
+    print(f"WiFi连接状态: {'已连接' if status['wifi_connected'] else '未连接'}")
+    if status['ip_address']:
+        print(f"IP地址: {status['ip_address']}")
+    print(f"时间同步状态: {'已同步' if status['ntp_synced'] else '未同步'}")
+    if status['current_time']:
+        print(f"当前时间: {status['current_time']}")
+    print(f"异步任务状态: {'运行中' if status['tasks_running'] else '已停止'}")
+    if status['temperature']:
+        print(f"MCU温度: {status['temperature']:.1f}°C")
+    print("="*50 + "\n")
+
+def run_async_system():
+    """
+    运行异步系统的主入口函数
+    这是外部调用的主要接口
+    """
+    print("[SYSTEM] 启动异步系统...")
+    try:
+        asyncio.run(start_all_tasks())
+    except KeyboardInterrupt:
+        print("\n[SYSTEM] 收到中断信号，正在停止系统...")
+    except Exception as e:
+        print(f"[SYSTEM] 系统错误: {e}")
+    finally:
+        print("[SYSTEM] 异步系统已停止")
+
+# 注意：wifi_connection_loop() 兼容性函数已移除
+# 新架构使用 wifi_task() 异步任务和事件驱动模式

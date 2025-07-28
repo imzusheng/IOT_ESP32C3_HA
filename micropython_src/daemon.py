@@ -67,6 +67,31 @@ def _log_critical_error(error_msg):
             _log_queue.append(log_entry)
     except: pass
 
+def _get_system_time_info():
+    """
+    获取系统时间信息
+    返回格式化的时间字符串
+    """
+    try:
+        # 尝试导入utils模块获取时间同步状态
+        try:
+            import utils
+            status = utils.get_system_status()
+            if status['ntp_synced'] and status['current_time']:
+                return f"系统时间: {status['current_time']} (已同步)"
+            else:
+                # 未同步时显示本地时间并标注
+                local_time = time.localtime()
+                time_str = f"{local_time[0]}-{local_time[1]:02d}-{local_time[2]:02d} {local_time[3]:02d}:{local_time[4]:02d}:{local_time[5]:02d}"
+                return f"系统时间: {time_str} (未同步)"
+        except ImportError:
+            # 如果utils模块不可用，显示本地时间
+            local_time = time.localtime()
+            time_str = f"{local_time[0]}-{local_time[1]:02d}-{local_time[2]:02d} {local_time[3]:02d}:{local_time[4]:02d}:{local_time[5]:02d}"
+            return f"系统时间: {time_str} (状态未知)"
+    except Exception as e:
+        return f"系统时间: 获取失败 ({e})"
+
 def _emergency_hardware_reset():
     try:
         print("[EMERGENCY] 守护进程触发紧急硬件重置...")
@@ -94,9 +119,10 @@ def _daemon_main_interrupt(timer):
             _check_safe_mode_recovery()
             return
         
-        # 核心逻辑极大简化：只调用 utils 中的更新函数。
-        # 此函数内部有逻辑判断，仅在动画效果（如呼吸灯）模式下才消耗CPU。
-        utils.update_led_effect()
+        # 注意：LED效果现在由异步任务 led_effect_task() 处理
+        # 守护进程主中断现在主要负责安全模式检查和系统监控
+        # 如果需要添加其他定时任务，可以在此处添加
+        pass
 
     except Exception as e:
         _log_critical_error(f"主中断处理失败: {e}")
@@ -160,7 +186,12 @@ def _print_performance_report():
         mem_alloc_kb = gc.mem_alloc() / 1024; mem_free_kb = gc.mem_free() / 1024
         mem_total_kb = mem_alloc_kb + mem_free_kb
         mem_percent = (mem_alloc_kb / mem_total_kb) * 100 if mem_total_kb > 0 else 0
+        
+        # 获取系统时间信息
+        time_info = _get_system_time_info()
+        
         print("\n" + "="*50 + "\n        关键系统守护进程状态报告\n" + "="*50)
+        print(time_info)
         print(f"运行时间: {uptime_str}")
         print(f"内部温度: {temp:.2f} °C" if temp else "温度读取失败")
         print(f"内存使用: {mem_alloc_kb:.2f}KB / {mem_total_kb:.2f}KB ({mem_percent:.1f}%)")
