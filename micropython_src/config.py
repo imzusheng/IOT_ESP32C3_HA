@@ -1,6 +1,6 @@
 # config.py
 """
-系统配置管理模块
+系统配置管理模块 - 支持JSON外部配置文件
 
 这个模块集中管理整个IoT系统的所有配置参数，包括：
 - WiFi网络配置
@@ -9,75 +9,231 @@
 - 定时器和间隔配置
 - 安全和保护机制配置
 
-通过集中配置管理，可以：
-1. 避免硬编码配置散布在各个模块中
-2. 方便统一修改和维护配置
-3. 提高代码的可维护性和可扩展性
-4. 支持不同环境的配置切换
+优化特性：
+1. 支持从外部JSON文件加载配置（config.json）
+2. 保持向后兼容性，如果JSON文件不存在则使用默认配置
+3. 配置热重载功能，支持运行时更新配置
+4. 配置验证和错误处理机制
+5. 避免硬编码配置散布在各个模块中
 """
+
+import os
+
+try:
+    import ujson as json
+except ImportError:
+    import json
+
+# =============================================================================
+# JSON配置文件管理
+# =============================================================================
+
+# 配置文件路径
+CONFIG_FILE_PATH = 'config.json'
+
+# 全局配置存储
+_loaded_config = None
+_config_load_time = 0
+
+def _load_json_config():
+    """
+    从JSON文件加载配置
+    
+    Returns:
+        dict: 配置字典，如果加载失败则返回None
+    """
+    try:
+        if CONFIG_FILE_PATH in os.listdir():
+            with open(CONFIG_FILE_PATH, 'r') as f:
+                config_data = json.load(f)
+            print(f"[CONFIG] 成功从 {CONFIG_FILE_PATH} 加载配置")
+            return config_data
+        else:
+            print(f"[CONFIG] 配置文件 {CONFIG_FILE_PATH} 不存在，使用默认配置")
+            return None
+    except Exception as e:
+        print(f"[CONFIG] [ERROR] 加载JSON配置失败: {e}")
+        return None
+
+def _save_json_config(config_data):
+    """
+    保存配置到JSON文件
+    
+    Args:
+        config_data (dict): 要保存的配置数据
+    
+    Returns:
+        bool: 保存是否成功
+    """
+    try:
+        with open(CONFIG_FILE_PATH, 'w') as f:
+            json.dump(config_data, f, indent=2)
+        print(f"[CONFIG] 配置已保存到 {CONFIG_FILE_PATH}")
+        return True
+    except Exception as e:
+        print(f"[CONFIG] [ERROR] 保存JSON配置失败: {e}")
+        return False
+
+def reload_config():
+    """
+    重新加载配置文件
+    
+    Returns:
+        bool: 重载是否成功
+    """
+    global _loaded_config, _config_load_time
+    
+    try:
+        _loaded_config = _load_json_config()
+        _config_load_time = time.ticks_ms() if 'time' in globals() else 0
+        
+        if _loaded_config:
+            print("[CONFIG] 配置重载成功")
+            return True
+        else:
+            print("[CONFIG] 配置重载失败，使用默认配置")
+            return False
+            
+    except Exception as e:
+        print(f"[CONFIG] [ERROR] 配置重载失败: {e}")
+        return False
+
+def _get_config_value(section, key, default_value):
+    """
+    从配置中获取值，支持JSON配置和默认值回退
+    
+    Args:
+        section (str): 配置节名称
+        key (str): 配置键名称
+        default_value: 默认值
+    
+    Returns:
+        配置值或默认值
+    """
+    global _loaded_config
+    
+    # 如果还没有加载过配置，先尝试加载
+    if _loaded_config is None:
+        _loaded_config = _load_json_config()
+    
+    # 如果有JSON配置，优先使用
+    if _loaded_config and section in _loaded_config and key in _loaded_config[section]:
+        return _loaded_config[section][key]
+    
+    # 否则使用默认值
+    return default_value
 
 # =============================================================================
 # WiFi 网络配置
 # =============================================================================
 
-# WiFi网络配置列表
+# WiFi网络配置列表（默认值）
 # 系统会按顺序尝试连接这些网络，连接到第一个可用的网络后停止尝试
-WIFI_CONFIGS = [
+_DEFAULT_WIFI_CONFIGS = [
     {"ssid": "Lejurobot", "password": "Leju2022"},
     {"ssid": "CMCC-pdRG", "password": "7k77ed5p"},
     # 可以继续添加更多网络配置
     # {"ssid": "你的网络名称", "password": "你的密码"},
 ]
 
-# WiFi连接超时时间（秒）
-# 单次WiFi连接尝试的最大等待时间
-WIFI_CONNECT_TIMEOUT_S = 15
+# WiFi连接超时时间（秒）- 默认值
+_DEFAULT_WIFI_CONNECT_TIMEOUT_S = 15
 
-# WiFi重连间隔时间（秒）
-# WiFi连接失败后，下次重试前的等待时间
-WIFI_RETRY_INTERVAL_S = 60
+# WiFi重连间隔时间（秒）- 默认值
+_DEFAULT_WIFI_RETRY_INTERVAL_S = 60
+
+# 动态配置获取函数
+def get_wifi_configs():
+    """获取WiFi配置列表（支持JSON配置）"""
+    return _get_config_value('wifi', 'configs', _DEFAULT_WIFI_CONFIGS)
+
+def get_wifi_connect_timeout():
+    """获取WiFi连接超时时间（支持JSON配置）"""
+    return _get_config_value('wifi', 'connect_timeout_s', _DEFAULT_WIFI_CONNECT_TIMEOUT_S)
+
+def get_wifi_retry_interval():
+    """获取WiFi重连间隔时间（支持JSON配置）"""
+    return _get_config_value('wifi', 'retry_interval_s', _DEFAULT_WIFI_RETRY_INTERVAL_S)
+
+# 向后兼容的常量（从动态配置获取）
+WIFI_CONFIGS = property(lambda: get_wifi_configs())
+WIFI_CONNECT_TIMEOUT_S = property(lambda: get_wifi_connect_timeout())
+WIFI_RETRY_INTERVAL_S = property(lambda: get_wifi_retry_interval())
 
 # =============================================================================
 # NTP 时间同步配置
 # =============================================================================
 
-# NTP重试间隔（秒）
-# 每次NTP同步重试之间的等待时间
-NTP_RETRY_DELAY_S = 60
+# NTP重试间隔（秒）- 默认值
+_DEFAULT_NTP_RETRY_DELAY_S = 60
 
-# 时区偏移（小时）
-# 将UTC时间转换为本地时间的小时偏移量
-# 中国：8，美东：-5/-4，欧洲：1/2等
-TIMEZONE_OFFSET_HOURS = 8
+# 时区偏移（小时）- 默认值
+_DEFAULT_TIMEZONE_OFFSET_HOURS = 8
+
+# 动态配置获取函数
+def get_ntp_retry_delay():
+    """获取NTP重试间隔（支持JSON配置）"""
+    return _get_config_value('ntp', 'retry_delay_s', _DEFAULT_NTP_RETRY_DELAY_S)
+
+def get_timezone_offset():
+    """获取时区偏移（支持JSON配置）"""
+    return _get_config_value('ntp', 'timezone_offset_hours', _DEFAULT_TIMEZONE_OFFSET_HOURS)
+
+# 向后兼容的常量
+NTP_RETRY_DELAY_S = property(lambda: get_ntp_retry_delay())
+TIMEZONE_OFFSET_HOURS = property(lambda: get_timezone_offset())
 
 # =============================================================================
 # LED 硬件配置
 # =============================================================================
 
-# LED引脚配置
-# 定义控制LED的GPIO引脚号
-LED_PIN_1 = 12  # LED 1 的主控引脚
-LED_PIN_2 = 13  # LED 2 的主控引脚
+# LED引脚配置 - 默认值
+_DEFAULT_LED_PIN_1 = 12  # LED 1 的主控引脚
+_DEFAULT_LED_PIN_2 = 13  # LED 2 的主控引脚
 
-# PWM频率配置（Hz）
-# 控制PWM信号的频率，影响LED的闪烁和调光效果
-PWM_FREQ = 60
+# PWM频率配置（Hz）- 默认值
+_DEFAULT_PWM_FREQ = 60
 
-# LED最大亮度配置
-# 定义PWM占空比的最大值，控制LED的最大亮度
-# ESP32的PWM范围：0-65535
-MAX_BRIGHTNESS = 20000
+# LED最大亮度配置 - 默认值
+_DEFAULT_MAX_BRIGHTNESS = 20000
 
-# 呼吸灯渐变步长配置
-# 控制呼吸灯效果中每次亮度变化的幅度
-FADE_STEP = 256
+# 呼吸灯渐变步长配置 - 默认值
+_DEFAULT_FADE_STEP = 256
+
+# 动态配置获取函数
+def get_led_pin_1():
+    """获取LED1引脚（支持JSON配置）"""
+    return _get_config_value('led', 'pin_1', _DEFAULT_LED_PIN_1)
+
+def get_led_pin_2():
+    """获取LED2引脚（支持JSON配置）"""
+    return _get_config_value('led', 'pin_2', _DEFAULT_LED_PIN_2)
+
+def get_pwm_freq():
+    """获取PWM频率（支持JSON配置）"""
+    return _get_config_value('led', 'pwm_freq', _DEFAULT_PWM_FREQ)
+
+def get_max_brightness():
+    """获取最大亮度（支持JSON配置）"""
+    return _get_config_value('led', 'max_brightness', _DEFAULT_MAX_BRIGHTNESS)
+
+def get_fade_step():
+    """获取渐变步长（支持JSON配置）"""
+    return _get_config_value('led', 'fade_step', _DEFAULT_FADE_STEP)
+
+# 向后兼容的常量
+LED_PIN_1 = property(lambda: get_led_pin_1())
+LED_PIN_2 = property(lambda: get_led_pin_2())
+PWM_FREQ = property(lambda: get_pwm_freq())
+MAX_BRIGHTNESS = property(lambda: get_max_brightness())
+FADE_STEP = property(lambda: get_fade_step())
 
 # =============================================================================
 # 守护进程配置
 # =============================================================================
 
-# 定时器与任务间隔配置（毫秒）
-DAEMON_CONFIG = {
+# 定时器与任务间隔配置（毫秒）- 默认值
+_DEFAULT_DAEMON_CONFIG = {
     # 主循环更新间隔
     'main_interval_ms': 5000,
     
@@ -89,7 +245,23 @@ DAEMON_CONFIG = {
     
     # 内部性能报告的打印间隔（秒）
     'perf_report_interval_s': 30,
+    
+    # 统一调度器间隔（优化后新增）
+    'scheduler_interval_ms': 100,
 }
+
+# 动态配置获取函数
+def get_daemon_config():
+    """获取守护进程配置（支持JSON配置）"""
+    if _loaded_config and 'daemon' in _loaded_config:
+        # 合并JSON配置和默认配置
+        config = _DEFAULT_DAEMON_CONFIG.copy()
+        config.update(_loaded_config['daemon'])
+        return config
+    return _DEFAULT_DAEMON_CONFIG.copy()
+
+# 向后兼容的常量
+DAEMON_CONFIG = property(lambda: get_daemon_config())
 
 # 安全与保护机制配置
 SAFETY_CONFIG = {

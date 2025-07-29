@@ -1,0 +1,50 @@
+{
+  "wifi": {
+    "configs": [
+      {"ssid": "Lejurobot", "password": "Leju2022"},
+      {"ssid": "CMCC-pdRG", "password": "7k77ed5p"}
+    ],
+    "connect_timeout_s": 15,
+    "retry_interval_s": 60
+  },
+  "ntp": {
+    "retry_delay_s": 60,
+    "timezone_offset_hours": 8
+  },
+  "led": {
+    "pin_1": 12,
+    "pin_2": 13,
+    "pwm_freq": 60,
+    "max_brightness": 20000,
+    "fade_step": 256
+  },
+  "daemon": {
+    "main_interval_ms": 5000,
+    "watchdog_interval_ms": 3000,
+    "monitor_interval_ms": 30000,
+    "perf_report_interval_s": 30,
+    "scheduler_interval_ms": 200
+  },
+  "safety": {
+    "temperature_threshold": 45.0,
+    "wdt_timeout_ms": 30000,
+    "blink_interval_ms": 200,
+    "safe_mode_cooldown_ms": 5000,
+    "max_error_count": 10,
+    "error_reset_interval_ms": 60000,
+    "max_recovery_attempts": 5
+  },
+  "logging": {
+    "log_file": "error.log",
+    "max_log_size": 10240,
+    "max_log_queue_size": 20,
+    "batch_size": 10,
+    "write_interval_ms": 5000
+  },
+  "general": {
+    "main_loop_interval": 5,
+    "gc_interval_loops": 20,
+    "status_check_interval_loops": 12,
+    "low_memory_threshold": 10000
+  }
+}

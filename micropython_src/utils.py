@@ -20,8 +20,18 @@ import ntptime
 import machine
 import esp32
 import uasyncio as asyncio
+from enum import Enum
 import config
 import event_bus
+
+# === WiFi状态机枚举 ===
+class WifiState(Enum):
+    """WiFi连接状态机的状态定义"""
+    DISCONNECTED = 1  # 未连接状态
+    SCANNING = 2      # 扫描网络状态
+    CONNECTING = 3    # 正在连接状态
+    CONNECTED = 4     # 已连接状态
+    RETRY_WAIT = 5    # 重试等待状态
 
 # === 配置获取 (从config模块) ===
 _wifi_config = config.get_wifi_config()
@@ -425,6 +435,81 @@ async def scan_available_networks():
         print(f"[WiFi] [ERROR] 扫描网络失败: {e}")
         return []
 
+# === WiFi状态机辅助函数 ===
+
+async def scan_available_networks_for_config():
+    """
+    扫描并返回配置中可用的网络
+    返回: 可用的网络配置列表
+    """
+    available_networks = await scan_available_networks()
+    if not available_networks:
+        return []
+    
+    # 返回配置中可用的网络
+    available_configs = []
+    for config in WIFI_CONFIGS:
+        if config["ssid"] in available_networks:
+            available_configs.append(config)
+    
+    return available_configs
+
+async def connect_wifi_attempt(wifi_configs):
+    """
+    尝试连接WiFi网络（单次尝试）
+    参数: wifi_configs - 可用的WiFi配置列表
+    返回: 连接成功返回True，失败返回False
+    """
+    global _wifi_connected
+    
+    if not wifi_configs:
+        return False
+    
+    wlan = network.WLAN(network.STA_IF)
+    if not wlan.active():
+        wlan.active(True)
+    
+    # 尝试连接第一个可用网络
+    config = wifi_configs[0]
+    ssid = config["ssid"]
+    password = config["password"]
+    
+    print(f"[WiFi] 尝试连接到: {ssid}")
+    event_bus.publish('wifi_trying', ssid=ssid)
+    
+    # 开始连接过程
+    wlan.connect(ssid, password)
+    
+    # 异步等待连接
+    start_time = time.time()
+    blink_count = 0
+    while not wlan.isconnected():
+        if time.time() - start_time > WIFI_CONNECT_TIMEOUT_S:
+            error_msg = f"连接 {ssid} 超时"
+            print(f"\n[WiFi] [ERROR] {error_msg}！")
+            event_bus.publish('wifi_timeout', ssid=ssid)
+            return False
+        
+        # 每2秒闪烁一次LED
+        blink_count += 1
+        if blink_count % 40 == 0:  # 50ms * 40 = 2秒
+            await wifi_connecting_blink()
+        
+        # 异步等待，不阻塞其他任务
+        await asyncio.sleep_ms(50)
+    
+    if wlan.isconnected():
+        ip_info = wlan.ifconfig()
+        ip = ip_info[0]
+        print(f"\n[WiFi] [SUCCESS] 成功连接到: {ssid}")
+        print(f"[WiFi] IP地址: {ip}")
+        _wifi_connected = True
+        event_bus.publish('wifi_connected', ssid=ssid, ip=ip, reconnect=True)
+        event_bus.publish('log_info', message=f"WiFi连接成功: {ssid} ({ip})")
+        return True
+    
+    return False
+
 # 注意：回调函数机制已被事件总线替代，所有状态变化通过事件发布
 
 async def connect_wifi():
@@ -517,55 +602,92 @@ async def connect_wifi():
 
 async def wifi_task():
     """
-    WiFi连接异步任务：负责WiFi连接和重连管理
+    WiFi连接异步任务：基于状态机的重构版本
+    
+    使用明确的状态机来管理WiFi连接流程，提高代码可维护性和可扩展性。
+    状态包括：DISCONNECTED, SCANNING, CONNECTING, CONNECTED, RETRY_WAIT
     """
     global _wifi_connected
     
-    # 初次连接尝试
-    print("[WiFi] 启动WiFi连接任务...")
-    await connect_wifi()
+    print("[WiFi] 启动WiFi连接任务（状态机版本）...")
     
-    # 连接监控和重连循环
+    wlan = network.WLAN(network.STA_IF)
+    state = WifiState.DISCONNECTED
+    available_configs = []
+    
     while _tasks_running:
         try:
-            # 检查温度，如果过高则跳过连接尝试
+            print(f"[WiFi] 当前状态: {state.name}")
+            
+            # 温度检查（所有状态都需要检查）
             try:
                 temp = esp32.mcu_temperature()
                 if temp and temp > 42.0:
-                    print(f"[WiFi] 温度过高 ({temp:.1f}°C)，跳过WiFi连接检查")
+                    print(f"[WiFi] 温度过高 ({temp:.1f}°C)，暂停WiFi操作")
                     await asyncio.sleep(60)  # 高温时延长检查间隔
                     continue
             except:
                 pass
             
-            wlan = network.WLAN(network.STA_IF)
-            if not wlan.isconnected():
-                if _wifi_connected:
-                    print("[WiFi] 检测到WiFi连接丢失，尝试重连...")
-                    _wifi_connected = False
-                    # 设置呼吸灯表示等待连接
-                    set_effect('breathing')
+            # 状态机逻辑
+            if state == WifiState.DISCONNECTED:
+                if not wlan.active():
+                    wlan.active(True)
+                    await asyncio.sleep_ms(1000)  # 等待WiFi模块激活
                 
-                # 尝试重连
-                success = await connect_wifi()
-                if success:
-                    print("[WiFi] 重连成功")
-                    # 设置常亮灯表示连接成功
-                    set_effect('single_on', led_num=1)
-                    await asyncio.sleep(60)  # 连接成功后60秒检查一次
+                if wlan.isconnected():
+                    state = WifiState.CONNECTED
                 else:
-                    await asyncio.sleep(WIFI_RETRY_INTERVAL_S)  # 连接失败后等待重试间隔
-            else:
+                    _wifi_connected = False
+                    set_effect('breathing')  # 指示灯设为呼吸状态
+                    state = WifiState.SCANNING
+            
+            elif state == WifiState.SCANNING:
+                print("[WiFi] 扫描可用网络...")
+                available_configs = await scan_available_networks_for_config()
+                if not available_configs:
+                    print("[WiFi] 未发现配置中的网络，等待重试")
+                    state = WifiState.RETRY_WAIT
+                else:
+                    print(f"[WiFi] 发现 {len(available_configs)} 个可连接网络")
+                    state = WifiState.CONNECTING
+            
+            elif state == WifiState.CONNECTING:
+                print("[WiFi] 尝试连接网络...")
+                success = await connect_wifi_attempt(available_configs)
+                if success:
+                    state = WifiState.CONNECTED
+                else:
+                    print("[WiFi] 连接失败，进入重试等待")
+                    state = WifiState.RETRY_WAIT
+            
+            elif state == WifiState.CONNECTED:
                 if not _wifi_connected:
                     _wifi_connected = True
-                    print("[WiFi] WiFi连接状态已恢复")
-                    set_effect('single_on', led_num=1)
+                    print("[WiFi] WiFi连接状态已确认")
+                    set_effect('single_on', led_num=1)  # 设置常亮灯表示连接成功
                 
                 # 使用动态WiFi检查间隔（支持温度优化）
                 await asyncio.sleep(_wifi_check_interval_s)
                 
+                # 检查连接状态
+                if not wlan.isconnected():
+                    print("[WiFi] 检测到连接丢失")
+                    _wifi_connected = False
+                    state = WifiState.DISCONNECTED
+            
+            elif state == WifiState.RETRY_WAIT:
+                print(f"[WiFi] 连接失败，{WIFI_RETRY_INTERVAL_S}秒后重试...")
+                await asyncio.sleep(WIFI_RETRY_INTERVAL_S)
+                state = WifiState.SCANNING  # 重试时重新扫描
+            
+            # 状态间的短暂延迟，避免过于频繁的状态切换
+            if state != WifiState.CONNECTED and state != WifiState.RETRY_WAIT:
+                await asyncio.sleep_ms(500)
+                
         except Exception as e:
             print(f"[WiFi] WiFi任务错误: {e}")
+            state = WifiState.RETRY_WAIT  # 出现异常也进入重试等待
             await asyncio.sleep(10)
 
 

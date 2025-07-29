@@ -24,6 +24,7 @@ import time
 import gc
 import config
 import event_bus
+import temp_optimization
 
 # === 全局守护进程状态 (内部私有) ===
 _daemon_active = False
@@ -38,8 +39,7 @@ _recovery_attempts = 0
 
 # === 硬件对象 (内部私有) ===
 _wdt = None
-_timer_main = None
-_timer_watchdog_monitor = None
+_timer_scheduler = None  # 统一调度器定时器
 
 # === 守护进程配置 (从config模块获取) ===
 # 获取配置信息
@@ -68,6 +68,18 @@ CONFIG = {
     'led_pin_1': _led_config['pin_1'],
     'led_pin_2': _led_config['pin_2'],
 }
+
+# === 优化后的统一调度器配置 ===
+# 统一调度器的动态间隔（毫秒）- 根据温度自动调整
+SCHEDULER_INTERVAL_MS = 200  # 默认200ms，将根据温度动态调整
+_current_scheduler_interval_ms = SCHEDULER_INTERVAL_MS  # 当前实际使用的调度器间隔
+_last_temp_check_for_scheduler = 0  # 上次检查温度用于调度器调整的时间
+_temp_check_interval_for_scheduler = 10000  # 每10秒检查一次温度来调整调度器间隔
+
+# 各任务的上次执行时间戳
+_last_watchdog_feed_ms = 0
+_last_monitor_check_ms = 0
+_last_perf_check_ms = 0
 
 # === 核心中断与辅助函数 (内部实现细节) ===
 
@@ -178,89 +190,136 @@ def _safe_mode_emergency_blink():
     except Exception as e:
         _log_critical_error(f"安全模式闪烁失败: {e}")
 
-def _daemon_main_interrupt(timer):
+def _adjust_scheduler_interval_by_temperature():
     """
-    守护进程主中断处理函数
+    根据温度动态调整调度器间隔
     
-    这个函数在定时器中断中被调用，负责处理安全模式下的LED闪烁。
-    重构后，这个函数不再处理业务逻辑，只专注于安全模式管理。
+    这是温度优化的核心功能，根据当前MCU温度自动调整调度器的中断频率，
+    从而在高温时降低功耗和发热。
+    """
+    global _current_scheduler_interval_ms, _last_temp_check_for_scheduler, _timer_scheduler
+    
+    current_time = time.ticks_ms()
+    
+    # 检查是否需要调整调度器间隔（每10秒检查一次）
+    if time.ticks_diff(current_time, _last_temp_check_for_scheduler) >= _temp_check_interval_for_scheduler:
+        _last_temp_check_for_scheduler = current_time
+        
+        try:
+            # 获取当前温度
+            current_temp = _get_internal_temperature()
+            if current_temp is None:
+                return  # 温度读取失败，保持当前间隔
+            
+            # 根据温度获取推荐的调度器间隔
+            recommended_interval = temp_optimization.get_scheduler_interval_for_temp(current_temp)
+            
+            # 如果推荐间隔与当前间隔不同，则需要重新初始化定时器
+            if recommended_interval != _current_scheduler_interval_ms:
+                old_interval = _current_scheduler_interval_ms
+                _current_scheduler_interval_ms = recommended_interval
+                
+                # 重新初始化定时器
+                if _timer_scheduler:
+                    try:
+                        _timer_scheduler.deinit()
+                        _timer_scheduler.init(
+                            period=_current_scheduler_interval_ms,
+                            mode=machine.Timer.PERIODIC,
+                            callback=_scheduler_interrupt
+                        )
+                        
+                        temp_level = temp_optimization.get_temperature_level(current_temp)
+                        print(f"[DAEMON] [TEMP_OPT] 温度: {current_temp:.1f}°C, 级别: {temp_level}")
+                        print(f"[DAEMON] [TEMP_OPT] 调度器间隔调整: {old_interval}ms -> {_current_scheduler_interval_ms}ms")
+                        
+                        # 通过事件总线发布调度器间隔调整事件
+                        event_bus.publish('scheduler_interval_adjusted', 
+                                        old_interval=old_interval,
+                                        new_interval=_current_scheduler_interval_ms,
+                                        temperature=current_temp,
+                                        temp_level=temp_level)
+                        
+                    except Exception as e:
+                        _log_critical_error(f"调度器间隔调整失败: {e}")
+                        # 调整失败时恢复原间隔
+                        _current_scheduler_interval_ms = old_interval
+                        
+        except Exception as e:
+            _log_critical_error(f"温度检查用于调度器调整失败: {e}")
+
+def _scheduler_interrupt(timer):
+    """
+    统一的调度器中断处理函数
+    
+    这个函数在动态调整的定时器中断中被调用，负责调度所有守护进程任务：
+    1. 看门狗喂养（最高优先级）
+    2. 系统监控（温度检查、错误管理）
+    3. 性能报告
+    4. 安全模式管理
+    5. 动态调度器间隔调整（温度优化）
+    
+    通过时间戳比较来控制各任务的执行频率，实现资源优化。
     
     Args:
         timer: 定时器对象
     """
+    global _last_watchdog_feed_ms, _last_monitor_check_ms, _last_perf_check_ms, _error_count
+    
     if not _daemon_active:
         return
         
+    current_time = time.ticks_ms()
+    
     try:
+        # 任务0：动态调度器间隔调整（温度优化，最高优先级）
+        _adjust_scheduler_interval_by_temperature()
+        
+        # 任务1：看门狗喂养（最高优先级，按配置间隔执行）
+        if time.ticks_diff(current_time, _last_watchdog_feed_ms) >= CONFIG['watchdog_interval_ms']:
+            _last_watchdog_feed_ms = current_time
+            try:
+                if _wdt:
+                    _wdt.feed()
+                    # 每10次喂养记录一次状态，避免过多日志
+                    if current_time % 30000 < 3000:  # 大约每30秒记录一次
+                        print(f"[DAEMON] 看门狗正常喂养，当前调度器间隔: {_current_scheduler_interval_ms}ms")
+            except Exception as e:
+                _log_critical_error(f"看门狗喂养失败: {e}")
+                print(f"[DAEMON] [CRITICAL] 看门狗喂养失败，准备重置系统: {e}")
+                _emergency_hardware_reset()
+                return
+        
+        # 任务2：系统监控（按配置间隔执行）
+        if time.ticks_diff(current_time, _last_monitor_check_ms) >= CONFIG['monitor_interval_ms']:
+            _last_monitor_check_ms = current_time
+            
+            # 温度监控
+            temp = _get_internal_temperature()
+            if temp and temp >= CONFIG['temperature_threshold']:
+                _enter_safe_mode(f"温度超限: {temp:.1f}°C")
+                return
+            
+            # 错误计数管理
+            if time.ticks_diff(current_time, _last_error_time) > CONFIG['error_reset_interval_ms']:
+                if _error_count > 0:
+                    print(f"[INFO] 错误计数已自动重置: {_error_count} -> 0")
+                    _error_count = 0
+        
+        # 任务3：性能报告（按配置间隔执行）
+        if time.ticks_diff(current_time, _last_perf_check_ms) >= CONFIG['perf_report_interval_s'] * 1000:
+            _last_perf_check_ms = current_time
+            _print_performance_report()
+        
+        # 任务4：安全模式管理（每次调度都检查）
         if _safe_mode_active:
             _safe_mode_emergency_blink()
             _check_safe_mode_recovery()
-            return
-        
-        # 正常模式下，守护进程主中断不做任何业务处理
-        # 所有业务逻辑都通过事件总线和异步任务处理
-        pass
-
-    except Exception as e:
-        _log_critical_error(f"主中断处理失败: {e}")
-        if _error_count > CONFIG['max_error_count']:
-            _emergency_hardware_reset()
-
-def _watchdog_and_monitor_interrupt(timer):
-    """
-    看门狗喂养和系统监控中断处理函数
-    
-    这个函数负责：
-    1. 定期喂养看门狗
-    2. 监控系统温度
-    3. 管理错误计数
-    4. 生成性能报告
-    
-    Args:
-        timer: 定时器对象
-    """
-    global _last_monitor_check_ms, _error_count, _last_perf_check_ms
-    current_time = time.ticks_ms()
-    
-    # 首先喂养看门狗（最高优先级）
-    try:
-        if _wdt:
-            _wdt.feed()
-            # 每10次喂养记录一次状态，避免过多日志
-            if current_time % 30000 < 3000:  # 大约每30秒记录一次
-                print(f"[DAEMON] 看门狗正常喂养，超时设置: {CONFIG['wdt_timeout_ms']}ms")
-    except Exception as e:
-        _log_critical_error(f"看门狗喂养失败: {e}")
-        print(f"[DAEMON] [CRITICAL] 看门狗喂养失败，准备重置系统: {e}")
-        _emergency_hardware_reset()
-        return
-
-    # 检查是否到了监控检查时间
-    if time.ticks_diff(current_time, _last_monitor_check_ms) < CONFIG['monitor_interval_ms']:
-        return
-        
-    _last_monitor_check_ms = current_time
-    
-    try:
-        # 温度监控
-        temp = _get_internal_temperature()
-        if temp and temp >= CONFIG['temperature_threshold']:
-            _enter_safe_mode(f"温度超限: {temp:.1f}°C")
-            return
-        
-        # 错误计数管理
-        if time.ticks_diff(current_time, _last_error_time) > CONFIG['error_reset_interval_ms']:
-            if _error_count > 0:
-                print(f"[INFO] 错误计数已自动重置: {_error_count} -> 0")
-                _error_count = 0
-        
-        # 性能报告
-        if time.ticks_diff(current_time, _last_perf_check_ms) >= CONFIG['perf_report_interval_s'] * 1000:
-            _print_performance_report()
-            _last_perf_check_ms = current_time
             
     except Exception as e:
-        _log_critical_error(f"监控中断处理失败: {e}")
+        _log_critical_error(f"统一调度器中断处理失败: {e}")
+        if _error_count > CONFIG['max_error_count']:
+            _emergency_hardware_reset()
 
 def _enter_safe_mode(reason):
     """
@@ -345,13 +404,19 @@ def _print_performance_report():
         # 获取系统时间信息
         time_info = _get_system_time_info()
         
+        # 获取温度级别信息
+        temp_level = "未知"
+        if temp:
+            temp_level = temp_optimization.get_temperature_level(temp)
+        
         # 打印报告
         print("\n" + "="*50 + "\n        关键系统守护进程状态报告\n" + "="*50)
         print(time_info)
         print(f"运行时间: {uptime_str}")
-        print(f"内部温度: {temp:.2f} °C" if temp else "温度读取失败")
+        print(f"内部温度: {temp:.2f} °C (级别: {temp_level})" if temp else "温度读取失败")
         print(f"内存使用: {mem_alloc_kb:.2f}KB / {mem_total_kb:.2f}KB ({mem_percent:.1f}%)")
         print(f"运行模式: {'紧急安全模式' if _safe_mode_active else '正常运行模式'}")
+        print(f"调度器间隔: {_current_scheduler_interval_ms}ms (温度优化)")
         print(f"错误计数: {_error_count}")
         print("="*50 + "\n")
         
@@ -420,35 +485,32 @@ class CriticalSystemDaemon:
     
     def _initialize_timers(self):
         """
-        初始化定时器
+        初始化统一调度器定时器
+        
+        优化后只使用一个动态调整间隔的定时器来调度所有任务，
+        节省硬件定时器资源，提高系统资源利用率，并支持温度优化。
         
         Returns:
             bool: 初始化是否成功
         """
-        global _timer_main, _timer_watchdog_monitor
+        global _timer_scheduler, _current_scheduler_interval_ms
         
         try:
-            # 初始化主定时器
-            _timer_main = machine.Timer(0)
-            _timer_main.init(
-                period=CONFIG['main_interval_ms'],
+            # 初始化统一调度器定时器
+            _timer_scheduler = machine.Timer(0)
+            _timer_scheduler.init(
+                period=_current_scheduler_interval_ms,  # 使用动态调度间隔
                 mode=machine.Timer.PERIODIC,
-                callback=_daemon_main_interrupt
+                callback=_scheduler_interrupt  # 使用统一的调度器回调
             )
             
-            # 初始化看门狗和监控定时器
-            _timer_watchdog_monitor = machine.Timer(1)
-            _timer_watchdog_monitor.init(
-                period=CONFIG['watchdog_interval_ms'],
-                mode=machine.Timer.PERIODIC,
-                callback=_watchdog_and_monitor_interrupt
-            )
-            
-            print("[DAEMON] 定时器初始化成功")
+            print(f"[DAEMON] 统一调度器定时器初始化成功，初始调度间隔: {_current_scheduler_interval_ms}ms")
+            print("[DAEMON] [优化] 已将两个定时器合并为一个，节省硬件资源")
+            print("[DAEMON] [温度优化] 调度器间隔将根据温度自动调整")
             return True
             
         except Exception as e:
-            print(f"[DAEMON] [ERROR] 定时器初始化失败: {e}")
+            print(f"[DAEMON] [ERROR] 统一调度器定时器初始化失败: {e}")
             return False
     
     def start(self):
@@ -458,7 +520,7 @@ class CriticalSystemDaemon:
         Returns:
             bool: 启动是否成功
         """
-        global _daemon_active, _start_ticks_ms, _last_monitor_check_ms, _last_perf_check_ms
+        global _daemon_active, _start_ticks_ms, _last_monitor_check_ms, _last_perf_check_ms, _last_watchdog_feed_ms, _last_temp_check_for_scheduler
         
         if self._initialized:
             print("[DAEMON] [WARNING] 守护进程已经启动")
@@ -467,16 +529,18 @@ class CriticalSystemDaemon:
         print("[DAEMON] 正在启动关键系统守护进程...")
         
         try:
-            # 记录启动时间
+            # 记录启动时间并初始化所有时间戳
             _start_ticks_ms = time.ticks_ms()
             _last_monitor_check_ms = _start_ticks_ms
             _last_perf_check_ms = _start_ticks_ms
+            _last_watchdog_feed_ms = _start_ticks_ms  # 初始化看门狗时间戳
+            _last_temp_check_for_scheduler = _start_ticks_ms  # 初始化温度检查时间戳
             
             # 初始化硬件
             if not self._initialize_critical_hardware():
                 return False
             
-            # 初始化定时器
+            # 初始化统一调度器定时器
             if not self._initialize_timers():
                 return False
             
@@ -484,8 +548,8 @@ class CriticalSystemDaemon:
             _daemon_active = True
             self._initialized = True
             
-            print("[DAEMON] 关键系统守护进程启动成功")
-            event_bus.publish('log_info', message="关键系统守护进程启动成功")
+            print("[DAEMON] 关键系统守护进程启动成功（温度优化版本）")
+            event_bus.publish('log_info', message="关键系统守护进程启动成功（温度优化版本）")
             
             return True
             
@@ -498,26 +562,23 @@ class CriticalSystemDaemon:
         """
         停止守护进程
         """
-        global _daemon_active, _timer_main, _timer_watchdog_monitor, _wdt
+        global _daemon_active, _timer_scheduler, _wdt
         
         print("[DAEMON] 正在停止守护进程...")
         
         try:
             _daemon_active = False
             
-            # 停止定时器
-            if _timer_main:
-                _timer_main.deinit()
-                _timer_main = None
-            
-            if _timer_watchdog_monitor:
-                _timer_watchdog_monitor.deinit()
-                _timer_watchdog_monitor = None
+            # 停止统一调度器定时器
+            if _timer_scheduler:
+                _timer_scheduler.deinit()
+                _timer_scheduler = None
+                print("[DAEMON] 统一调度器定时器已停止")
             
             # 注意：不停止看门狗，让它继续运行以保护系统
             
             self._initialized = False
-            print("[DAEMON] 守护进程已停止")
+            print("[DAEMON] 守护进程已停止（优化版本）")
             
         except Exception as e:
             print(f"[DAEMON] [ERROR] 停止守护进程时出错: {e}")

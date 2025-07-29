@@ -37,6 +37,14 @@ MAX_LOG_QUEUE_SIZE = _log_config['max_log_queue_size']
 # 内存中的日志队列
 _log_queue = []
 
+# 异步日志处理相关变量
+_async_log_task = None
+_log_write_lock = None
+_pending_writes = []  # 待写入的日志批次
+_last_write_time = 0  # 上次写入时间
+LOG_BATCH_SIZE = 10  # 批量写入大小
+LOG_WRITE_INTERVAL_MS = 5000  # 写入间隔（毫秒）
+
 def _rotate_log():
     """
     如果日志文件过大，则进行滚动备份
@@ -131,14 +139,96 @@ def on_log_info(message, **kwargs):
     """
     _add_to_queue("INFO", message)
 
+async def _async_write_logs(log_batch):
+    """
+    异步写入日志批次到文件
+    
+    Args:
+        log_batch (list): 要写入的日志消息列表
+    """
+    if not log_batch:
+        return
+    
+    # 先检查是否需要滚动日志
+    _rotate_log()
+    
+    try:
+        # 使用异步文件写入（在MicroPython中模拟）
+        with open(LOG_FILE, 'a+') as f:
+            for log_message in log_batch:
+                f.write(log_message)
+                # 在写入操作之间让出控制权
+                await asyncio.sleep_ms(1)
+        
+        print(f"[Logger] 异步写入 {len(log_batch)} 条日志")
+        
+    except Exception as e:
+        print(f"[Logger] [ERROR] 异步写入日志失败: {e}")
+        # 写入失败时，将日志重新加入队列
+        global _log_queue
+        _log_queue.extend(log_batch)
+
+async def _async_log_processor():
+    """
+    异步日志处理器任务
+    
+    定期检查日志队列，当满足以下条件之一时触发批量写入：
+    1. 队列中的日志数量达到批量大小
+    2. 距离上次写入超过指定时间间隔
+    3. 队列中有关键错误日志需要立即写入
+    """
+    global _log_queue, _pending_writes, _last_write_time
+    
+    print("[Logger] 异步日志处理器已启动")
+    
+    while True:
+        try:
+            current_time = time.ticks_ms()
+            
+            # 检查是否需要写入日志
+            should_write = False
+            write_reason = ""
+            
+            if len(_log_queue) >= LOG_BATCH_SIZE:
+                should_write = True
+                write_reason = f"队列达到批量大小 ({LOG_BATCH_SIZE})"
+            elif _log_queue and (current_time - _last_write_time) > LOG_WRITE_INTERVAL_MS:
+                should_write = True
+                write_reason = f"超过写入间隔 ({LOG_WRITE_INTERVAL_MS}ms)"
+            elif any("CRITICAL" in msg for msg in _log_queue):
+                should_write = True
+                write_reason = "检测到关键错误日志"
+            
+            if should_write and _log_queue:
+                # 准备批量写入
+                batch_size = min(len(_log_queue), LOG_BATCH_SIZE)
+                log_batch = [_log_queue.pop(0) for _ in range(batch_size)]
+                
+                print(f"[Logger] 触发异步写入: {write_reason}")
+                
+                # 异步写入日志批次
+                await _async_write_logs(log_batch)
+                _last_write_time = current_time
+            
+            # 短暂休眠，避免过度占用CPU
+            await asyncio.sleep_ms(1000)
+            
+        except Exception as e:
+            print(f"[Logger] [ERROR] 异步日志处理器错误: {e}")
+            await asyncio.sleep_ms(5000)  # 出错时延长休眠时间
+
 def process_log_queue():
     """
-    处理日志队列，将消息写入文件
+    处理日志队列，将消息写入文件（同步版本，保持向后兼容）
     
-    这个函数应该在主循环中被定期调用，将内存中的日志消息
-    批量写入到日志文件中。
+    这个函数保留用于向后兼容，但建议使用异步日志处理器。
+    当异步处理器运行时，此函数将跳过处理。
     """
-    global _log_queue
+    global _log_queue, _async_log_task
+    
+    # 如果异步处理器正在运行，则跳过同步处理
+    if _async_log_task is not None:
+        return
     
     if not _log_queue:
         return  # 队列为空，直接返回
@@ -172,9 +262,59 @@ def clear_log_queue():
     _log_queue.clear()
     print("[Logger] 日志队列已清空")
 
-def init_logger():
+async def start_async_logger():
+    """
+    启动异步日志处理器
+    
+    Returns:
+        bool: 启动是否成功
+    """
+    global _async_log_task, _last_write_time
+    
+    try:
+        if _async_log_task is not None:
+            print("[Logger] 异步日志处理器已在运行")
+            return True
+        
+        # 初始化时间戳
+        _last_write_time = time.ticks_ms()
+        
+        # 启动异步日志处理器任务
+        _async_log_task = asyncio.create_task(_async_log_processor())
+        
+        print("[Logger] 异步日志处理器启动成功")
+        return True
+        
+    except Exception as e:
+        print(f"[Logger] [ERROR] 启动异步日志处理器失败: {e}")
+        return False
+
+def stop_async_logger():
+    """
+    停止异步日志处理器
+    """
+    global _async_log_task
+    
+    try:
+        if _async_log_task is not None:
+            _async_log_task.cancel()
+            _async_log_task = None
+            print("[Logger] 异步日志处理器已停止")
+        
+        # 处理剩余的日志队列
+        if _log_queue:
+            print(f"[Logger] 处理剩余的 {len(_log_queue)} 条日志")
+            process_log_queue()
+            
+    except Exception as e:
+        print(f"[Logger] [ERROR] 停止异步日志处理器失败: {e}")
+
+def init_logger(use_async=True):
     """
     初始化日志系统
+    
+    Args:
+        use_async (bool): 是否使用异步日志处理器
     
     订阅相关的日志事件，使日志系统开始工作。
     这个函数应该在系统启动时调用。
@@ -185,7 +325,11 @@ def init_logger():
         event_bus.subscribe('log_warning', on_log_warning)
         event_bus.subscribe('log_info', on_log_info)
         
-        print("[Logger] 日志系统初始化完成")
+        if use_async:
+            print("[Logger] 日志系统初始化完成（异步模式）")
+        else:
+            print("[Logger] 日志系统初始化完成（同步模式）")
+        
         return True
         
     except Exception as e:

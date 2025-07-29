@@ -79,6 +79,7 @@ TEMP_LEVEL_CONFIGS = {
     'normal': {
         'main_interval_ms': 5000,
         'monitor_interval_ms': 30000,
+        'scheduler_interval_ms': 200,  # 正常温度：200ms调度间隔
         'pwm_freq': 60,
         'max_brightness': 20000,
         'led_interval_ms': 50,
@@ -87,6 +88,7 @@ TEMP_LEVEL_CONFIGS = {
     'warning': {
         'main_interval_ms': 8000,
         'monitor_interval_ms': 45000,
+        'scheduler_interval_ms': 400,  # 警告温度：400ms调度间隔
         'pwm_freq': 40,
         'max_brightness': 15000,
         'led_interval_ms': 80,
@@ -95,6 +97,7 @@ TEMP_LEVEL_CONFIGS = {
     'critical': {
         'main_interval_ms': 10000,
         'monitor_interval_ms': 60000,
+        'scheduler_interval_ms': 800,  # 危险温度：800ms调度间隔
         'pwm_freq': 30,
         'max_brightness': 8000,
         'led_interval_ms': 100,
@@ -103,6 +106,7 @@ TEMP_LEVEL_CONFIGS = {
     'emergency': {
         'main_interval_ms': 15000,
         'monitor_interval_ms': 120000,
+        'scheduler_interval_ms': 1500,  # 紧急温度：1.5秒调度间隔
         'pwm_freq': 20,
         'max_brightness': 3000,
         'led_interval_ms': 200,
@@ -146,6 +150,19 @@ def get_optimized_config_for_temp(current_temp):
     temp_level = get_temperature_level(current_temp)
     return TEMP_LEVEL_CONFIGS[temp_level].copy()
 
+def get_scheduler_interval_for_temp(current_temp):
+    """
+    根据当前温度获取调度器间隔
+    
+    Args:
+        current_temp (float): 当前温度
+        
+    Returns:
+        int: 调度器间隔（毫秒）
+    """
+    temp_level = get_temperature_level(current_temp)
+    return TEMP_LEVEL_CONFIGS[temp_level]['scheduler_interval_ms']
+
 def apply_temperature_optimization(current_temp):
     """
     应用温度优化策略
@@ -171,6 +188,7 @@ def apply_temperature_optimization(current_temp):
         optimization_info['recommendations'].extend([
             "降低LED亮度到75%",
             "延长监控间隔到45秒",
+            "调度器间隔调整到400ms",
             "降低PWM频率到40Hz",
             "延长LED更新间隔到80ms",
             "延长WiFi检查间隔到45秒"
@@ -179,6 +197,7 @@ def apply_temperature_optimization(current_temp):
         optimization_info['recommendations'].extend([
             "降低LED亮度到40%",
             "延长监控间隔到60秒",
+            "调度器间隔调整到800ms",
             "降低PWM频率到30Hz",
             "延长主循环间隔到10秒",
             "延长LED更新间隔到100ms",
@@ -188,6 +207,7 @@ def apply_temperature_optimization(current_temp):
         optimization_info['recommendations'].extend([
             "降低LED亮度到15%",
             "延长监控间隔到120秒",
+            "调度器间隔调整到1500ms",
             "降低PWM频率到20Hz",
             "延长主循环间隔到15秒",
             "延长LED更新间隔到200ms",
