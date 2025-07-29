@@ -34,76 +34,20 @@ class WifiState(Enum):
     CONNECTED = 4     # 已连接状态
     RETRY_WAIT = 5    # 重试等待状态
 
-# === 配置获取 (从config模块) ===
-_wifi_config = config.get_wifi_config()
-_ntp_config = config.get_ntp_config()
-_led_config = config.get_led_config()
-
-# --- WiFi & NTP 配置常量 (向后兼容) ---
-# WiFi连接超时时间配置
-# 作用：单次WiFi连接尝试的最大等待时间，超过此时间将放弃当前连接尝试
-# 推荐值：10-30秒，根据网络环境调整
-# 注意：过短可能导致连接失败，过长会延长启动时间
-WIFI_CONNECT_TIMEOUT_S = _wifi_config.get('connect_timeout', 15)
-
-# WiFi重连间隔时间配置
-# 作用：WiFi连接失败后，下次重试前的等待时间
-# 推荐值：30-120秒，平衡重连频率和功耗
-# 注意：过短会增加功耗和发热，过长会影响网络恢复速度
-WIFI_RETRY_INTERVAL_S = _wifi_config.get('retry_interval', 60)
-
-# NTP重试间隔配置
-# 作用：每次NTP同步重试之间的等待时间
-# 推荐值：60秒，给网络和服务器充分响应时间
-# 注意：无限重试机制，确保时间最终同步成功
-NTP_RETRY_DELAY_S = _ntp_config.get('retry_delay', 60)
-
-# 时区偏移配置
-# 作用：将UTC时间转换为本地时间的小时偏移量
-# 推荐值：根据实际时区设置（中国：8，美东：-5/-4，欧洲：1/2等）
-# 注意：夏令时地区需要根据季节调整，中国无夏令时固定为8
-TIMEZONE_OFFSET_HOURS = _ntp_config.get('timezone_offset', 8)
-
-# --- WiFi配置数组 ---
-# WiFi网络配置列表
-# 作用：定义设备可以连接的WiFi网络列表，系统会按顺序尝试连接
-# 配置格式：每个配置包含"ssid"（网络名称）和"password"（密码）
-# 使用说明：
-#   1. 系统会扫描可用网络，然后按配置顺序尝试连接
-#   2. 连接到第一个可用的网络后停止尝试
-#   3. 可以添加多个网络作为备选（家庭、办公室、热点等）
-#   4. 建议将最常用的网络放在前面
-# 安全注意：密码明文存储，请确保代码安全
-WIFI_CONFIGS = _wifi_config.get('networks', [
-    {"ssid": "Lejurobot", "password": "Leju2022"},
-    {"ssid": "CMCC-pdRG", "password": "7k77ed5p"},
-])
-
-# --- LED 控制配置常量 (向后兼容) ---
-# LED引脚配置
-# 作用：定义控制LED的GPIO引脚号
-# 推荐值：根据硬件设计选择可用的GPIO引脚
-# 注意：确保引脚支持PWM输出，避免与其他功能冲突
-LED_PIN_1 = _led_config.get('pin_1', 12)  # LED 1 的主控引脚
-LED_PIN_2 = _led_config.get('pin_2', 13)  # LED 2 的主控引脚
-
-# PWM频率配置
-# 作用：控制PWM信号的频率，影响LED的闪烁和调光效果
-# 推荐值：50-1000Hz，平衡视觉效果和功耗
-# 注意：过低会产生可见闪烁，过高会增加功耗和电磁干扰
-PWM_FREQ = _led_config.get('pwm_freq', 60)
-
-# LED最大亮度配置
-# 作用：定义PWM占空比的最大值，控制LED的最大亮度
-# 推荐值：10000-30000（ESP32的PWM范围0-65535）
-# 注意：过高会增加功耗和发热，过低会影响可见度
-MAX_BRIGHTNESS = _led_config.get('max_brightness', 20000)
-
-# 呼吸灯渐变步长配置
-# 作用：控制呼吸灯效果中每次亮度变化的幅度
-# 推荐值：128-512，平衡动画流畅度和CPU占用
-# 注意：过小会使动画过慢，过大会使动画不够平滑
-FADE_STEP = _led_config.get('fade_step', 256)
+# === 直接从config模块导入动态配置属性 ===
+# 优化：移除中间变量，直接导入配置属性
+from config import (
+    WIFI_CONNECT_TIMEOUT_S,
+    WIFI_RETRY_INTERVAL_S, 
+    NTP_RETRY_DELAY_S,
+    TIMEZONE_OFFSET_HOURS,
+    WIFI_CONFIGS,
+    LED_PIN_1,
+    LED_PIN_2,
+    PWM_FREQ,
+    MAX_BRIGHTNESS,
+    FADE_STEP
+)
 
 # === LED 模块内部状态变量 ===
 # 这些变量用于跟踪LED硬件状态和当前效果
@@ -119,8 +63,8 @@ _safe_mode_active = False  # 安全模式状态
 
 # 兼容性变量（保持向后兼容）
 _effect_mode = 'off'      # 当前灯效模式
-_brightness = 0           # 呼吸灯当前亮度值
-_fade_direction = 1       # 呼吸灯亮度变化方向
+_blink_state = False      # 闪烁状态（开/关）
+_blink_counter = 0        # 闪烁计数器（用于复杂闪烁模式）
 
 # 动态配置变量（用于温度优化）
 _led_update_interval_ms = 50  # LED更新间隔（毫秒）
@@ -325,11 +269,11 @@ def set_effect(mode, led_num=1, brightness_u16=MAX_BRIGHTNESS):
     设置一个预设的灯光效果。这是外部调用的主要接口。
 
     Args:
-        mode (str): 效果模式 ('off', 'single_on', 'both_on', 'breathing').
+        mode (str): 效果模式 ('off', 'single_on', 'both_on', 'fast_blink', 'slow_blink', 'alternate_blink', 'double_blink', 'heartbeat_blink').
         led_num (int): 对于 'single_on' 模式, 指定哪个LED灯 (1 或 2).
         brightness_u16 (int): 对于常亮模式, 指定亮度 (0-65535).
     """
-    global _effect_mode, _brightness, _fade_direction, _current_effect, _effect_params
+    global _effect_mode, _current_effect, _effect_params, _blink_state, _blink_counter
     
     if not _led1_pwm or not _led2_pwm:
         error_msg = f"PWM未初始化，无法设置灯效"
@@ -357,10 +301,10 @@ def set_effect(mode, led_num=1, brightness_u16=MAX_BRIGHTNESS):
     elif mode == 'both_on':
         _led1_pwm.duty_u16(brightness_u16)
         _led2_pwm.duty_u16(brightness_u16)
-    elif mode == 'breathing':
-        # 重置呼吸效果的起始状态，以便从头开始动画
-        _brightness = 0
-        _fade_direction = 1
+    elif mode in ['fast_blink', 'slow_blink', 'alternate_blink', 'double_blink', 'heartbeat_blink']:
+        # 重置闪烁效果的起始状态
+        _blink_state = False
+        _blink_counter = 0
     else:
         error_msg = f"未知的灯效模式: {mode}"
         if DEBUG:
@@ -394,28 +338,93 @@ async def wifi_connecting_blink():
 
 async def led_effect_task():
     """
-    LED效果异步任务：处理呼吸灯和其他动态效果（支持动态优化）
+    LED效果异步任务：处理各种闪烁效果（支持动态优化）
     """
-    global _brightness, _fade_direction
+    global _blink_state, _blink_counter
     
     while _tasks_running:
         try:
-            # 仅当处于'breathing'模式时才执行动画更新
-            if _effect_mode == 'breathing':
+            # 处理各种闪烁效果
+            if _effect_mode == 'fast_blink':
+                # 快闪：200ms间隔
                 if _led1_pwm and _led2_pwm:
-                    _brightness += FADE_STEP * _fade_direction
-                    if _brightness >= MAX_BRIGHTNESS:
-                        _brightness = MAX_BRIGHTNESS
-                        _fade_direction = -1
-                    elif _brightness <= 0:
-                        _brightness = 0
-                        _fade_direction = 1
-                    
-                    _led1_pwm.duty_u16(_brightness)
-                    _led2_pwm.duty_u16(MAX_BRIGHTNESS - _brightness)
+                    if _blink_state:
+                        _led1_pwm.duty_u16(_effect_params.get('brightness_u16', MAX_BRIGHTNESS))
+                        _led2_pwm.duty_u16(_effect_params.get('brightness_u16', MAX_BRIGHTNESS))
+                    else:
+                        _led1_pwm.duty_u16(0)
+                        _led2_pwm.duty_u16(0)
+                    _blink_state = not _blink_state
+                await asyncio.sleep_ms(200)
                 
-                # 使用动态LED更新间隔（支持温度优化）
-                await asyncio.sleep_ms(_led_update_interval_ms)
+            elif _effect_mode == 'slow_blink':
+                # 慢闪：1000ms间隔
+                if _led1_pwm and _led2_pwm:
+                    if _blink_state:
+                        _led1_pwm.duty_u16(_effect_params.get('brightness_u16', MAX_BRIGHTNESS))
+                        _led2_pwm.duty_u16(_effect_params.get('brightness_u16', MAX_BRIGHTNESS))
+                    else:
+                        _led1_pwm.duty_u16(0)
+                        _led2_pwm.duty_u16(0)
+                    _blink_state = not _blink_state
+                await asyncio.sleep_ms(1000)
+                
+            elif _effect_mode == 'alternate_blink':
+                # 交替闪烁：500ms间隔
+                if _led1_pwm and _led2_pwm:
+                    if _blink_state:
+                        _led1_pwm.duty_u16(_effect_params.get('brightness_u16', MAX_BRIGHTNESS))
+                        _led2_pwm.duty_u16(0)
+                    else:
+                        _led1_pwm.duty_u16(0)
+                        _led2_pwm.duty_u16(_effect_params.get('brightness_u16', MAX_BRIGHTNESS))
+                    _blink_state = not _blink_state
+                await asyncio.sleep_ms(500)
+                
+            elif _effect_mode == 'double_blink':
+                # 双闪：快速闪烁两次，然后暂停
+                if _led1_pwm and _led2_pwm:
+                    _blink_counter += 1
+                    if _blink_counter <= 4:  # 两次闪烁（开-关-开-关）
+                        if _blink_state:
+                            _led1_pwm.duty_u16(_effect_params.get('brightness_u16', MAX_BRIGHTNESS))
+                            _led2_pwm.duty_u16(_effect_params.get('brightness_u16', MAX_BRIGHTNESS))
+                        else:
+                            _led1_pwm.duty_u16(0)
+                            _led2_pwm.duty_u16(0)
+                        _blink_state = not _blink_state
+                        await asyncio.sleep_ms(150)
+                    else:
+                        # 暂停阶段
+                        _led1_pwm.duty_u16(0)
+                        _led2_pwm.duty_u16(0)
+                        await asyncio.sleep_ms(800)
+                        _blink_counter = 0
+                        _blink_state = False
+                        
+            elif _effect_mode == 'heartbeat_blink':
+                # 心跳闪烁：模拟心跳节奏
+                if _led1_pwm and _led2_pwm:
+                    _blink_counter += 1
+                    if _blink_counter == 1:
+                        # 第一次跳动
+                        _led1_pwm.duty_u16(_effect_params.get('brightness_u16', MAX_BRIGHTNESS))
+                        _led2_pwm.duty_u16(_effect_params.get('brightness_u16', MAX_BRIGHTNESS))
+                        await asyncio.sleep_ms(100)
+                        _led1_pwm.duty_u16(0)
+                        _led2_pwm.duty_u16(0)
+                        await asyncio.sleep_ms(100)
+                    elif _blink_counter == 2:
+                        # 第二次跳动
+                        _led1_pwm.duty_u16(_effect_params.get('brightness_u16', MAX_BRIGHTNESS))
+                        _led2_pwm.duty_u16(_effect_params.get('brightness_u16', MAX_BRIGHTNESS))
+                        await asyncio.sleep_ms(100)
+                        _led1_pwm.duty_u16(0)
+                        _led2_pwm.duty_u16(0)
+                        await asyncio.sleep_ms(600)  # 长暂停
+                        _blink_counter = 0
+                    else:
+                        _blink_counter = 0
             else:
                 # 非动画模式下，降低检查频率
                 await asyncio.sleep_ms(500)
@@ -471,6 +480,32 @@ async def scan_available_networks_for_config():
     
     return available_configs
 
+async def _wait_for_connection(wlan, ssid):
+    """
+    内部辅助函数：等待WiFi连接完成
+    参数: wlan - WiFi对象, ssid - 网络名称
+    返回: 连接成功返回True，失败返回False
+    """
+    start_time = time.time()
+    blink_count = 0
+    
+    while not wlan.isconnected():
+        if time.time() - start_time > WIFI_CONNECT_TIMEOUT_S:
+            error_msg = f"连接 {ssid} 超时"
+            print(f"\n[WiFi] [ERROR] {error_msg}！")
+            core.publish(EV_WIFI_TIMEOUT, ssid=ssid)
+            return False
+        
+        # 每2秒闪烁一次LED
+        blink_count += 1
+        if blink_count % 40 == 0:  # 50ms * 40 = 2秒
+            await wifi_connecting_blink()
+        
+        # 异步等待，不阻塞其他任务
+        await asyncio.sleep_ms(50)
+    
+    return True
+
 async def connect_wifi_attempt(wifi_configs):
     """
     尝试连接WiFi网络（单次尝试）
@@ -497,35 +532,19 @@ async def connect_wifi_attempt(wifi_configs):
     # 开始连接过程
     wlan.connect(ssid, password)
     
-    # 异步等待连接
-    start_time = time.time()
-    blink_count = 0
-    while not wlan.isconnected():
-        if time.time() - start_time > WIFI_CONNECT_TIMEOUT_S:
-            error_msg = f"连接 {ssid} 超时"
-            print(f"\n[WiFi] [ERROR] {error_msg}！")
-            core.publish(EV_WIFI_TIMEOUT, ssid=ssid)
-            return False
-        
-        # 每2秒闪烁一次LED
-        blink_count += 1
-        if blink_count % 40 == 0:  # 50ms * 40 = 2秒
-            await wifi_connecting_blink()
-        
-        # 异步等待，不阻塞其他任务
-        await asyncio.sleep_ms(50)
+    # 使用辅助函数等待连接
+    if not await _wait_for_connection(wlan, ssid):
+        return False
     
-    if wlan.isconnected():
-        ip_info = wlan.ifconfig()
-        ip = ip_info[0]
-        print(f"\n[WiFi] [SUCCESS] 成功连接到: {ssid}")
-        print(f"[WiFi] IP地址: {ip}")
-        _wifi_connected = True
-        core.publish(EV_WIFI_CONNECTED, ssid=ssid, ip=ip, reconnect=True)
-        core.publish(get_event_id('log_info'), message=f"WiFi连接成功: {ssid} ({ip})")
-        return True
-    
-    return False
+    # 连接成功处理
+    ip_info = wlan.ifconfig()
+    ip = ip_info[0]
+    print(f"\n[WiFi] [SUCCESS] 成功连接到: {ssid}")
+    print(f"[WiFi] IP地址: {ip}")
+    _wifi_connected = True
+    core.publish(EV_WIFI_CONNECTED, ssid=ssid, ip=ip, reconnect=True)
+    core.publish(get_event_id('log_info'), message=f"WiFi连接成功: {ssid} ({ip})")
+    return True
 
 # 注意：回调函数机制已被事件总线替代，所有状态变化通过事件发布
 
@@ -576,25 +595,8 @@ async def connect_wifi():
             # 开始连接过程
             wlan.connect(ssid, password)
             
-            # 异步等待连接，使用asyncio.sleep
-            start_time = time.time()
-            blink_count = 0
-            while not wlan.isconnected():
-                if time.time() - start_time > WIFI_CONNECT_TIMEOUT_S:
-                    error_msg = f"连接 {ssid} 超时"
-                    print(f"\n[WiFi] [ERROR] {error_msg}！")
-                    core.publish(EV_WIFI_TIMEOUT, ssid=ssid)
-                    break
-                
-                # 每2秒闪烁一次LED
-                blink_count += 1
-                if blink_count % 40 == 0:  # 50ms * 40 = 2秒
-                    await wifi_connecting_blink()
-                
-                # 异步等待，不阻塞其他任务
-                await asyncio.sleep_ms(50)
-            
-            if wlan.isconnected():
+            # 使用辅助函数等待连接
+            if await _wait_for_connection(wlan, ssid):
                 ip_info = wlan.ifconfig()
                 ip = ip_info[0]
                 print(f"\n[WiFi] [SUCCESS] 成功连接到: {ssid}")
@@ -656,7 +658,7 @@ async def wifi_task():
                     state = WifiState.CONNECTED
                 else:
                     _wifi_connected = False
-                    set_effect('breathing')  # 指示灯设为呼吸状态
+                    set_effect('slow_blink')  # 指示灯设为慢闪状态
                     state = WifiState.SCANNING
             
             elif state == WifiState.SCANNING:
@@ -821,8 +823,8 @@ async def start_all_tasks():
     print("[ASYNC] 启动异步任务管理器...")
     _tasks_running = True
     
-    # 设置初始灯效（呼吸灯表示等待连接）
-    set_effect('breathing')
+    # 设置初始灯效（慢闪表示等待连接）
+    set_effect('slow_blink')
     
     # 创建并启动所有异步任务
     _wifi_task = asyncio.create_task(wifi_task())

@@ -1,670 +1,285 @@
-# ESP32-C3 IoT系统 (优化版本 v2.2)
+# ESP32-C3 IoT 系统
 
-基于MicroPython的ESP32-C3物联网系统，采用事件驱动架构，具备WiFi连接、LED控制、系统监控、智能温度优化和日志记录功能。经过代码清理和优化，系统更加稳定高效。
+一个基于 ESP32-C3 微控制器的高性能 IoT 系统，采用事件驱动架构和温度自适应优化技术。
 
-## 🎯 系统特色
+## 🚀 项目特性
 
-- ✅ **事件总线系统** - 实现发布/订阅模式，模块间完全解耦
-- ✅ **配置管理中心** - 集中管理所有系统配置，告别硬编码
-- ✅ **守护进程优化** - 独立稳定的系统监控，错误隔离机制
-- ✅ **模块化设计** - 高内聚低耦合，易于维护和扩展
-- ✅ **异步事件驱动** - 提高系统响应性和稳定性
-- 🌡️ **智能温度优化** - 四级温度管理，动态调整系统参数
-- ⚡ **轻度睡眠机制** - 主动降低CPU功耗，减少发热
-- 🧹 **代码优化** - 清理冗余代码，提升系统性能和稳定性
+### 核心功能
+- **WiFi 连接管理**：自动连接、智能重连、状态监控
+- **NTP 时间同步**：定期同步、时区处理
+- **LED 硬件控制**：PWM 控制、多种灯效、呼吸灯效果
+- **系统守护进程**：看门狗管理、温度监控、安全模式
+- **事件驱动架构**：模块间解耦、异步处理
 
-## 设备信息
+### 技术亮点
+- **温度自适应优化**：根据 MCU 温度动态调整系统参数
+- **配置驱动设计**：支持 JSON 配置文件，运行时可调
+- **模块化架构**：高内聚低耦合，易于维护和扩展
+- **错误隔离机制**：单模块故障不影响系统稳定性
+- **内存优化**：代码体积优化，适合资源受限环境
 
-```bash
-Chip is ESP32-C3 (QFN32) (revision v0.4)
-Features: Wi-Fi, BT 5 (LE), Single Core, 160MHz
-Crystal is 40MHz
-MAC: 50787df23340
-Manufacturer: 68
-Device: 4016
-Status value: 0x400000
-Detected flash size: 4MB
-```
-
-## 概述
-
-这是一个基于ESP32-C3微控制器的IoT系统，采用事件驱动架构重构，具有以下核心特性：
-
-- 🌐 **WiFi连接管理** - 自动连接WiFi网络，事件驱动状态通知
-- 💡 **智能LED控制** - 支持多种灯效模式，事件驱动控制
-- 🛡️ **系统守护进程** - 完全独立的守护进程，通过事件总线通信
-- 🌡️ **温度监控** - 实时监控芯片温度，事件驱动安全保护
-- 📝 **日志系统** - 事件驱动的日志记录和文件管理
-- ⏰ **NTP时间同步** - 网络时间同步，事件通知机制
-- 🚌 **事件总线** - 核心通信机制，实现模块间解耦
-- ⚙️ **配置管理** - 集中化配置管理，提高可维护性
-
-## 系统架构
-
-### 🏗️ 模块设计 (重构版本)
-
-- **main.py** - 主程序入口，事件驱动的系统协调器
-- **event_bus.py** - 事件总线核心，实现发布/订阅模式
-- **config.py** - 配置管理中心，集中管理所有系统配置
-- **daemon.py** - 独立守护进程，通过事件总线通信
-- **utils.py** - 工具模块，事件驱动的WiFi、NTP和LED控制
-- **logger.py** - 日志系统，事件驱动的日志记录
-- **boot.py** - 启动配置，启用垃圾回收机制
-
-### 🔄 工作流程 (事件驱动)
-
-1. **系统启动** - 初始化事件总线和配置管理
-2. **守护进程启动** - 独立启动，通过事件发布系统状态
-3. **异步任务启动** - 启动WiFi、NTP、LED效果异步任务
-4. **事件驱动通信** - 所有模块通过事件总线通信
-   - WiFi连接成功 → 发布 `wifi_connected` 事件
-   - NTP同步完成 → 发布 `ntp_synced` 事件
-   - 温度超限 → 发布 `temperature_overheat` 事件
-5. **LED状态指示** - 订阅网络事件，自动更新LED状态
-6. **业务循环** - 事件驱动的系统维护和监控
-7. **后台监控** - 守护进程独立监控，错误隔离
-
-## 文件结构 (清理优化版本)
+## 📁 项目结构
 
 ```
-micropython_src/          # 核心源代码目录
-├── main.py               # 主程序入口 (事件驱动 + 温度优化)
-├── event_bus.py          # 事件总线核心模块
-├── config.py             # 配置管理中心 (优化配置项)
-├── daemon.py             # 独立守护进程模块
-├── utils.py              # 工具函数模块 (事件驱动，清理冗余代码)
-├── logger.py             # 日志系统模块 (事件驱动)
-├── boot.py               # 启动配置文件
-└── temp_optimization.py  # 温度优化模块 (四级温度管理)
-
-dist/                     # 编译后的.mpy文件
-├── boot.mpy
-├── config.mpy
-├── daemon.mpy
-├── event_bus.mpy
-├── logger.mpy
-├── main.mpy
-├── temp_optimization.mpy
-└── utils.mpy
-
-项目根目录/
-├── deploy.py             # 部署脚本 (编译和上传)
-└── README.md             # 项目文档
+IOT_ESP32C3/
+├── micropython_src/          # MicroPython 源代码
+│   ├── boot.py               # 系统启动脚本
+│   ├── main.py               # 主程序入口
+│   ├── config.py             # 配置管理模块
+│   ├── config.json           # 系统配置文件
+│   ├── core.py               # 核心功能模块（事件总线、日志）
+│   ├── utils.py              # 工具模块（WiFi、NTP、LED）
+│   └── daemon.py             # 系统守护进程
+├── deploy.py                 # 部署脚本
+├── dist/                     # 编译后的 .mpy 文件
+└── README.md                 # 项目文档
 ```
 
-## 快速开始
+## 🏗️ 系统架构
 
-### 1. 配置WiFi
+### 模块关系图
+```
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│   main.py   │    │  daemon.py  │    │  utils.py   │
+│  主控制器   │    │  系统守护   │    │  工具模块   │
+└──────┬──────┘    └──────┬──────┘    └──────┬──────┘
+       │                  │                  │
+       └──────────────────┼──────────────────┘
+                          │
+                   ┌──────▼──────┐
+                   │   core.py   │
+                   │  事件总线   │
+                   └──────┬──────┘
+                          │
+                   ┌──────▼──────┐
+                   │  config.py  │
+                   │  配置管理   │
+                   └─────────────┘
+```
 
-在 `config.py` 中修改WiFi凭据：
+### 事件驱动架构
+- **事件总线**：模块间通信的核心，支持异步事件发布/订阅
+- **配置驱动**：所有模块通过配置模块获取参数，支持运行时更新
+- **温度优化**：根据 MCU 温度自动调整系统性能参数
 
+## ⚙️ 配置说明
+
+### WiFi 配置
+```json
+"wifi": {
+  "configs": [
+    {"ssid": "你的WiFi名称", "password": "你的WiFi密码"}
+  ],
+  "connect_timeout_s": 15,
+  "retry_interval_s": 60
+}
+```
+
+### LED 配置
+```json
+"led": {
+  "pin_1": 12,           // LED1 引脚
+  "pin_2": 13,           // LED2 引脚
+  "pwm_freq": 60,        // PWM 频率
+  "max_brightness": 20000, // 最大亮度
+  "fade_step": 256       // 渐变步长
+}
+```
+
+### 守护进程配置
+```json
+"daemon": {
+  "main_interval_ms": 5000,      // 主循环间隔
+  "watchdog_interval_ms": 3000,  // 看门狗间隔
+  "monitor_interval_ms": 30000,  // 监控间隔
+  "scheduler_interval_ms": 200   // 调度器间隔
+}
+```
+
+### 安全配置
+```json
+"safety": {
+  "temperature_threshold": 45.0,  // 温度阈值
+  "wdt_timeout_ms": 30000,       // 看门狗超时
+  "max_error_count": 10,         // 最大错误次数
+  "max_recovery_attempts": 5     // 最大恢复尝试次数
+}
+```
+
+## 🔧 部署指南
+
+### 环境要求
+- **硬件**：ESP32-C3 开发板
+- **软件**：MicroPython 固件
+- **工具**：mpy-cross（用于代码编译）
+
+### 部署步骤
+
+1. **安装 MicroPython 固件**
+   ```bash
+   esptool.py --chip esp32c3 --port COM6 erase_flash
+   esptool.py --chip esp32c3 --port COM6 write_flash -z 0x0 esp32c3-usb-20240602-v1.23.0.bin
+   ```
+
+2. **配置串口**
+   - 修改 `deploy.py` 中的 `SERIAL_PORT` 为你的串口号
+   - Windows: `COM3`, `COM4` 等
+   - Linux: `/dev/ttyUSB0`, `/dev/ttyACM0` 等
+   - macOS: `/dev/cu.usbserial-xxxx` 等
+
+3. **修改配置**
+   - 编辑 `micropython_src/config.json`
+   - 配置你的 WiFi 信息
+   - 根据硬件调整 LED 引脚
+
+4. **编译和部署**
+   ```bash
+   python deploy.py
+   ```
+
+### 部署脚本功能
+- **自动编译**：使用 mpy-cross 将 .py 文件编译为 .mpy
+- **文件上传**：通过串口上传编译后的文件到设备
+- **设备重启**：自动重启设备加载新代码
+- **大小报告**：显示编译后文件大小统计
+
+## 🌡️ 温度优化系统
+
+### 温度级别
+- **正常**（< 40°C）：标准性能模式
+- **温暖**（40-45°C）：轻度优化模式
+- **过热**（45-50°C）：中度优化模式
+- **危险**（> 50°C）：激进优化模式
+
+### 优化策略
+- **动态调频**：根据温度调整 PWM 频率
+- **亮度限制**：高温时降低 LED 最大亮度
+- **间隔调整**：延长循环间隔减少 CPU 负载
+- **功能降级**：必要时禁用非关键功能
+
+## 🔍 系统监控
+
+### 状态指示
+- **LED1**：WiFi 连接状态指示
+- **LED2**：系统运行状态指示
+- **慢闪**：等待WiFi连接
+- **快闪**：快速闪烁模式
+- **交替闪烁**：两个LED交替闪烁
+- **双闪**：快速闪烁两次后暂停
+- **心跳闪烁**：模拟心跳节奏的闪烁
+
+### 日志系统
+- **分级日志**：CRITICAL、WARNING、INFO
+- **队列缓存**：内存中保存最近日志
+- **事件驱动**：通过事件总线记录日志
+
+## 🛠️ 开发指南
+
+### 添加新功能
+1. **创建模块**：在 `micropython_src/` 下创建新的 .py 文件
+2. **注册事件**：在 `config.py` 中定义新的事件类型
+3. **订阅事件**：使用 `core.subscribe()` 订阅相关事件
+4. **发布事件**：使用 `core.publish()` 发布状态变化
+
+### 事件系统使用
 ```python
-WIFI_CONFIGS = [
-    {"ssid": "你的WiFi名称", "password": "你的WiFi密码"},
-    {"ssid": "备用WiFi", "password": "备用密码"},
-    # 可以添加更多网络配置
-]
+import core
+from config import get_event_id
+
+# 订阅事件
+def on_custom_event(**kwargs):
+    print(f"收到自定义事件: {kwargs}")
+
+core.subscribe('custom_event', on_custom_event)
+
+# 发布事件
+core.publish('custom_event', data='hello world')
 ```
 
-### 2. 上传代码
-
-将 `micropython_src/` 目录下的所有文件上传到ESP32-C3设备。
-
-### 3. 运行系统
-
+### LED效果控制
 ```python
-# 在ESP32-C3上运行
-import main
-```
-
-### 4. 事件驱动示例
-
-```python
-import event_bus
 import utils
 
-# 订阅WiFi连接事件
-def on_wifi_connected(**kwargs):
-    print(f"WiFi已连接: {kwargs.get('ip_address')}")
-    utils.set_effect('single_on', led_num=1)  # 设置LED常亮
-
-event_bus.subscribe('wifi_connected', on_wifi_connected)
-
-# 订阅温度过热事件
-def on_temperature_overheat(**kwargs):
-    temp = kwargs.get('temperature')
-    print(f"警告：温度过热 {temp}°C")
-
-event_bus.subscribe('temperature_overheat', on_temperature_overheat)
-
-# LED控制示例
-utils.set_effect('single_on', led_num=1)  # LED1常亮
-utils.set_effect('breathing')             # 呼吸灯效果
-utils.set_effect('off')                   # 关闭所有LED
+# 设置不同的闪烁效果
+utils.set_effect('fast_blink')      # 快闪
+utils.set_effect('slow_blink')      # 慢闪
+utils.set_effect('alternate_blink') # 交替闪烁
+utils.set_effect('double_blink')    # 双闪
+utils.set_effect('heartbeat_blink') # 心跳闪烁
+utils.set_effect('single_on', led_num=1)  # 单个LED常亮
+utils.set_effect('both_on')         # 两个LED常亮
+utils.set_effect('off')             # 关闭所有LED
 ```
 
-## API 参考
-
-### 事件总线模块 (event_bus.py)
-
-#### `subscribe(event_type, callback)`
-订阅指定类型的事件。
-
-**参数：**
-- `event_type` (str): 事件类型名称
-- `callback` (callable): 事件回调函数
-
-#### `publish(event_type, **kwargs)`
-发布事件，通知所有订阅者。
-
-**参数：**
-- `event_type` (str): 事件类型名称
-- `**kwargs`: 事件参数
-
-#### 支持的事件类型
-- `wifi_connected`: WiFi连接成功
-- `wifi_disconnected`: WiFi断开连接
-- `ntp_synced`: NTP时间同步成功
-- `temperature_overheat`: 温度过热
-- `enter_safe_mode`: 进入安全模式
-- `log_critical`: 关键错误日志
-- `log_info`: 信息日志
-- `log_warning`: 警告日志
-
-### 配置管理模块 (config.py)
-
-#### `validate_config()`
-验证配置的有效性。
-
-**返回：** `True` 配置有效，`False` 配置无效
-
-#### `get_wifi_configs()`
-获取WiFi配置列表。
-
-#### `get_led_config()`
-获取LED硬件配置。
-
-#### `get_daemon_config()`
-获取守护进程配置。
-
-#### `get_safety_config()`
-获取安全保护配置。
-
-#### `get_general_config()`
-获取通用系统配置。
-
-### 守护进程模块 (daemon.py)
-
-#### `start_critical_daemon()`
-启动系统守护进程。
-
-**返回：**
-- `True`: 启动成功
-- `False`: 启动失败
-
-**特点：**
-- 完全独立运行，不依赖其他业务模块
-- 通过事件总线发布系统状态
-- 配置驱动的参数管理
-- 定期发布`performance_report`事件
-
-### 温度优化模块 (temp_optimization.py)
-
-#### `temp_optimizer.check_and_optimize(temperature)`
-检查温度并返回优化配置。
-
-**参数：**
-- `temperature` (float): 当前温度值
-
-**返回：**
+### 配置管理
 ```python
-{
-    'temp_level': 'warning',  # 温度级别
-    'optimized_config': {     # 优化后的配置
-        'main_interval_ms': 8000,
-        'monitor_interval_ms': 45000,
-        'pwm_freq': 40,
-        'max_brightness': 15000,
-        'wifi_check_interval_s': 120
-    },
-    'recommendations': [      # 优化建议列表
-        '延长主循环间隔',
-        '降低PWM频率',
-        '减少LED亮度'
-    ]
-}
+import config
+
+# 获取配置值
+wifi_timeout = config.WIFI_CONNECT_TIMEOUT_S
+led_pin = config.LED_PIN_1
+
+# 动态配置属性会自动从 config.json 加载
 ```
 
-### 工具模块 (utils.py) - 事件驱动版本
-
-#### 异步任务系统
-
-##### `start_all_tasks()`
-启动所有异步任务（WiFi、NTP、LED）。
-
-##### `wifi_task()`
-WiFi连接和重连管理异步任务。
-- 智能扫描可用网络
-- 按配置优先级连接
-- 自动重连机制
-- **事件发布**: 连接成功时发布 `wifi_connected` 事件
-- **配置驱动**: 从config模块获取WiFi配置
-
-##### `ntp_task()`
-NTP时间同步异步任务。
-- **事件驱动**: 订阅 `wifi_connected` 事件自动触发同步
-- **事件发布**: 同步成功时发布 `ntp_synced` 事件
-- 定期重新同步（24小时）
-- 时区自动转换
-
-##### `led_effect_task()`
-LED效果异步任务。
-- **事件驱动**: 订阅网络状态事件自动更新LED
-- 呼吸灯动画
-- 状态指示
-- 非阻塞更新
-
-#### LED控制功能
-
-##### `init_leds()`
-初始化LED PWM硬件。
-
-**返回：** `True` 初始化成功，`False` 初始化失败
-
-##### `set_effect(mode, led_num=1, brightness_u16=MAX_BRIGHTNESS)`
-设置LED效果模式。
-
-**参数：**
-- `mode` (str): 效果模式
-  - `'off'`: 关闭
-  - `'single_on'`: 单灯常亮
-  - `'both_on'`: 双灯常亮
-  - `'breathing'`: 呼吸灯效果
-- `led_num` (int): LED编号 (1 或 2)
-- `brightness_u16` (int): 亮度值 (0-65535)
-
-##### `deinit_leds()`
-关闭并释放LED PWM硬件资源。
-
-### 日志模块 (logger.py) - 事件驱动版本
-
-#### `init_logger()`
-初始化日志系统，订阅日志事件。
-
-#### `process_log_queue()`
-处理日志队列，将日志写入文件。
-
-#### `log_info(message)`
-记录信息级别日志。
-
-#### `log_warning(message)`
-记录警告级别日志。
-
-#### `log_critical(message)`
-记录关键错误日志。
-
-#### 事件驱动特性
-- 自动订阅 `log_info`、`log_warning`、`log_critical` 事件
-- 通过事件总线接收日志消息
-- 独立的日志队列管理
-- 自动日志轮转
-
-## 配置参数 (重构版本)
-
-### 配置管理中心 (config.py)
-
-重构后所有配置都集中在 `config.py` 文件中管理：
-
-#### WiFi网络配置
-```python
-WIFI_CONFIGS = [
-    {"ssid": "Lejurobot", "password": "Leju2022"},
-    {"ssid": "CMCC-pdRG", "password": "7k77ed5p"},
-    # 可以继续添加更多网络配置
-]
-
-WIFI_CONNECT_TIMEOUT_S = 15     # WiFi连接超时时间（秒）
-WIFI_RETRY_INTERVAL_S = 60      # WiFi重连间隔时间（秒）
-```
-
-#### LED硬件配置
-```python
-LED_PIN_1 = 12                  # LED 1 引脚
-LED_PIN_2 = 13                  # LED 2 引脚
-PWM_FREQ = 60                   # PWM频率 (Hz)
-MAX_BRIGHTNESS = 20000          # 最大亮度
-FADE_STEP = 256                 # 呼吸灯步长
-```
-
-#### 守护进程配置
-```python
-DAEMON_CONFIG = {
-    'main_interval_ms': 5000,         # 主循环间隔 (毫秒)
-    'watchdog_interval_ms': 5000,     # 看门狗间隔 (毫秒)
-    'monitor_interval_ms': 30000,     # 监控间隔 (毫秒)
-    'perf_report_interval_s': 30,     # 性能报告间隔 (秒)
-}
-```
-
-#### 安全保护配置
-```python
-SAFETY_CONFIG = {
-    'temperature_threshold': 45.0,    # 温度阈值 (°C) - 已优化
-    'wdt_timeout_ms': 10000,          # 看门狗超时 (毫秒)
-    'blink_interval_ms': 200,         # 安全模式闪烁间隔 (毫秒)
-    'safe_mode_cooldown_ms': 5000,    # 安全模式冷却时间 (毫秒)
-    'max_error_count': 10,            # 最大错误计数
-    'error_reset_interval_ms': 60000, # 错误重置间隔 (毫秒)
-    'max_recovery_attempts': 5        # 最大恢复尝试次数
-}
-```
-
-#### 系统配置
-```python
-SYSTEM_CONFIG = {
-    'main_loop_interval_s': 5,        # 主业务循环间隔（秒）
-    'gc_interval_loops': 20,          # 垃圾回收间隔（循环次数）
-    'status_report_interval_loops': 12, # 状态报告间隔（循环次数）
-}
-```
-
-### NTP时间同步配置
-
-```python
-NTP_SERVER = "pool.ntp.org"      # NTP服务器
-NTP_TIMEOUT_S = 10               # NTP超时时间 (秒)
-NTP_RETRY_DELAY_S = 60           # NTP重试延迟 (秒)
-TIMEZONE_OFFSET_H = 8            # 时区偏移 (小时)
-WIFI_CONNECT_TIMEOUT_S = 15     # WiFi连接超时 (秒)
-NTP_RETRY_COUNT = 3             # NTP重试次数
-```
-
-## 温度优化分析
-
-### 当前温度问题
-
-系统运行时温度达到39°C，可能的原因和优化措施：
-
-#### 1. 定时器频率优化
-- **原因**: 原始配置中主循环间隔为1000ms，频繁的任务调度增加CPU负载
-- **优化**: 已将主循环间隔调整为5000ms，减少50%的CPU使用率
-- **效果**: 预计降低温度2-3°C
-
-#### 2. PWM频率调整
-- **当前配置**: PWM频率60Hz，可能导致持续的电流消耗
-- **建议**: 考虑降低到30Hz或使用更节能的LED控制方式
-- **代码位置**: `config.py` 中的 `PWM_FREQ` 参数
-
-#### 3. 监控间隔优化
-- **原因**: 原始监控间隔10秒过于频繁，增加传感器读取负载
-- **优化**: 已调整为30秒间隔，减少温度传感器访问频率
-- **效果**: 减少硬件I/O操作，降低功耗
-
-#### 4. 安全阈值调整
-- **优化**: 将温度阈值从60°C降低到45°C，提前触发保护机制
-- **好处**: 更早进入安全模式，防止过热损坏
-
-#### 5. 系统负载分析
-- **WiFi连接**: 频繁的网络活动可能增加功耗
-- **异步任务**: 多个并发任务可能导致CPU过载
-- **建议**: 监控 `daemon.py` 中的性能报告，识别高负载任务
-
-### 进一步优化建议
-
-1. **动态频率调整**: 根据温度动态调整任务频率
-2. **睡眠模式**: 在空闲时使用深度睡眠模式
-3. **LED亮度控制**: 降低LED最大亮度减少功耗
-4. **网络优化**: 减少不必要的网络请求频率
-
-## 🌡️ 智能温度优化系统
-
-### 温度优化模块 (temp_optimization.py)
-
-为了解决ESP32-C3在高负载下的温度问题，系统集成了智能温度优化模块：
-
-#### 核心功能
-- **实时温度监控**: 持续监控MCU内部温度
-- **动态参数调整**: 根据温度自动调整系统参数
-- **四级温度管理**: normal → warning → critical → emergency
-- **事件驱动优化**: 通过事件总线发布优化建议
-- **轻度睡眠机制**: 主循环使用`machine.lightsleep()`降低功耗
-
-#### 温度分级策略
-```python
-TEMP_THRESHOLDS = {
-    'normal': 35.0,      # < 35°C: 正常运行
-    'warning': 40.0,     # 35-40°C: 轻度优化
-    'critical': 45.0,    # 40-45°C: 积极优化
-    'emergency': 50.0,   # > 45°C: 紧急保护
-}
-```
-
-#### 优化策略详解
-
-**正常模式 (< 35°C)**
-- 所有参数保持默认值
-- 系统全速运行
-
-**警告模式 (35-40°C)**
-- 主循环间隔: 5s → 8s
-- 监控间隔: 30s → 45s
-- PWM频率: 60Hz → 40Hz
-- LED亮度: 100% → 75%
-- WiFi检查间隔: 60s → 120s
-
-**危险模式 (40-45°C)**
-- 主循环间隔: 5s → 12s
-- 监控间隔: 30s → 60s
-- PWM频率: 60Hz → 30Hz
-- LED亮度: 100% → 50%
-- WiFi检查间隔: 60s → 300s
-
-**紧急模式 (> 45°C)**
-- 主循环间隔: 5s → 20s
-- 监控间隔: 30s → 120s
-- PWM频率: 60Hz → 20Hz
-- LED亮度: 100% → 25%
-- WiFi检查间隔: 60s → 600s
-
-#### 系统集成
-
-温度优化通过系统协调员任务(`system_coordinator_task`)自动运行：
-
-```python
-# 在main.py中自动运行
-async def system_coordinator_task():
-    # 订阅守护进程的性能报告事件
-    def on_performance_report(**kwargs):
-        temp = kwargs.get('temperature')
-        if temp is not None:
-            # 自动应用温度优化
-            optimization_info = temp_optimizer.check_and_optimize(temp)
-            # 通过事件总线发布配置更新
-            event_bus.publish('config_update', config=optimization_info['optimized_config'])
-```
-
-#### 预期效果
-
-通过温度优化系统，预期可以：
-- **降低温度**: 从39°C降低到34-36°C
-- **减少功耗**: CPU使用率降低30-50%
-- **延长寿命**: 减少热应力，提高设备可靠性
-- **智能调节**: 温度降低后自动恢复性能
-
-## 系统特性
-
-### 🚀 异步架构
-
-- **事件驱动**：WiFi连接成功自动触发NTP同步
-- **非阻塞操作**：所有网络和I/O操作均为异步
-- **任务管理**：统一的异步任务生命周期管理
-- **回调机制**：支持注册和触发事件回调函数
-
-### 🛡️ 安全保护机制
-
-1. **看门狗保护**
-   - 硬件看门狗定时器，防止系统死锁
-   - 定期喂狗，超时自动重启
-
-2. **温度监控**
-   - 实时监控ESP32-C3内部温度
-   - 超温自动进入安全模式
-   - 温度恢复后自动退出安全模式
-
-3. **错误处理**
-   - 自动错误计数和定期重置
-   - 多重硬件恢复尝试
-   - 关键错误触发紧急重启
-
-4. **安全模式**
-   - 紧急情况下LED交替闪烁指示
-   - 关闭PWM硬件，降低系统负载
-   - 保护硬件免受损坏
-
-### 🌐 智能连接
-
-- **多网络支持**：支持配置多个WiFi网络作为备选
-- **智能扫描**：自动扫描可用网络并按优先级连接
-- **自动重连**：网络断开时自动重连机制
-- **温度保护**：高温时暂停连接尝试
-
-### 📝 日志系统
-
-- 错误日志自动记录到文件
-- 日志文件大小限制和自动滚动
-- 队列化日志处理，避免阻塞
-
-### 💡 LED状态指示
-
-- **PWM控制**：精确的亮度控制
-- **动态效果**：呼吸灯、闪烁等动画效果
-- **状态映射**：
-  - 呼吸灯：等待WiFi连接
-  - 常亮：WiFi连接成功
-  - 闪烁：连接过程中
-
-## 硬件要求
-
-- **微控制器**: ESP32-C3
-- **LED**: 连接到GPIO 12和13引脚
-- **内存**: 建议至少64KB RAM
-- **定时器**: 需要2个硬件定时器
-- **WiFi**: 2.4GHz WiFi网络
-
-## 使用场景
-
-### ✅ 适用场景
-
-- IoT设备状态指示
-- 环境监控系统
-- 智能家居设备
-- 远程监控节点
-- 需要WiFi连接的嵌入式设备
-
-### 🔧 扩展可能
-
-- 添加传感器数据采集
-- 集成MQTT通信
-- 连接Home Assistant
-- 添加Web服务器
-- 实现OTA更新
-
-## 故障排除
+## 🚨 故障排除
 
 ### 常见问题
 
-**Q: WiFi连接失败？**
-A: 检查SSID和密码是否正确，确保设备在WiFi信号范围内。
+1. **WiFi 连接失败**
+   - 检查 `config.json` 中的 WiFi 配置
+   - 确认信号强度和密码正确
+   - 查看串口输出的错误信息
 
-**Q: LED不亮？**
-A: 检查GPIO 12和13引脚连接，确保LED正确连接。
+2. **LED 不亮**
+   - 检查引脚配置是否正确
+   - 确认 LED 硬件连接
+   - 检查 PWM 频率设置
 
-**Q: 守护进程启动失败？**
-A: 检查硬件连接，确保有足够的内存空间。
+3. **系统重启**
+   - 检查看门狗配置
+   - 查看温度是否过高
+   - 检查内存使用情况
 
-**Q: 时间同步失败？**
-A: 确保WiFi连接正常，检查网络是否允许NTP访问。
+4. **部署失败**
+   - 确认串口号正确
+   - 检查 mpy-cross 是否安装
+   - 确认设备连接正常
 
-**Q: 系统进入安全模式？**
-A: 检查设备温度，确保散热良好，等待温度降低后自动恢复。
+### 调试模式
+在 `config.py` 中设置 `DEBUG = True` 启用详细日志输出。
 
-**Q: 看门狗超时错误？**
-A: 系统显示 "Task watchdog got triggered" 错误并重启的解决方案：
-- **原因**: 看门狗定时器未能及时喂养，通常由以下原因导致：
-  - 使用 `machine.lightsleep()` 暂停了所有定时器
-  - 系统负载过高导致定时器延迟
-  - 看门狗超时时间设置过短
-- **解决方案**:
-  - 避免在主循环中使用 `machine.lightsleep()`
-  - 增加看门狗超时时间（当前设置为30秒）
-  - 减少看门狗喂养间隔（当前设置为3秒）
-  - 检查系统负载和异步任务执行时间
+## 📊 性能指标
 
-### 调试方法
+### 内存使用
+- **代码大小**：约 15KB（编译后）
+- **运行内存**：约 50KB
+- **配置文件**：约 1KB
 
-1. 检查串口输出的状态信息
-2. 观察LED指示灯状态
-3. 检查error.log文件内容
-4. 监控系统性能报告
+### 响应时间
+- **WiFi 连接**：5-15 秒
+- **NTP 同步**：1-3 秒
+- **LED 响应**：< 100ms
+- **事件处理**：< 10ms
 
-## 🔧 代码清理和优化
+## 🤝 贡献指南
 
-### v2.2 版本更新
+1. Fork 本项目
+2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 打开 Pull Request
 
-#### 清理内容
-- ✅ **删除临时文件**: 移除开发过程中的PLAN.md文档
-- ✅ **优化导入语句**: 清理未使用的导入和变量
-- ✅ **代码结构优化**: 提升代码可读性和维护性
-- ✅ **配置项整理**: 统一配置管理，移除重复配置
-- ✅ **注释优化**: 更新和完善代码注释
+## 📄 许可证
 
-#### 性能提升
-- ⚡ **内存优化**: 减少内存占用，提高垃圾回收效率
-- ⚡ **CPU优化**: 优化循环逻辑，降低CPU使用率
-- ⚡ **事件优化**: 精简事件处理逻辑，提高响应速度
-- ⚡ **配置优化**: 合并重复配置项，减少配置查询开销
+本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
 
-#### 稳定性改进
-- 🛡️ **错误处理**: 增强异常处理机制
-- 🛡️ **资源管理**: 优化资源分配和释放
-- 🛡️ **模块解耦**: 进一步减少模块间依赖
-- 🛡️ **事件安全**: 增强事件总线的稳定性
+## 🙏 致谢
 
-## 开发说明
-
-### 代码结构
-
-- **模块化设计**: 功能分离，便于维护和扩展
-- **错误处理**: 完善的异常捕获和错误恢复机制
-- **资源管理**: 自动垃圾回收和内存优化
-- **硬件抽象**: 统一的硬件接口，便于移植
-
-### 性能优化
-
-- 静态LED模式下CPU使用率极低
-- 队列化日志处理，避免I/O阻塞
-- 定时器中断驱动，确保实时响应
-- 内存使用监控和自动回收
-
-## 许可证
-
-本项目采用 MIT 许可证。
-
-## 贡献
-
-欢迎提交问题报告和功能请求。请确保代码符合项目规范并经过充分测试。
-
-## 注意事项
-
-⚠️ **重要提醒**：
-
-1. 确保WiFi凭据正确配置
-2. 检查LED硬件连接
-3. 监控设备温度，确保散热良好
-4. 定期检查日志文件
-5. 在生产环境中使用前请充分测试
+- [MicroPython](https://micropython.org/) - 优秀的 Python 微控制器实现
+- [ESP32-C3](https://www.espressif.com/en/products/socs/esp32-c3) - 强大的 RISC-V 微控制器
+- 所有贡献者和测试者
 
 ---
 
-**ESP32-C3 IoT系统**  
-*基于MicroPython的物联网解决方案*
+**注意**：本项目仍在积极开发中，API 可能会发生变化。建议在生产环境使用前进行充分测试。

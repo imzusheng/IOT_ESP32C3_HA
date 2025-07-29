@@ -323,9 +323,9 @@ def get_wifi_retry_interval():
     return _get_config_value('wifi', 'retry_interval_s', _DEFAULT_WIFI_RETRY_INTERVAL_S)
 
 # 向后兼容的常量（从动态配置获取）
-WIFI_CONFIGS = property(lambda: get_wifi_configs())
-WIFI_CONNECT_TIMEOUT_S = property(lambda: get_wifi_connect_timeout())
-WIFI_RETRY_INTERVAL_S = property(lambda: get_wifi_retry_interval())
+WIFI_CONFIGS = get_wifi_configs()
+WIFI_CONNECT_TIMEOUT_S = get_wifi_connect_timeout()
+WIFI_RETRY_INTERVAL_S = get_wifi_retry_interval()
 
 # =============================================================================
 # NTP 时间同步配置
@@ -347,8 +347,8 @@ def get_timezone_offset():
     return _get_config_value('ntp', 'timezone_offset_hours', _DEFAULT_TIMEZONE_OFFSET_HOURS)
 
 # 向后兼容的常量
-NTP_RETRY_DELAY_S = property(lambda: get_ntp_retry_delay())
-TIMEZONE_OFFSET_HOURS = property(lambda: get_timezone_offset())
+NTP_RETRY_DELAY_S = get_ntp_retry_delay()
+TIMEZONE_OFFSET_HOURS = get_timezone_offset()
 
 # =============================================================================
 # LED 硬件配置
@@ -389,11 +389,11 @@ def get_fade_step():
     return _get_config_value('led', 'fade_step', _DEFAULT_FADE_STEP)
 
 # 向后兼容的常量
-LED_PIN_1 = property(lambda: get_led_pin_1())
-LED_PIN_2 = property(lambda: get_led_pin_2())
-PWM_FREQ = property(lambda: get_pwm_freq())
-MAX_BRIGHTNESS = property(lambda: get_max_brightness())
-FADE_STEP = property(lambda: get_fade_step())
+LED_PIN_1 = get_led_pin_1()
+LED_PIN_2 = get_led_pin_2()
+PWM_FREQ = get_pwm_freq()
+MAX_BRIGHTNESS = get_max_brightness()
+FADE_STEP = get_fade_step()
 
 # =============================================================================
 # 守护进程配置
@@ -428,7 +428,7 @@ def get_daemon_config():
     return _DEFAULT_DAEMON_CONFIG.copy()
 
 # 向后兼容的常量
-DAEMON_CONFIG = property(lambda: get_daemon_config())
+DAEMON_CONFIG = get_daemon_config()
 
 # 安全与保护机制配置
 SAFETY_CONFIG = {

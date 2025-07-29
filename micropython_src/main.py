@@ -139,32 +139,12 @@ def check_and_optimize(current_temp):
 
 async def main_business_loop():
     """
-    主业务循环 - 系统核心运行逻辑 (重构版本)
+    主业务循环 - 精简版本
     
-    这个函数是系统的心脏，重构后具有以下特点：
-    1. 事件驱动：通过事件总线监听和发布系统事件
-    2. 配置驱动：使用config模块获取循环参数
-    3. 模块化：各功能独立，减少耦合
-    4. 错误隔离：单个任务失败不影响整体循环
-    
-    主要功能：
-    - 定期处理日志队列
-    - 执行垃圾回收
-    - 系统状态监控
+    简化后的主要功能：
     - 发布系统心跳事件
-    - 错误恢复机制
-    
-    设计特点：
-    - 异步非阻塞：不影响其他任务运行
-    - 事件驱动：通过事件总线与其他模块通信
-    - 配置驱动：循环间隔等参数从配置获取
-    - 错误隔离：单个任务失败不影响整体循环
-    - 资源管理：主动进行内存管理
-    
-    注意：
-    - 这个循环会一直运行，直到系统关闭
-    - 所有操作都包含异常处理
-    - 通过事件总线发布系统状态
+    - 定期垃圾回收
+    - 基本状态监控
     """
     if DEBUG:
         print("\n[MAIN] 启动主业务循环...")
@@ -173,84 +153,40 @@ async def main_business_loop():
     general_config = config.get_general_config()
     loop_interval = general_config.get('main_loop_interval', 5)
     gc_interval = general_config.get('gc_interval_loops', 20)
-    status_check_interval = general_config.get('status_check_interval_loops', 12)
     
     loop_count = 0
-    
-    # 发布主循环启动事件
     core.publish(get_event_id('main_loop_started'))
     
     try:
         while True:
             loop_count += 1
             
-            # 1. 处理日志队列（使用core模块的简化日志）
-            try:
-                # 简化的日志处理，由core模块自动管理
-                pass
-            except Exception as e:
-                print(f"[MAIN] [ERROR] 日志处理失败: {e}")
-                core.publish(get_event_id('log_critical'), message=f"日志处理失败: {e}")
+            # 发布系统心跳
+            if loop_count % 12 == 0:  # 每12个循环发布一次心跳
+                core.publish(EV_SYSTEM_HEARTBEAT, loop_count=loop_count)
+                if DEBUG:
+                    print(f"[MAIN] 系统心跳，循环计数: {loop_count}")
             
-            # 2. 定期状态报告和心跳
-            if loop_count % status_check_interval == 0:
-                 if DEBUG:
-                     print(f"\n[MAIN] 系统运行正常，循环计数: {loop_count}")
-                 core.publish(EV_SYSTEM_HEARTBEAT, loop_count=loop_count)
-                 
-                 # 获取并发布系统状态
-                 try:
-                     status = core.get_system_status()  # 使用core模块的系统状态
-                     core.publish(get_event_id('system_status_check'), status=status, loop_count=loop_count)
-                     
-                     # 检查关键状态并发布相应事件
-                     if not status.get('wifi_connected', False):
-                         if DEBUG:
-                             print("[MAIN] [WARNING] WiFi连接丢失")
-                         core.publish(get_event_id('wifi_disconnected_detected'))
-                         core.publish(get_event_id('log_warning'), message="WiFi连接丢失")
-                     
-                     # 简化时间检查（移除NTP依赖）
-                     
-                 except Exception as e:
-                     print(f"[MAIN] [ERROR] 系统状态检查失败: {e}")
-                     core.publish(get_event_id('log_critical'), message=f"系统状态检查失败: {e}")
-            
-            # 3. 定期垃圾回收
+            # 定期垃圾回收
             if loop_count % gc_interval == 0:
                 try:
                     gc.collect()
-                    mem_info = core.get_memory_info()  # 使用core模块的内存信息
+                    mem_info = core.get_memory_info()
                     if DEBUG:
-                        print(f"[MAIN] 执行垃圾回收，可用内存: {mem_info['free']} bytes")
+                        print(f"[MAIN] 垃圾回收完成，可用内存: {mem_info['free']} bytes")
                     
-                    # 发布内存状态事件
-                    core.publish(get_event_id('memory_status'), 
-                                memory_info=mem_info, 
-                                loop_count=loop_count)
-                    
-                    # 内存使用检查
-                    low_memory_threshold = general_config.get('low_memory_threshold', 10000)
-                    if mem_info['free'] < low_memory_threshold:
-                        if DEBUG:
-                            print(f"[MAIN] [WARNING] 内存不足: {mem_info['free']} bytes")
+                    # 内存不足检查
+                    if mem_info['free'] < 10000:
                         core.publish(EV_LOW_MEMORY_WARNING, free_bytes=mem_info['free'])
-                        core.publish(get_event_id('log_warning'), message=f"内存不足: {mem_info['free']} bytes")
                         
                 except Exception as e:
                     print(f"[MAIN] [ERROR] 垃圾回收失败: {e}")
-                    core.publish(get_event_id('log_critical'), message=f"垃圾回收失败: {e}")
             
-            # 使用异步睡眠而不是lightsleep，避免暂停看门狗定时器
-            # lightsleep会暂停所有定时器，包括看门狗喂养定时器，导致看门狗超时
-            if DEBUG:
-                print(f"[MAIN] 主循环完成，等待 {loop_interval} 秒...")
             await asyncio.sleep(loop_interval)
             
             # 防止循环计数器溢出
             if loop_count >= 1000000:
                 loop_count = 0
-                core.publish(get_event_id('loop_counter_reset'))
             
     except asyncio.CancelledError:
         if DEBUG:

@@ -42,33 +42,9 @@ _recovery_attempts = 0
 _wdt = None
 _timer_scheduler = None  # 统一调度器定时器
 
-# === 守护进程配置 (从config模块获取) ===
-# 获取配置信息
-_daemon_config = config.get_daemon_config()
-_safety_config = config.get_safety_config()
-_led_config = config.get_led_config()
-
-# 合并配置为统一的CONFIG字典（保持向后兼容）
-CONFIG = {
-    # 定时器与任务间隔配置
-    'main_interval_ms': _daemon_config['main_interval_ms'],
-    'watchdog_interval_ms': _daemon_config['watchdog_interval_ms'],
-    'monitor_interval_ms': _daemon_config['monitor_interval_ms'],
-    'perf_report_interval_s': _daemon_config['perf_report_interval_s'],
-    
-    # 安全与保护机制配置
-    'temperature_threshold': _safety_config['temperature_threshold'],
-    'wdt_timeout_ms': _safety_config['wdt_timeout_ms'],
-    'blink_interval_ms': _safety_config['blink_interval_ms'],
-    'safe_mode_cooldown_ms': _safety_config['safe_mode_cooldown_ms'],
-    'max_error_count': _safety_config['max_error_count'],
-    'error_reset_interval_ms': _safety_config['error_reset_interval_ms'],
-    'max_recovery_attempts': _safety_config['max_recovery_attempts'],
-    
-    # LED配置（用于安全模式闪烁）
-    'led_pin_1': _led_config['pin_1'],
-    'led_pin_2': _led_config['pin_2'],
-}
+# === 直接从config模块导入所需配置 ===
+# 优化：移除CONFIG字典，直接使用config模块的配置
+from config import DAEMON_CONFIG, SAFETY_CONFIG, LED_PIN_1, LED_PIN_2
 
 # === 优化后的统一调度器配置 ===
 # 统一调度器的动态间隔（毫秒）- 根据温度自动调整
@@ -174,14 +150,14 @@ def _safe_mode_emergency_blink():
     """
     try:
         # 使用配置中的LED引脚
-        led1 = machine.Pin(CONFIG['led_pin_1'], machine.Pin.OUT)
-        led2 = machine.Pin(CONFIG['led_pin_2'], machine.Pin.OUT)
+        led1 = machine.Pin(LED_PIN_1, machine.Pin.OUT)
+        led2 = machine.Pin(LED_PIN_2, machine.Pin.OUT)
         
-        blink_cycle = CONFIG['blink_interval_ms'] * 2
+        blink_cycle = SAFETY_CONFIG['blink_interval_ms'] * 2
         current_time = time.ticks_ms()
         cycle_position = time.ticks_diff(current_time, _safe_mode_start_time) % blink_cycle
         
-        if cycle_position < CONFIG['blink_interval_ms']:
+        if cycle_position < SAFETY_CONFIG['blink_interval_ms']:
             led1.on()
             led2.off()
         else:
@@ -278,7 +254,7 @@ def _scheduler_interrupt(timer):
         _adjust_scheduler_interval_by_temperature()
         
         # 任务1：看门狗喂养（最高优先级，按配置间隔执行）
-        if time.ticks_diff(current_time, _last_watchdog_feed_ms) >= CONFIG['watchdog_interval_ms']:
+        if time.ticks_diff(current_time, _last_watchdog_feed_ms) >= DAEMON_CONFIG['watchdog_interval_ms']:
             _last_watchdog_feed_ms = current_time
             try:
                 if _wdt:
@@ -293,23 +269,23 @@ def _scheduler_interrupt(timer):
                 return
         
         # 任务2：系统监控（按配置间隔执行）
-        if time.ticks_diff(current_time, _last_monitor_check_ms) >= CONFIG['monitor_interval_ms']:
+        if time.ticks_diff(current_time, _last_monitor_check_ms) >= DAEMON_CONFIG['monitor_interval_ms']:
             _last_monitor_check_ms = current_time
             
             # 温度监控
             temp = _get_internal_temperature()
-            if temp and temp >= CONFIG['temperature_threshold']:
+            if temp and temp >= SAFETY_CONFIG['temperature_threshold']:
                 _enter_safe_mode(f"温度超限: {temp:.1f}°C")
                 return
             
             # 错误计数管理
-            if time.ticks_diff(current_time, _last_error_time) > CONFIG['error_reset_interval_ms']:
+            if time.ticks_diff(current_time, _last_error_time) > SAFETY_CONFIG['error_reset_interval_ms']:
                 if _error_count > 0:
                     print(f"[INFO] 错误计数已自动重置: {_error_count} -> 0")
                     _error_count = 0
         
         # 任务3：性能报告（按配置间隔执行）
-        if time.ticks_diff(current_time, _last_perf_check_ms) >= CONFIG['perf_report_interval_s'] * 1000:
+        if time.ticks_diff(current_time, _last_perf_check_ms) >= DAEMON_CONFIG['perf_report_interval_s'] * 1000:
             _last_perf_check_ms = current_time
             _print_performance_report()
         
@@ -320,7 +296,7 @@ def _scheduler_interrupt(timer):
             
     except Exception as e:
         _log_critical_error(f"统一调度器中断处理失败: {e}")
-        if _error_count > CONFIG['max_error_count']:
+        if _error_count > SAFETY_CONFIG['max_error_count']:
             _emergency_hardware_reset()
 
 def _enter_safe_mode(reason):
@@ -366,8 +342,8 @@ def _check_safe_mode_recovery():
         temp = _get_internal_temperature()
         
         # 检查恢复条件：温度降低且冷却时间足够
-        if (temp and temp < CONFIG['temperature_threshold'] - 5.0 and
-            time.ticks_diff(time.ticks_ms(), _safe_mode_start_time) > CONFIG['safe_mode_cooldown_ms']):
+        if (temp and temp < SAFETY_CONFIG['temperature_threshold'] - 5.0 and
+            time.ticks_diff(time.ticks_ms(), _safe_mode_start_time) > SAFETY_CONFIG['safe_mode_cooldown_ms']):
             
             if DEBUG:
                 print("[RECOVERY] 系统条件恢复，尝试退出安全模式...")
@@ -477,11 +453,11 @@ class CriticalSystemDaemon:
                         pass
                 
                 # 创建新的看门狗实例
-                _wdt = machine.WDT(timeout=CONFIG['wdt_timeout_ms'])
+                _wdt = machine.WDT(timeout=SAFETY_CONFIG['wdt_timeout_ms'])
                 _wdt.feed()
                 
                 if DEBUG:
-                    print(f"[DAEMON] 看门狗初始化成功，超时时间: {CONFIG['wdt_timeout_ms']}ms")
+                    print(f"[DAEMON] 看门狗初始化成功，超时时间: {SAFETY_CONFIG['wdt_timeout_ms']}ms")
                 return True
                 
             except Exception as e:
