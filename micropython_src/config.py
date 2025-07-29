@@ -81,8 +81,8 @@ DAEMON_CONFIG = {
     # 主循环更新间隔
     'main_interval_ms': 5000,
     
-    # 看门狗喂养与监控任务的统一检查间隔
-    'watchdog_interval_ms': 5000,
+    # 看门狗喂养与监控任务的统一检查间隔 - 减少到3秒确保及时喂养
+    'watchdog_interval_ms': 3000,
     
     # 系统状态监控的实际执行间隔
     'monitor_interval_ms': 30000,
@@ -96,8 +96,8 @@ SAFETY_CONFIG = {
     # 触发"紧急安全模式"的MCU内部温度阈值（°C）
     'temperature_threshold': 45.0,
     
-    # 看门狗超时时间（毫秒）
-    'wdt_timeout_ms': 10000,
+    # 看门狗超时时间（毫秒）- 增加到30秒以提供更大安全边际
+    'wdt_timeout_ms': 30000,
     
     # "紧急安全模式"下，LED交替闪烁的间隔时间（毫秒）
     'blink_interval_ms': 200,
@@ -135,16 +135,19 @@ LOG_CONFIG = {
 # 系统配置
 # =============================================================================
 
-# 系统配置
-SYSTEM_CONFIG = {
+# 通用系统配置
+GENERAL_CONFIG = {
     # 主业务循环间隔（秒）
-    'main_loop_interval_s': 5,
+    'main_loop_interval': 5,
     
     # 垃圾回收间隔（循环次数）
-    'gc_interval_loops': 20,  # 每100秒执行一次
+    'gc_interval_loops': 20,
     
-    # 状态报告间隔（循环次数）
-    'status_report_interval_loops': 12,  # 每60秒报告一次
+    # 状态检查间隔（循环次数）
+    'status_check_interval_loops': 12,
+    
+    # 低内存警告阈值（字节）
+    'low_memory_threshold': 10000,
 }
 
 # =============================================================================
@@ -237,14 +240,14 @@ def get_log_config():
     """
     return LOG_CONFIG.copy()
 
-def get_system_config():
+def get_general_config():
     """
-    获取系统配置
+    获取通用系统配置
     
     Returns:
-        dict: 系统配置字典
+        dict: 通用系统配置字典
     """
-    return SYSTEM_CONFIG.copy()
+    return GENERAL_CONFIG.copy()
 
 def get_network_config():
     """

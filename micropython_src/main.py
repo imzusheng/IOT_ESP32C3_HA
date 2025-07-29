@@ -24,8 +24,8 @@
 - 资源优化：合理使用内存和CPU资源
 """
 
-import time
 import gc
+import machine
 import uasyncio as asyncio
 
 # 导入系统模块
@@ -34,6 +34,7 @@ import event_bus
 import daemon
 import utils
 import logger
+from temp_optimization import temp_optimizer
 
 async def main_business_loop():
     """
@@ -136,6 +137,9 @@ async def main_business_loop():
                     print(f"[MAIN] [ERROR] 垃圾回收失败: {e}")
                     event_bus.publish('log_critical', message=f"垃圾回收失败: {e}")
             
+            # 使用异步睡眠而不是lightsleep，避免暂停看门狗定时器
+            # lightsleep会暂停所有定时器，包括看门狗喂养定时器，导致看门狗超时
+            print(f"[MAIN] 主循环完成，等待 {loop_interval} 秒...")
             await asyncio.sleep(loop_interval)
             
             # 防止循环计数器溢出
@@ -149,6 +153,51 @@ async def main_business_loop():
     except Exception as e:
         print(f"\n[MAIN] [ERROR] 主业务循环异常: {e}")
         event_bus.publish('log_critical', message=f"主业务循环异常: {e}")
+
+async def system_coordinator_task():
+    """
+    系统协调员任务：负责监听系统状态并应用优化策略
+    
+    这个任务实现了动态温度优化功能：
+    1. 订阅守护进程的性能报告事件
+    2. 根据温度变化应用优化策略
+    3. 通过事件总线发布配置更新命令
+    4. 协调各模块的功耗管理
+    """
+    print("[COORDINATOR] 启动系统协调员任务...")
+    
+    # 订阅守护进程的性能报告事件
+    def on_performance_report(**kwargs):
+        temp = kwargs.get('temperature')
+        if temp is not None:
+            # 使用温度优化器检查并获取优化配置
+            optimization_info = temp_optimizer.check_and_optimize(temp)
+            new_config = optimization_info['optimized_config']
+            
+            # 通过事件总线发布配置更新命令
+            event_bus.publish('config_update', 
+                             source='temp_optimizer', 
+                             config=new_config,
+                             temp_level=optimization_info['temp_level'])
+            
+            # 发布温度优化日志
+            if optimization_info['recommendations']:
+                recommendations_str = ', '.join(optimization_info['recommendations'])
+                event_bus.publish('log_info', 
+                                 message=f"温度优化建议: {recommendations_str}")
+    
+    # 订阅性能报告事件
+    event_bus.subscribe('performance_report', on_performance_report)
+    
+    try:
+        while True:
+            # 系统协调员任务本身使用较长的休眠时间
+            await asyncio.sleep(60)
+    except asyncio.CancelledError:
+        print("[COORDINATOR] 系统协调员任务已停止")
+    except Exception as e:
+        print(f"[COORDINATOR] [ERROR] 系统协调员任务异常: {e}")
+        event_bus.publish('log_critical', message=f"系统协调员任务异常: {e}")
 
 def start_critical_daemon():
     """
@@ -253,7 +302,8 @@ def main():
             # 启动所有异步任务
             tasks = [
                 asyncio.create_task(utils.start_all_tasks()),
-                asyncio.create_task(main_business_loop())
+                asyncio.create_task(main_business_loop()),
+                asyncio.create_task(system_coordinator_task())
             ]
             
             # 发布任务启动完成事件

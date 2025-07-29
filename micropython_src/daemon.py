@@ -226,8 +226,12 @@ def _watchdog_and_monitor_interrupt(timer):
     try:
         if _wdt:
             _wdt.feed()
+            # 每10次喂养记录一次状态，避免过多日志
+            if current_time % 30000 < 3000:  # 大约每30秒记录一次
+                print(f"[DAEMON] 看门狗正常喂养，超时设置: {CONFIG['wdt_timeout_ms']}ms")
     except Exception as e:
         _log_critical_error(f"看门狗喂养失败: {e}")
+        print(f"[DAEMON] [CRITICAL] 看门狗喂养失败，准备重置系统: {e}")
         _emergency_hardware_reset()
         return
 
@@ -353,6 +357,16 @@ def _print_performance_report():
         
         # 通过事件总线发布性能信息
         event_bus.publish('log_info', message=f"系统状态报告 - 温度:{temp:.1f}°C 内存:{mem_percent:.1f}% 错误:{_error_count}")
+        
+        # 发布性能报告事件，供温度优化器使用
+        try:
+            event_bus.publish('performance_report', 
+                             temperature=temp, 
+                             mem_percent=mem_percent, 
+                             error_count=_error_count,
+                             uptime_ms=time.ticks_diff(current_time, _start_ticks_ms))
+        except Exception as e:
+            _log_critical_error(f"性能报告事件发布失败: {e}")
         
     except Exception as e:
         _log_critical_error(f"性能报告失败: {e}")

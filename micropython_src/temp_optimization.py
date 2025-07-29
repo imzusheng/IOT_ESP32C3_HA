@@ -81,24 +81,32 @@ TEMP_LEVEL_CONFIGS = {
         'monitor_interval_ms': 30000,
         'pwm_freq': 60,
         'max_brightness': 20000,
+        'led_interval_ms': 50,
+        'wifi_check_interval_s': 30,
     },
     'warning': {
         'main_interval_ms': 8000,
         'monitor_interval_ms': 45000,
         'pwm_freq': 40,
         'max_brightness': 15000,
+        'led_interval_ms': 80,
+        'wifi_check_interval_s': 45,
     },
     'critical': {
         'main_interval_ms': 10000,
         'monitor_interval_ms': 60000,
         'pwm_freq': 30,
         'max_brightness': 8000,
+        'led_interval_ms': 100,
+        'wifi_check_interval_s': 60,
     },
     'emergency': {
         'main_interval_ms': 15000,
         'monitor_interval_ms': 120000,
         'pwm_freq': 20,
         'max_brightness': 3000,
+        'led_interval_ms': 200,
+        'wifi_check_interval_s': 300,
     }
 }
 
@@ -163,14 +171,18 @@ def apply_temperature_optimization(current_temp):
         optimization_info['recommendations'].extend([
             "降低LED亮度到75%",
             "延长监控间隔到45秒",
-            "降低PWM频率到40Hz"
+            "降低PWM频率到40Hz",
+            "延长LED更新间隔到80ms",
+            "延长WiFi检查间隔到45秒"
         ])
     elif temp_level == 'critical':
         optimization_info['recommendations'].extend([
             "降低LED亮度到40%",
             "延长监控间隔到60秒",
             "降低PWM频率到30Hz",
-            "延长主循环间隔到10秒"
+            "延长主循环间隔到10秒",
+            "延长LED更新间隔到100ms",
+            "延长WiFi检查间隔到60秒"
         ])
     elif temp_level == 'emergency':
         optimization_info['recommendations'].extend([
@@ -178,6 +190,8 @@ def apply_temperature_optimization(current_temp):
             "延长监控间隔到120秒",
             "降低PWM频率到20Hz",
             "延长主循环间隔到15秒",
+            "延长LED更新间隔到200ms",
+            "延长WiFi检查间隔到300秒",
             "考虑进入深度睡眠模式"
         ])
     

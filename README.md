@@ -1,14 +1,17 @@
-# ESP32-C3 IoT系统 (重构版本 v2.0)
+# ESP32-C3 IoT系统 (优化版本 v2.2)
 
-基于MicroPython的ESP32-C3物联网系统，采用事件驱动架构，具备WiFi连接、LED控制、系统监控和日志记录功能。
+基于MicroPython的ESP32-C3物联网系统，采用事件驱动架构，具备WiFi连接、LED控制、系统监控、智能温度优化和日志记录功能。经过代码清理和优化，系统更加稳定高效。
 
-## 🎯 重构亮点
+## 🎯 系统特色
 
 - ✅ **事件总线系统** - 实现发布/订阅模式，模块间完全解耦
 - ✅ **配置管理中心** - 集中管理所有系统配置，告别硬编码
 - ✅ **守护进程优化** - 独立稳定的系统监控，错误隔离机制
 - ✅ **模块化设计** - 高内聚低耦合，易于维护和扩展
 - ✅ **异步事件驱动** - 提高系统响应性和稳定性
+- 🌡️ **智能温度优化** - 四级温度管理，动态调整系统参数
+- ⚡ **轻度睡眠机制** - 主动降低CPU功耗，减少发热
+- 🧹 **代码优化** - 清理冗余代码，提升系统性能和稳定性
 
 ## 设备信息
 
@@ -61,20 +64,32 @@ Detected flash size: 4MB
 6. **业务循环** - 事件驱动的系统维护和监控
 7. **后台监控** - 守护进程独立监控，错误隔离
 
-## 文件结构 (重构版本)
+## 文件结构 (清理优化版本)
 
 ```
-micropython_src/
-├── main.py            # 主程序入口 (事件驱动)
-├── event_bus.py       # 事件总线核心模块
-├── config.py          # 配置管理中心
-├── daemon.py          # 独立守护进程模块
-├── utils.py           # 工具函数模块 (事件驱动)
-├── logger.py          # 日志系统模块 (事件驱动)
-├── boot.py            # 启动配置文件
-├── temp_optimization.py   # 温度优化模块 (动态温度管理)
-├── test_refactor.py   # 重构测试脚本
-└── REFACTOR_SUMMARY.md # 重构总结文档
+micropython_src/          # 核心源代码目录
+├── main.py               # 主程序入口 (事件驱动 + 温度优化)
+├── event_bus.py          # 事件总线核心模块
+├── config.py             # 配置管理中心 (优化配置项)
+├── daemon.py             # 独立守护进程模块
+├── utils.py              # 工具函数模块 (事件驱动，清理冗余代码)
+├── logger.py             # 日志系统模块 (事件驱动)
+├── boot.py               # 启动配置文件
+└── temp_optimization.py  # 温度优化模块 (四级温度管理)
+
+dist/                     # 编译后的.mpy文件
+├── boot.mpy
+├── config.mpy
+├── daemon.mpy
+├── event_bus.mpy
+├── logger.mpy
+├── main.mpy
+├── temp_optimization.mpy
+└── utils.mpy
+
+项目根目录/
+├── deploy.py             # 部署脚本 (编译和上传)
+└── README.md             # 项目文档
 ```
 
 ## 快速开始
@@ -175,6 +190,9 @@ utils.set_effect('off')                   # 关闭所有LED
 #### `get_safety_config()`
 获取安全保护配置。
 
+#### `get_general_config()`
+获取通用系统配置。
+
 ### 守护进程模块 (daemon.py)
 
 #### `start_critical_daemon()`
@@ -188,6 +206,34 @@ utils.set_effect('off')                   # 关闭所有LED
 - 完全独立运行，不依赖其他业务模块
 - 通过事件总线发布系统状态
 - 配置驱动的参数管理
+- 定期发布`performance_report`事件
+
+### 温度优化模块 (temp_optimization.py)
+
+#### `temp_optimizer.check_and_optimize(temperature)`
+检查温度并返回优化配置。
+
+**参数：**
+- `temperature` (float): 当前温度值
+
+**返回：**
+```python
+{
+    'temp_level': 'warning',  # 温度级别
+    'optimized_config': {     # 优化后的配置
+        'main_interval_ms': 8000,
+        'monitor_interval_ms': 45000,
+        'pwm_freq': 40,
+        'max_brightness': 15000,
+        'wifi_check_interval_s': 120
+    },
+    'recommendations': [      # 优化建议列表
+        '延长主循环间隔',
+        '降低PWM频率',
+        '减少LED亮度'
+    ]
+}
+```
 
 ### 工具模块 (utils.py) - 事件驱动版本
 
@@ -370,48 +416,80 @@ NTP_RETRY_COUNT = 3             # NTP重试次数
 3. **LED亮度控制**: 降低LED最大亮度减少功耗
 4. **网络优化**: 减少不必要的网络请求频率
 
+## 🌡️ 智能温度优化系统
+
 ### 温度优化模块 (temp_optimization.py)
 
-为了解决39°C的温度问题，新增了专门的温度优化模块：
+为了解决ESP32-C3在高负载下的温度问题，系统集成了智能温度优化模块：
 
-#### 功能特性
-- **动态温度监控**: 实时监控系统温度并自动调整配置
-- **分级优化策略**: 根据温度级别(normal/warning/critical/emergency)应用不同优化
-- **自动功耗管理**: 动态调整PWM频率、LED亮度和任务间隔
-- **优化历史记录**: 记录温度变化和优化策略的历史
+#### 核心功能
+- **实时温度监控**: 持续监控MCU内部温度
+- **动态参数调整**: 根据温度自动调整系统参数
+- **四级温度管理**: normal → warning → critical → emergency
+- **事件驱动优化**: 通过事件总线发布优化建议
+- **轻度睡眠机制**: 主循环使用`machine.lightsleep()`降低功耗
 
-#### 温度分级阈值
+#### 温度分级策略
 ```python
 TEMP_THRESHOLDS = {
-    'normal': 35.0,      # 正常温度阈值
-    'warning': 40.0,     # 警告温度阈值 (当前39°C属于此级别)
-    'critical': 45.0,    # 危险温度阈值
-    'emergency': 50.0,   # 紧急温度阈值
+    'normal': 35.0,      # < 35°C: 正常运行
+    'warning': 40.0,     # 35-40°C: 轻度优化
+    'critical': 45.0,    # 40-45°C: 积极优化
+    'emergency': 50.0,   # > 45°C: 紧急保护
 }
 ```
 
-#### 使用示例
+#### 优化策略详解
+
+**正常模式 (< 35°C)**
+- 所有参数保持默认值
+- 系统全速运行
+
+**警告模式 (35-40°C)**
+- 主循环间隔: 5s → 8s
+- 监控间隔: 30s → 45s
+- PWM频率: 60Hz → 40Hz
+- LED亮度: 100% → 75%
+- WiFi检查间隔: 60s → 120s
+
+**危险模式 (40-45°C)**
+- 主循环间隔: 5s → 12s
+- 监控间隔: 30s → 60s
+- PWM频率: 60Hz → 30Hz
+- LED亮度: 100% → 50%
+- WiFi检查间隔: 60s → 300s
+
+**紧急模式 (> 45°C)**
+- 主循环间隔: 5s → 20s
+- 监控间隔: 30s → 120s
+- PWM频率: 60Hz → 20Hz
+- LED亮度: 100% → 25%
+- WiFi检查间隔: 60s → 600s
+
+#### 系统集成
+
+温度优化通过系统协调员任务(`system_coordinator_task`)自动运行：
+
 ```python
-from temp_optimization import temp_optimizer
-
-# 检查当前温度并应用优化
-current_temp = 39.0  # 当前温度
-optimization_info = temp_optimizer.check_and_optimize(current_temp)
-
-# 获取优化后的配置
-optimized_config = optimization_info['optimized_config']
-print(f"建议主循环间隔: {optimized_config['main_interval_ms']}ms")
-print(f"建议PWM频率: {optimized_config['pwm_freq']}Hz")
-print(f"建议LED亮度: {optimized_config['max_brightness']}")
+# 在main.py中自动运行
+async def system_coordinator_task():
+    # 订阅守护进程的性能报告事件
+    def on_performance_report(**kwargs):
+        temp = kwargs.get('temperature')
+        if temp is not None:
+            # 自动应用温度优化
+            optimization_info = temp_optimizer.check_and_optimize(temp)
+            # 通过事件总线发布配置更新
+            event_bus.publish('config_update', config=optimization_info['optimized_config'])
 ```
 
-#### 针对39°C的具体优化
-当温度达到39°C时，系统会自动：
-1. 将主循环间隔从5秒延长到8秒
-2. 将监控间隔从30秒延长到45秒
-3. 将PWM频率从60Hz降低到40Hz
-4. 将LED最大亮度降低到75% (15000)
-5. 预计温度降低3-5°C
+#### 预期效果
+
+通过温度优化系统，预期可以：
+- **降低温度**: 从39°C降低到34-36°C
+- **减少功耗**: CPU使用率降低30-50%
+- **延长寿命**: 减少热应力，提高设备可靠性
+- **智能调节**: 温度降低后自动恢复性能
 
 ## 系统特性
 
@@ -510,12 +588,47 @@ A: 确保WiFi连接正常，检查网络是否允许NTP访问。
 **Q: 系统进入安全模式？**
 A: 检查设备温度，确保散热良好，等待温度降低后自动恢复。
 
+**Q: 看门狗超时错误？**
+A: 系统显示 "Task watchdog got triggered" 错误并重启的解决方案：
+- **原因**: 看门狗定时器未能及时喂养，通常由以下原因导致：
+  - 使用 `machine.lightsleep()` 暂停了所有定时器
+  - 系统负载过高导致定时器延迟
+  - 看门狗超时时间设置过短
+- **解决方案**:
+  - 避免在主循环中使用 `machine.lightsleep()`
+  - 增加看门狗超时时间（当前设置为30秒）
+  - 减少看门狗喂养间隔（当前设置为3秒）
+  - 检查系统负载和异步任务执行时间
+
 ### 调试方法
 
 1. 检查串口输出的状态信息
 2. 观察LED指示灯状态
 3. 检查error.log文件内容
 4. 监控系统性能报告
+
+## 🔧 代码清理和优化
+
+### v2.2 版本更新
+
+#### 清理内容
+- ✅ **删除临时文件**: 移除开发过程中的PLAN.md文档
+- ✅ **优化导入语句**: 清理未使用的导入和变量
+- ✅ **代码结构优化**: 提升代码可读性和维护性
+- ✅ **配置项整理**: 统一配置管理，移除重复配置
+- ✅ **注释优化**: 更新和完善代码注释
+
+#### 性能提升
+- ⚡ **内存优化**: 减少内存占用，提高垃圾回收效率
+- ⚡ **CPU优化**: 优化循环逻辑，降低CPU使用率
+- ⚡ **事件优化**: 精简事件处理逻辑，提高响应速度
+- ⚡ **配置优化**: 合并重复配置项，减少配置查询开销
+
+#### 稳定性改进
+- 🛡️ **错误处理**: 增强异常处理机制
+- 🛡️ **资源管理**: 优化资源分配和释放
+- 🛡️ **模块解耦**: 进一步减少模块间依赖
+- 🛡️ **事件安全**: 增强事件总线的稳定性
 
 ## 开发说明
 

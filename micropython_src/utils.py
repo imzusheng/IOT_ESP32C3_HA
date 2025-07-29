@@ -111,6 +111,10 @@ _effect_mode = 'off'      # 当前灯效模式
 _brightness = 0           # 呼吸灯当前亮度值
 _fade_direction = 1       # 呼吸灯亮度变化方向
 
+# 动态配置变量（用于温度优化）
+_led_update_interval_ms = 50  # LED更新间隔（毫秒）
+_wifi_check_interval_s = 30   # WiFi检查间隔（秒）
+
 # === LED事件处理函数 ===
 def _subscribe_to_led_events():
     """
@@ -119,7 +123,50 @@ def _subscribe_to_led_events():
     event_bus.subscribe('led_set_effect', _on_led_set_effect)
     event_bus.subscribe('led_set_brightness', _on_led_set_brightness)
     event_bus.subscribe('led_emergency_off', _on_led_emergency_off)
+    event_bus.subscribe('config_update', _on_config_update)
     print("[LED] 已订阅LED控制事件")
+
+def _on_config_update(**kwargs):
+    """
+    处理配置更新事件（温度优化）
+    """
+    global _led_update_interval_ms, _wifi_check_interval_s
+    
+    new_config = kwargs.get('config', {})
+    temp_level = kwargs.get('temp_level', 'normal')
+    source = kwargs.get('source', 'unknown')
+    
+    if source == 'temp_optimizer':
+        print(f"[UTILS] 收到温度优化配置更新，温度级别: {temp_level}")
+        
+        # 更新LED更新间隔
+        if 'main_interval_ms' in new_config:
+            # 根据主循环间隔调整LED更新频率
+            base_interval = new_config['main_interval_ms']
+            _led_update_interval_ms = max(50, base_interval // 100)  # 最小50ms
+            print(f"[LED] 更新呼吸灯间隔为: {_led_update_interval_ms}ms")
+        
+        # 更新WiFi检查间隔
+        if 'monitor_interval_ms' in new_config:
+            # 根据监控间隔调整WiFi检查频率
+            _wifi_check_interval_s = max(30, new_config['monitor_interval_ms'] // 1000)
+            print(f"[WiFi] 更新连接检查间隔为: {_wifi_check_interval_s}秒")
+        
+        # 根据温度级别调整PWM频率和亮度
+        if 'pwm_freq' in new_config and _led1_pwm and _led2_pwm:
+            try:
+                # 重新初始化PWM以应用新频率
+                new_freq = new_config['pwm_freq']
+                _led1_pwm.freq(new_freq)
+                _led2_pwm.freq(new_freq)
+                print(f"[LED] 更新PWM频率为: {new_freq}Hz")
+            except Exception as e:
+                print(f"[LED] [ERROR] PWM频率更新失败: {e}")
+        
+        if 'max_brightness' in new_config:
+            global MAX_BRIGHTNESS
+            MAX_BRIGHTNESS = new_config['max_brightness']
+            print(f"[LED] 更新最大亮度为: {MAX_BRIGHTNESS}")
 
 def _on_led_set_effect(event_data):
     """
@@ -165,9 +212,7 @@ _led_task = None
 _wifi_connected = False
 _ntp_synced = False
 
-# --- 事件回调函数列表 ---
-_wifi_connected_callbacks = []
-_ntp_synced_callbacks = []
+# 注意：回调函数机制已被事件总线替代
 
 # ==================================================================
 # 新增：LED 控制功能
@@ -323,7 +368,7 @@ async def wifi_connecting_blink():
 
 async def led_effect_task():
     """
-    LED效果异步任务：处理呼吸灯和其他动态效果
+    LED效果异步任务：处理呼吸灯和其他动态效果（支持动态优化）
     """
     global _brightness, _fade_direction
     
@@ -343,8 +388,8 @@ async def led_effect_task():
                     _led1_pwm.duty_u16(_brightness)
                     _led2_pwm.duty_u16(MAX_BRIGHTNESS - _brightness)
                 
-                # 呼吸灯更新间隔
-                await asyncio.sleep_ms(50)
+                # 使用动态LED更新间隔（支持温度优化）
+                await asyncio.sleep_ms(_led_update_interval_ms)
             else:
                 # 非动画模式下，降低检查频率
                 await asyncio.sleep_ms(500)
@@ -380,45 +425,7 @@ async def scan_available_networks():
         print(f"[WiFi] [ERROR] 扫描网络失败: {e}")
         return []
 
-async def _trigger_wifi_connected_callbacks():
-    """
-    触发WiFi连接成功的回调函数
-    """
-    for callback in _wifi_connected_callbacks:
-        try:
-            # 在MicroPython中，直接await调用回调函数
-            # 假设所有注册的回调都是async函数
-            await callback()
-        except Exception as e:
-            print(f"[CALLBACK] WiFi连接回调错误: {e}")
-
-async def _trigger_ntp_synced_callbacks():
-    """
-    触发NTP同步成功的回调函数
-    """
-    for callback in _ntp_synced_callbacks:
-        try:
-            # 在MicroPython中，直接await调用回调函数
-            # 假设所有注册的回调都是async函数
-            await callback()
-        except Exception as e:
-            print(f"[CALLBACK] NTP同步回调错误: {e}")
-
-def register_wifi_connected_callback(callback):
-    """
-    注册WiFi连接成功的回调函数
-    """
-    if callback not in _wifi_connected_callbacks:
-        _wifi_connected_callbacks.append(callback)
-        print(f"[CALLBACK] 已注册WiFi连接回调: {callback.__name__}")
-
-def register_ntp_synced_callback(callback):
-    """
-    注册NTP同步成功的回调函数
-    """
-    if callback not in _ntp_synced_callbacks:
-        _ntp_synced_callbacks.append(callback)
-        print(f"[CALLBACK] 已注册NTP同步回调: {callback.__name__}")
+# 注意：回调函数机制已被事件总线替代，所有状态变化通过事件发布
 
 async def connect_wifi():
     """
@@ -443,8 +450,6 @@ async def connect_wifi():
         print(f"[WiFi] IP地址: {ip}")
         if not _wifi_connected:
             _wifi_connected = True
-            # 触发WiFi连接成功回调
-            await _trigger_wifi_connected_callbacks()
             event_bus.publish('wifi_connected', ssid=ssid, ip=ip, reconnect=False)
         return True
 
@@ -493,8 +498,6 @@ async def connect_wifi():
                 print(f"\n[WiFi] [SUCCESS] 成功连接到: {ssid}")
                 print(f"[WiFi] IP地址: {ip}")
                 _wifi_connected = True
-                # 触发WiFi连接成功回调
-                await _trigger_wifi_connected_callbacks()
                 event_bus.publish('wifi_connected', ssid=ssid, ip=ip, reconnect=True)
                 event_bus.publish('log_info', message=f"WiFi连接成功: {ssid} ({ip})")
                 return True
@@ -558,8 +561,8 @@ async def wifi_task():
                     print("[WiFi] WiFi连接状态已恢复")
                     set_effect('single_on', led_num=1)
                 
-                # 连接正常时，降低检查频率
-                await asyncio.sleep(30)
+                # 使用动态WiFi检查间隔（支持温度优化）
+                await asyncio.sleep(_wifi_check_interval_s)
                 
         except Exception as e:
             print(f"[WiFi] WiFi任务错误: {e}")
@@ -621,8 +624,6 @@ async def sync_ntp_time():
             print(f"[NTP] UTC时间: {format_time(utc_time)}")
             print(f"[NTP] 本地时间: {format_time(local_time)} (UTC+{TIMEZONE_OFFSET_HOURS})")
             _ntp_synced = True
-            # 触发NTP同步成功回调
-            await _trigger_ntp_synced_callbacks()
             event_bus.publish('ntp_synced', 
                             utc_time=format_time(utc_time),
                             local_time=format_time(local_time),
@@ -636,12 +637,7 @@ async def sync_ntp_time():
         event_bus.publish('log_warning', message=error_msg)
         return False
 
-async def _on_wifi_connected():
-    """
-    WiFi连接成功后的回调函数：立即尝试NTP同步
-    """
-    print("[NTP] WiFi连接成功，立即尝试时间同步...")
-    await sync_ntp_time()
+# 注意：WiFi连接后的NTP同步现在通过事件总线处理
 
 async def ntp_task():
     """
@@ -651,8 +647,7 @@ async def ntp_task():
     
     print("[NTP] 启动NTP同步任务...")
     
-    # 注册WiFi连接成功的回调，实现事件驱动的NTP同步
-    register_wifi_connected_callback(_on_wifi_connected)
+    # 注意：NTP同步现在通过事件总线的wifi_connected事件触发
     
     while _tasks_running:
         try:
