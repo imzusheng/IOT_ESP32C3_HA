@@ -38,6 +38,12 @@ _error_count = 0
 _last_error_time = 0
 _recovery_attempts = 0
 
+# === 重启计数器 (防止无限重启循环) ===
+_restart_count = 0
+_restart_count_file = '/restart_count.txt'
+_max_restart_count = 5  # 最大重启次数
+_restart_reset_interval_ms = 3600000  # 1小时后重置重启计数器
+
 # === 硬件对象 (内部私有) ===
 _wdt = None
 _timer_scheduler = None  # 统一调度器定时器
@@ -125,15 +131,80 @@ def _get_system_time_info():
     except Exception as e:
         return f"系统时间: 获取失败 ({e})"
 
-def _emergency_hardware_reset():
+def _load_restart_count():
     """
-    紧急硬件重置
+    从文件加载重启计数器
     
-    当系统出现严重错误时，执行硬件重置。
+    Returns:
+        int: 重启次数
     """
     try:
-        print("[EMERGENCY] 守护进程触发紧急硬件重置...")
-        core.publish(get_event_id('log_critical'), message="守护进程触发紧急硬件重置")
+        with open(_restart_count_file, 'r') as f:
+            data = f.read().strip().split(',')
+            count = int(data[0])
+            last_restart_time = int(data[1]) if len(data) > 1 else 0
+            
+            # 检查是否需要重置计数器（超过1小时）
+            current_time = time.ticks_ms()
+            if time.ticks_diff(current_time, last_restart_time) > _restart_reset_interval_ms:
+                print("[DAEMON] 重启计数器已过期，重置为0")
+                return 0
+            
+            return count
+    except:
+        return 0
+
+def _save_restart_count(count):
+    """
+    保存重启计数器到文件
+    
+    Args:
+        count (int): 重启次数
+    """
+    try:
+        current_time = time.ticks_ms()
+        with open(_restart_count_file, 'w') as f:
+            f.write(f"{count},{current_time}")
+    except Exception as e:
+        print(f"[DAEMON] [WARNING] 保存重启计数器失败: {e}")
+
+def _check_restart_loop_protection():
+    """
+    检查重启循环保护
+    
+    Returns:
+        bool: True表示可以重启，False表示应该进入安全模式
+    """
+    global _restart_count
+    
+    _restart_count = _load_restart_count()
+    
+    if _restart_count >= _max_restart_count:
+        error_msg = f"检测到重启循环（{_restart_count}次），进入安全模式"
+        print(f"[DAEMON] [CRITICAL] {error_msg}")
+        core.publish(get_event_id('log_critical'), message=error_msg)
+        _enter_safe_mode(error_msg)
+        return False
+    
+    _restart_count += 1
+    _save_restart_count(_restart_count)
+    print(f"[DAEMON] 重启计数器: {_restart_count}/{_max_restart_count}")
+    return True
+
+def _emergency_hardware_reset():
+    """
+    紧急硬件重置（带重启循环保护）
+    
+    当系统出现严重错误时，执行硬件重置。
+    包含重启循环保护机制，防止无限重启。
+    """
+    try:
+        # 检查重启循环保护
+        if not _check_restart_loop_protection():
+            return  # 进入安全模式，不执行重启
+        
+        print(f"[EMERGENCY] 守护进程触发紧急硬件重置（第{_restart_count}次）...")
+        core.publish(get_event_id('log_critical'), message=f"守护进程触发紧急硬件重置（第{_restart_count}次）")
         time.sleep(0.1)  # 给事件处理一点时间
         machine.reset()
     except:
@@ -661,18 +732,3 @@ def get_daemon_instance():
         CriticalSystemDaemon: 守护进程实例
     """
     return _global_daemon
-
-# 为了向后兼容，保留原有的get_log_queue函数
-# 但现在它返回空列表，因为日志系统已经改为事件驱动
-def get_log_queue():
-    """
-    获取日志队列（向后兼容函数）
-    
-    注意：在新的事件驱动架构中，日志系统不再使用队列，
-    而是通过事件总线处理。这个函数保留是为了向后兼容。
-    
-    Returns:
-        list: 空列表
-    """
-    print("[DAEMON] [WARNING] get_log_queue() 已废弃，请使用事件总线进行日志处理")
-    return []

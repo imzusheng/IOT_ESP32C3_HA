@@ -1,8 +1,11 @@
 import os
+import sys
 import subprocess
 import time
 import serial
 import glob
+import argparse
+from pathlib import Path
 
 # --- 配置区 ---
 
@@ -12,14 +15,8 @@ SRC_DIR = 'micropython_src'
 # 编译后文件存放目录
 DIST_DIR = 'dist'
 
-# 设备的串口号 (请根据您的系统修改)
-# Windows: 'COM3', 'COM4' 等
-# Linux: '/dev/ttyUSB0', '/dev/ttyACM0' 等
-# macOS: '/dev/cu.usbserial-xxxx' 等
-SERIAL_PORT = 'COM6' # <--- 修改这里
-
-# 串口波特率
-BAUD_RATE = 115200
+# 默认串口波特率
+DEFAULT_BAUD_RATE = 115200
 
 # mpy-cross 的路径 (如果已经添加到系统环境变量，可以保持 'mpy-cross')
 MPY_CROSS_EXECUTABLE = 'mpy-cross'
@@ -96,7 +93,27 @@ def send_command(ser, command, delay=0.1, show_output=True):
     return response
 
 
-def upload_files():
+def detect_serial_port():
+    """
+    自动检测可用的串口号。
+    """
+    import serial.tools.list_ports
+    
+    ports = serial.tools.list_ports.comports()
+    micropython_ports = []
+    
+    for port in ports:
+        # 常见的MicroPython设备描述关键词
+        keywords = ['usb', 'serial', 'ch340', 'cp210', 'ftdi', 'micropython']
+        description = (port.description or '').lower()
+        
+        if any(keyword in description for keyword in keywords):
+            micropython_ports.append(port.device)
+    
+    return micropython_ports
+
+
+def upload_files(serial_port, baud_rate=DEFAULT_BAUD_RATE):
     """
     上传 dist 目录中的文件到设备。
     """
@@ -110,8 +127,8 @@ def upload_files():
         return True
 
     try:
-        with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1) as ser:
-            print(f"✅ 成功连接到设备: {SERIAL_PORT}")
+        with serial.Serial(serial_port, baud_rate, timeout=1) as ser:
+            print(f"✅ 成功连接到设备: {serial_port}")
             
             # --- 核心：发送停止命令，类似 Thonny ---
             print("\n interrupting device (Ctrl+C)...")
@@ -158,7 +175,7 @@ def upload_files():
             return True
 
     except serial.SerialException as e:
-        print(f"❌ 错误: 无法打开或读写串口 {SERIAL_PORT}。")
+        print(f"❌ 错误: 无法打开或读写串口 {serial_port}。")
         print(f"  请检查设备是否连接，或串口号是否正确。错误详情: {e}")
         return False
     except Exception as e:
@@ -166,6 +183,63 @@ def upload_files():
         return False
 
 
+def main():
+    parser = argparse.ArgumentParser(description='MicroPython 代码编译和部署工具')
+    parser.add_argument('-p', '--port', type=str, help='指定串口号 (例如: COM3, /dev/ttyUSB0)')
+    parser.add_argument('-b', '--baud', type=int, default=DEFAULT_BAUD_RATE, help=f'串口波特率 (默认: {DEFAULT_BAUD_RATE})')
+    parser.add_argument('--list-ports', action='store_true', help='列出所有可用串口')
+    parser.add_argument('--compile-only', action='store_true', help='仅编译，不上传')
+    
+    args = parser.parse_args()
+    
+    # 列出串口
+    if args.list_ports:
+        import serial.tools.list_ports
+        ports = serial.tools.list_ports.comports()
+        print("可用串口:")
+        for port in ports:
+            print(f"  - {port.device}: {port.description}")
+        return
+    
+    # 编译文件
+    if not compile_files():
+        sys.exit(1)
+    
+    # 如果只编译，则退出
+    if args.compile_only:
+        print("✅ 编译完成，跳过上传步骤。")
+        return
+    
+    # 确定串口
+    serial_port = args.port
+    if not serial_port:
+        detected_ports = detect_serial_port()
+        if not detected_ports:
+            print("❌ 错误: 未检测到可用的串口设备。")
+            print("  请使用 --list-ports 查看所有串口，或使用 -p 参数手动指定。")
+            sys.exit(1)
+        elif len(detected_ports) == 1:
+            serial_port = detected_ports[0]
+            print(f"🔍 自动检测到串口: {serial_port}")
+        else:
+            print("🔍 检测到多个可能的串口:")
+            for i, port in enumerate(detected_ports):
+                print(f"  {i+1}. {port}")
+            try:
+                choice = int(input("请选择串口 (输入数字): ")) - 1
+                if 0 <= choice < len(detected_ports):
+                    serial_port = detected_ports[choice]
+                else:
+                    print("❌ 无效选择")
+                    sys.exit(1)
+            except (ValueError, KeyboardInterrupt):
+                print("\n❌ 操作取消")
+                sys.exit(1)
+    
+    # 上传文件
+    if not upload_files(serial_port, args.baud):
+        sys.exit(1)
+
+
 if __name__ == "__main__":
-    if compile_files():
-        upload_files()
+    main()

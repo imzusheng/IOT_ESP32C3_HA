@@ -251,11 +251,35 @@ def reload_config():
     global _loaded_config, _config_load_time
     
     try:
+        old_config = _loaded_config.copy() if _loaded_config else {}
         _loaded_config = _load_json_config()
         _config_load_time = time.ticks_ms() if 'time' in globals() else 0
         
         if _loaded_config:
             print("[CONFIG] 配置重载成功")
+            
+            # 发布配置更新事件，包含新旧配置对比
+            try:
+                from event_bus import publish
+                publish(EV_CONFIG_UPDATE, config=_loaded_config, old_config=old_config)
+                
+                # 如果LED配置发生变化，发布LED配置更新事件
+                if old_config.get('led', {}) != _loaded_config.get('led', {}):
+                    publish(get_event_id('led_config_updated'), led_config=_loaded_config.get('led', {}))
+                
+                # 如果WiFi配置发生变化，发布WiFi配置更新事件
+                if old_config.get('wifi', {}) != _loaded_config.get('wifi', {}):
+                    publish(get_event_id('wifi_config_updated'), wifi_config=_loaded_config.get('wifi', {}))
+                
+                # 如果日志配置发生变化，发布日志配置更新事件
+                if old_config.get('logging', {}) != _loaded_config.get('logging', {}):
+                    publish(get_event_id('log_config_updated'), log_config=_loaded_config.get('logging', {}))
+                    
+            except ImportError:
+                # 如果event_bus模块不可用，跳过事件发布
+                if DEBUG:
+                    print("[CONFIG] event_bus模块不可用，跳过事件发布")
+            
             return True
         else:
             print("[CONFIG] 配置重载失败，使用默认配置")
@@ -418,17 +442,8 @@ _DEFAULT_DAEMON_CONFIG = {
 }
 
 # 动态配置获取函数
-def get_daemon_config():
-    """获取守护进程配置（支持JSON配置）"""
-    if _loaded_config and 'daemon' in _loaded_config:
-        # 合并JSON配置和默认配置
-        config = _DEFAULT_DAEMON_CONFIG.copy()
-        config.update(_loaded_config['daemon'])
-        return config
-    return _DEFAULT_DAEMON_CONFIG.copy()
-
 # 向后兼容的常量
-DAEMON_CONFIG = get_daemon_config()
+DAEMON_CONFIG = _DEFAULT_DAEMON_CONFIG.copy()
 
 # 安全与保护机制配置
 SAFETY_CONFIG = {

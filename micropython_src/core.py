@@ -1,18 +1,16 @@
 # core.py
 """
-核心功能模块 - 代码体积优化版本
+核心事件总线模块
 
-这个模块合并了多个小模块的功能，减少文件数量和导入开销：
-- 事件总线核心功能
+重构后的核心模块专注于事件总线功能：
+- 轻量级事件总线实现
+- 异步和同步事件处理
+- 事件订阅和发布管理
 - 基础工具函数
-- 常用硬件操作
-- 系统状态管理
 
-优化策略：
-1. 减少模块文件数量
-2. 合并相关功能
-3. 减少导入开销
-4. 使用整数常量替代字符串
+其他功能已分离到独立模块：
+- 日志系统: logger.py
+- LED控制: led.py
 """
 
 import asyncio
@@ -123,60 +121,8 @@ def get_subscribers_count(event_type):
     return _global_event_bus.get_subscribers_count(event_type)
 
 # =============================================================================
-# 轻量级日志系统
+# 日志接口函数（委托给logger模块）
 # =============================================================================
-
-class SimpleLogger:
-    """简化的日志系统"""
-    
-    def __init__(self, max_queue_size=50):
-        self.log_queue = deque((), max_queue_size)
-        self.enabled = True
-        
-        # 订阅日志事件
-        subscribe(LOG_LEVEL_CRITICAL, self._on_critical)
-        subscribe(LOG_LEVEL_WARNING, self._on_warning)
-        subscribe(LOG_LEVEL_INFO, self._on_info)
-    
-    def _on_critical(self, message="", **kwargs):
-        """处理关键日志"""
-        self._add_log("CRITICAL", message)
-    
-    def _on_warning(self, message="", **kwargs):
-        """处理警告日志"""
-        self._add_log("WARNING", message)
-    
-    def _on_info(self, message="", **kwargs):
-        """处理信息日志"""
-        self._add_log("INFO", message)
-    
-    def _add_log(self, level, message):
-        """添加日志到队列"""
-        if not self.enabled:
-            return
-        
-        try:
-            timestamp = time.time()
-            log_entry = f"[{level}] {timestamp}: {message}"
-            self.log_queue.append(log_entry)
-            
-            if DEBUG:
-                print(log_entry)
-        except Exception as e:
-            if DEBUG:
-                print(f"[Logger] 日志记录失败: {e}")
-    
-    def get_recent_logs(self, count=10):
-        """获取最近的日志"""
-        return list(self.log_queue)[-count:]
-    
-    def clear_logs(self):
-        """清空日志队列"""
-        self.log_queue.clear()
-        gc.collect()
-
-# 全局日志实例
-_global_logger = SimpleLogger()
 
 def log_critical(message):
     """记录关键日志"""
@@ -252,140 +198,42 @@ def format_time(timestamp=None):
         return "时间格式化失败"
 
 # =============================================================================
-# 简化的LED控制
+# LED接口函数（委托给led模块）
 # =============================================================================
 
-class SimpleLED:
-    """简化的LED控制器"""
-    
-    def __init__(self, pin1=2, pin2=8):
-        self.pin1 = pin1
-        self.pin2 = pin2
-        self.pwm1 = None
-        self.pwm2 = None
-        self.initialized = False
-        
-        # 订阅LED事件
-        subscribe(EV_LED_SET_EFFECT, self._on_set_effect)
-        subscribe(EV_LED_SET_BRIGHTNESS, self._on_set_brightness)
-        subscribe(EV_LED_EMERGENCY_OFF, self._on_emergency_off)
-    
-    def init(self):
-        """初始化LED"""
-        try:
-            self.pwm1 = PWM(Pin(self.pin1), freq=1000)
-            self.pwm2 = PWM(Pin(self.pin2), freq=1000)
-            self.pwm1.duty_u16(0)
-            self.pwm2.duty_u16(0)
-            self.initialized = True
-            
-            if DEBUG:
-                print("[LED] 初始化成功")
-            
-            publish(get_event_id('led_initialized'), success=True)
-            return True
-        except Exception as e:
-            if DEBUG:
-                print(f"[LED] 初始化失败: {e}")
-            publish(get_event_id('led_initialized'), success=False, error=str(e))
-            return False
-    
-    def deinit(self):
-        """关闭LED"""
-        try:
-            if self.pwm1:
-                self.pwm1.deinit()
-            if self.pwm2:
-                self.pwm2.deinit()
-            self.initialized = False
-            
-            if DEBUG:
-                print("[LED] 已关闭")
-            
-            publish(get_event_id('led_deinitialized'))
-        except Exception as e:
-            if DEBUG:
-                print(f"[LED] 关闭失败: {e}")
-    
-    def set_brightness(self, led_num=1, brightness=0):
-        """设置LED亮度"""
-        if not self.initialized:
-            return False
-        
-        try:
-            duty = int(brightness * 65535 / 100)  # 转换为16位PWM值
-            
-            if led_num == 1 and self.pwm1:
-                self.pwm1.duty_u16(duty)
-            elif led_num == 2 and self.pwm2:
-                self.pwm2.duty_u16(duty)
-            
-            return True
-        except Exception as e:
-            if DEBUG:
-                print(f"[LED] 设置亮度失败: {e}")
-            return False
-    
-    def set_effect(self, effect='off'):
-        """设置LED效果"""
-        if not self.initialized:
-            return False
-        
-        try:
-            if effect == 'off':
-                self.set_brightness(1, 0)
-                self.set_brightness(2, 0)
-            elif effect == 'on':
-                self.set_brightness(1, 50)
-                self.set_brightness(2, 50)
-            elif effect == 'blink':
-                # 简单的交替闪烁
-                current_time = time.ticks_ms()
-                if (current_time // 500) % 2:
-                    self.set_brightness(1, 100)
-                    self.set_brightness(2, 0)
-                else:
-                    self.set_brightness(1, 0)
-                    self.set_brightness(2, 100)
-            
-            publish(get_event_id('led_effect_changed'), effect=effect)
-            return True
-        except Exception as e:
-            if DEBUG:
-                print(f"[LED] 设置效果失败: {e}")
-            return False
-    
-    def _on_set_effect(self, effect='off', **kwargs):
-        """处理设置效果事件"""
-        self.set_effect(effect)
-    
-    def _on_set_brightness(self, led_num=1, brightness=0, **kwargs):
-        """处理设置亮度事件"""
-        self.set_brightness(led_num, brightness)
-    
-    def _on_emergency_off(self, **kwargs):
-        """处理紧急关闭事件"""
-        self.set_effect('off')
-        publish(get_event_id('led_emergency_off_completed'))
-
-# 全局LED实例
-_global_led = SimpleLED()
-
 def init_led():
-    """初始化LED"""
-    return _global_led.init()
+    """初始化LED（委托给led模块）"""
+    try:
+        import led
+        return led.init_led()
+    except ImportError:
+        if DEBUG:
+            print("[Core] LED模块未找到")
+        return False
 
 def deinit_led():
-    """关闭LED"""
-    _global_led.deinit()
+    """关闭LED（委托给led模块）"""
+    try:
+        import led
+        led.deinit_led()
+    except ImportError:
+        pass
 
-def set_led_effect(effect):
-    """设置LED效果"""
-    return _global_led.set_effect(effect)
+def set_led_effect(effect, **params):
+    """设置LED效果（委托给led模块）"""
+    try:
+        import led
+        return led.set_led_effect(effect, **params)
+    except ImportError:
+        return False
 
 def set_led_brightness(led_num, brightness):
-    """设置LED亮度"""
-    return _global_led.set_brightness(led_num, brightness)
+    """设置LED亮度（委托给led模块）"""
+    try:
+        import led
+        return led.set_led_brightness(led_num, brightness)
+    except ImportError:
+        return False
 
 # =============================================================================
 # 兼容性函数

@@ -290,6 +290,23 @@ def start_critical_daemon():
             pass  # 如果事件总线也失败，至少保证程序不崩溃
         return False
 
+def clear_restart_counter():
+    """
+    清除重启计数器（系统正常启动后调用）
+    """
+    try:
+        import os
+        restart_count_file = '/restart_count.txt'
+        if restart_count_file in os.listdir('/'):
+            os.remove(restart_count_file)
+            if DEBUG:
+                print("[MAIN] 重启计数器已清除")
+            core.publish(get_event_id('log_info'), message="重启计数器已清除")
+    except Exception as e:
+        if DEBUG:
+            print(f"[MAIN] [WARNING] 清除重启计数器失败: {e}")
+        core.publish(get_event_id('log_warning'), message=f"清除重启计数器失败: {e}")
+
 def main():
     """
     主程序入口：启动守护进程和异步系统 (重构版本)
@@ -297,14 +314,16 @@ def main():
     重构后的启动流程：
     1. 初始化事件总线和配置系统
     2. 启动关键系统守护进程（硬件监控、看门狗）
-    3. 启动异步任务系统（WiFi、NTP、LED、业务逻辑）
-    4. 进入主循环直到系统停止
+    3. 清除重启计数器（防止无限重启循环）
+    4. 启动异步任务系统（WiFi、NTP、LED、业务逻辑）
+    5. 进入主循环直到系统停止
     
     设计特点：
     - 事件驱动：所有模块通过事件总线通信
     - 配置驱动：系统参数通过配置管理
     - 错误隔离：单个模块失败不影响整体系统
     - 优雅关闭：支持中断信号和异常处理
+    - 重启保护：防止无限重启循环
     """
     print("\n" + "="*60)
     print("         ESP32-C3 IoT系统启动 (重构版本)")
@@ -314,6 +333,9 @@ def main():
     if not start_critical_daemon():
         print("[CRITICAL] 守护进程启动失败！系统无法继续运行")
         return
+    
+    # 清除重启计数器（系统正常启动后）
+    clear_restart_counter()
 
     if DEBUG:
         print("[MAIN] 守护进程启动成功，开始初始化异步系统...")

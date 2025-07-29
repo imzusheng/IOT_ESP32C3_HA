@@ -1,6 +1,6 @@
 # utils.py
 """
-实用工具模块 - WiFi连接、NTP时间同步、LED控制 (重构版本)
+实用工具模块 - WiFi连接、NTP时间同步、LED控制
 
 这个模块提供了系统的核心功能，重构后具有以下特点：
 1. 配置驱动：所有配置通过config模块获取
@@ -21,7 +21,6 @@ import machine
 import esp32
 import uasyncio as asyncio
 from enum import Enum
-import config
 import core  # 使用合并的核心模块
 from config import get_event_id, DEBUG, EV_WIFI_CONNECTING, EV_WIFI_CONNECTED, EV_WIFI_ERROR, EV_WIFI_TIMEOUT, EV_LED_SET_EFFECT, EV_LED_SET_BRIGHTNESS, EV_LED_EMERGENCY_OFF, EV_CONFIG_UPDATE
 
@@ -339,8 +338,11 @@ async def wifi_connecting_blink():
 async def led_effect_task():
     """
     LED效果异步任务：处理各种闪烁效果（支持动态优化）
+    增强了异常处理，确保单次错误不会导致整个任务停止
     """
     global _blink_state, _blink_counter
+    
+    print("[LED] LED效果异步任务已启动")
     
     while _tasks_running:
         try:
@@ -429,9 +431,14 @@ async def led_effect_task():
                 # 非动画模式下，降低检查频率
                 await asyncio.sleep_ms(500)
         except Exception as e:
+            error_msg = f"LED效果任务错误: {e}"
             if DEBUG:
-                print(f"[LED] 异步任务错误: {e}")
-            await asyncio.sleep_ms(1000)
+                print(f"[LED] [ERROR] {error_msg}")
+            core.publish(get_event_id('log_warning'), message=error_msg)
+            # 发生错误时等待更长时间，避免错误循环
+            await asyncio.sleep_ms(2000)
+    
+    print("[LED] LED效果异步任务已停止")
 
 # ==================================================================
 # WiFi与NTP功能 (保持不变)
@@ -508,7 +515,7 @@ async def _wait_for_connection(wlan, ssid):
 
 async def connect_wifi_attempt(wifi_configs):
     """
-    尝试连接WiFi网络（单次尝试）
+    尝试连接WiFi网络（支持多个网络尝试）
     参数: wifi_configs - 可用的WiFi配置列表
     返回: 连接成功返回True，失败返回False
     """
@@ -521,30 +528,55 @@ async def connect_wifi_attempt(wifi_configs):
     if not wlan.active():
         wlan.active(True)
     
-    # 尝试连接第一个可用网络
-    config = wifi_configs[0]
-    ssid = config["ssid"]
-    password = config["password"]
+    # 尝试连接所有可用网络
+    for config in wifi_configs:
+        ssid = config["ssid"]
+        password = config["password"]
+        
+        print(f"[WiFi] 尝试连接到: {ssid}")
+        core.publish(get_event_id('wifi_trying'), ssid=ssid)
+        
+        try:
+            # 断开之前的连接
+            if wlan.isconnected():
+                wlan.disconnect()
+                await asyncio.sleep_ms(500)
+            
+            # 开始连接过程
+            wlan.connect(ssid, password)
+            
+            # 使用辅助函数等待连接
+            if await _wait_for_connection(wlan, ssid):
+                # 连接成功处理
+                ip_info = wlan.ifconfig()
+                ip = ip_info[0]
+                print(f"\n[WiFi] [SUCCESS] 成功连接到: {ssid}")
+                print(f"[WiFi] IP地址: {ip}")
+                _wifi_connected = True
+                core.publish(EV_WIFI_CONNECTED, ssid=ssid, ip=ip, reconnect=True)
+                core.publish(get_event_id('log_info'), message=f"WiFi连接成功: {ssid} ({ip})")
+                return True
+            else:
+                error_msg = f"连接 {ssid} 超时"
+                print(f"[WiFi] [WARNING] {error_msg}")
+                core.publish(EV_WIFI_ERROR, ssid=ssid, error=error_msg)
+                # 继续尝试下一个网络
+                continue
+                
+        except Exception as e:
+            error_msg = f"连接 {ssid} 异常: {e}"
+            print(f"[WiFi] [WARNING] {error_msg}")
+            core.publish(EV_WIFI_ERROR, ssid=ssid, error=error_msg)
+            # 继续尝试下一个网络
+            continue
     
-    print(f"[WiFi] 尝试连接到: {ssid}")
-    core.publish(get_event_id('wifi_trying'), ssid=ssid)
-    
-    # 开始连接过程
-    wlan.connect(ssid, password)
-    
-    # 使用辅助函数等待连接
-    if not await _wait_for_connection(wlan, ssid):
-        return False
-    
-    # 连接成功处理
-    ip_info = wlan.ifconfig()
-    ip = ip_info[0]
-    print(f"\n[WiFi] [SUCCESS] 成功连接到: {ssid}")
-    print(f"[WiFi] IP地址: {ip}")
-    _wifi_connected = True
-    core.publish(EV_WIFI_CONNECTED, ssid=ssid, ip=ip, reconnect=True)
-    core.publish(get_event_id('log_info'), message=f"WiFi连接成功: {ssid} ({ip})")
-    return True
+    # 所有网络都尝试失败
+    error_msg = "所有WiFi网络连接失败"
+    print(f"[WiFi] [ERROR] {error_msg}")
+    _wifi_connected = False
+    core.publish(get_event_id('wifi_failed'))
+    core.publish(get_event_id('log_warning'), message=error_msg)
+    return False
 
 # 注意：回调函数机制已被事件总线替代，所有状态变化通过事件发布
 
@@ -625,6 +657,7 @@ async def wifi_task():
     
     使用明确的状态机来管理WiFi连接流程，提高代码可维护性和可扩展性。
     状态包括：DISCONNECTED, SCANNING, CONNECTING, CONNECTED, RETRY_WAIT
+    增强了异常处理，确保单次错误不会导致整个任务停止
     """
     global _wifi_connected
     
@@ -633,6 +666,7 @@ async def wifi_task():
     wlan = network.WLAN(network.STA_IF)
     state = WifiState.DISCONNECTED
     available_configs = []
+    error_count = 0  # 错误计数器
     
     while _tasks_running:
         try:
@@ -705,9 +739,21 @@ async def wifi_task():
                 await asyncio.sleep_ms(500)
                 
         except Exception as e:
-            print(f"[WiFi] WiFi任务错误: {e}")
+            error_count += 1
+            error_msg = f"WiFi任务错误 (第{error_count}次): {e}"
+            print(f"[WiFi] [ERROR] {error_msg}")
+            core.publish(get_event_id('log_warning'), message=error_msg)
+            
+            # 如果错误次数过多，延长等待时间
+            if error_count > 5:
+                await asyncio.sleep(30)  # 错误过多时等待30秒
+                error_count = 0  # 重置错误计数器
+            else:
+                await asyncio.sleep(10)
+            
             state = WifiState.RETRY_WAIT  # 出现异常也进入重试等待
-            await asyncio.sleep(10)
+    
+    print("[WiFi] WiFi连接任务已停止")
 
 
 def get_local_time():
@@ -783,10 +829,12 @@ async def sync_ntp_time():
 async def ntp_task():
     """
     NTP时间同步异步任务：负责定期同步时间
+    增强了异常处理，确保单次错误不会导致整个任务停止
     """
     global _ntp_synced
     
     print("[NTP] 启动NTP同步任务...")
+    error_count = 0  # 错误计数器
     
     # 注意：NTP同步现在通过事件总线的wifi_connected事件触发
     
@@ -807,8 +855,19 @@ async def ntp_task():
                     await sync_ntp_time()
                     
         except Exception as e:
-             print(f"[NTP] NTP任务错误: {e}")
-             await asyncio.sleep(30)
+            error_count += 1
+            error_msg = f"NTP任务错误 (第{error_count}次): {e}"
+            print(f"[NTP] [ERROR] {error_msg}")
+            core.publish(get_event_id('log_warning'), message=error_msg)
+            
+            # 如果错误次数过多，延长等待时间
+            if error_count > 3:
+                await asyncio.sleep(300)  # 错误过多时等待5分钟
+                error_count = 0  # 重置错误计数器
+            else:
+                await asyncio.sleep(60)  # 错误时等待1分钟
+    
+    print("[NTP] NTP同步任务已停止")
 
 # ==================================================================
 # 异步任务管理器
@@ -933,6 +992,3 @@ def run_async_system():
         print(f"[SYSTEM] 系统错误: {e}")
     finally:
         print("[SYSTEM] 异步系统已停止")
-
-# 注意：wifi_connection_loop() 兼容性函数已移除
-# 新架构使用 wifi_task() 异步任务和事件驱动模式
