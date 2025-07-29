@@ -25,6 +25,173 @@ except ImportError:
     import json
 
 # =============================================================================
+# 整数常量定义 - 代码体积优化
+# =============================================================================
+
+# 使用 micropython.const 进行编译时优化
+try:
+    from micropython import const
+except ImportError:
+    # 在标准Python环境中使用普通常量
+    def const(x):
+        return x
+
+# === 事件类型常量 ===
+# WiFi相关事件
+EV_WIFI_CONNECTING = const(1)
+EV_WIFI_CONNECTED = const(2)
+EV_WIFI_DISCONNECTED = const(3)
+EV_WIFI_TRYING = const(4)
+EV_WIFI_TIMEOUT = const(5)
+EV_WIFI_ERROR = const(6)
+EV_WIFI_FAILED = const(7)
+EV_WIFI_SCAN_FAILED = const(8)
+EV_WIFI_DISCONNECTED_DETECTED = const(9)
+
+# NTP相关事件
+EV_NTP_SYNCING = const(10)
+EV_NTP_SYNCED = const(11)
+EV_NTP_FAILED = const(12)
+EV_NTP_NO_WIFI = const(13)
+EV_NTP_NOT_SYNCED_DETECTED = const(14)
+
+# 系统相关事件
+EV_MAIN_LOOP_STARTED = const(20)
+EV_MAIN_LOOP_STOPPED = const(21)
+EV_SYSTEM_HEARTBEAT = const(22)
+EV_SYSTEM_STATUS_CHECK = const(23)
+EV_MEMORY_STATUS = const(24)
+EV_LOW_MEMORY_WARNING = const(25)
+EV_LOOP_COUNTER_RESET = const(26)
+EV_PERFORMANCE_REPORT = const(27)
+EV_CONFIG_UPDATE = const(28)
+EV_SYSTEM_STARTING = const(29)
+EV_SYSTEM_STOPPED = const(30)
+EV_SYSTEM_SHUTTING_DOWN = const(31)
+EV_SYSTEM_SHUTDOWN_REQUESTED = const(32)
+EV_SYSTEM_ERROR = const(33)
+EV_SYSTEM_TASK_ERROR = const(34)
+
+# 守护进程相关事件
+EV_DAEMON_STARTED = const(40)
+EV_DAEMON_START_FAILED = const(41)
+EV_ENTER_SAFE_MODE = const(42)
+EV_EXIT_SAFE_MODE = const(43)
+EV_SCHEDULER_INTERVAL_ADJUSTED = const(44)
+
+# LED相关事件
+EV_LED_SET_EFFECT = const(50)
+EV_LED_SET_BRIGHTNESS = const(51)
+EV_LED_EMERGENCY_OFF = const(52)
+EV_LED_EMERGENCY_OFF_COMPLETED = const(53)
+EV_LED_INITIALIZED = const(54)
+EV_LED_DEINITIALIZED = const(55)
+EV_LED_EFFECT_CHANGED = const(56)
+
+# 异步任务相关事件
+EV_ASYNC_SYSTEM_STARTING = const(60)
+EV_ASYNC_TASKS_STARTED = const(61)
+EV_ASYNC_TASKS_CLEANUP_STARTED = const(62)
+EV_ASYNC_TASKS_CLEANUP_COMPLETED = const(63)
+
+# 日志相关事件
+EV_LOGGER_INITIALIZED = const(70)
+
+# === 日志级别常量 ===
+LOG_LEVEL_CRITICAL = const(101)
+LOG_LEVEL_WARNING = const(102)
+LOG_LEVEL_INFO = const(103)
+LOG_LEVEL_ERROR = const(104)
+
+# === 调试开关 ===
+# 发布版本时设为 False 可移除所有调试信息
+DEBUG = False  # 开发时设为 True, 发布时设为 False
+# === 事件常量映射表 ===
+# 用于向后兼容和字符串到整数的转换
+EVENT_MAP = {
+    # WiFi相关事件
+    'wifi_connecting': EV_WIFI_CONNECTING,
+    'wifi_connected': EV_WIFI_CONNECTED,
+    'wifi_disconnected': EV_WIFI_DISCONNECTED,
+    'wifi_trying': EV_WIFI_TRYING,
+    'wifi_timeout': EV_WIFI_TIMEOUT,
+    'wifi_error': EV_WIFI_ERROR,
+    'wifi_failed': EV_WIFI_FAILED,
+    'wifi_scan_failed': EV_WIFI_SCAN_FAILED,
+    'wifi_disconnected_detected': EV_WIFI_DISCONNECTED_DETECTED,
+    
+    # NTP相关事件
+    'ntp_syncing': EV_NTP_SYNCING,
+    'ntp_synced': EV_NTP_SYNCED,
+    'ntp_failed': EV_NTP_FAILED,
+    'ntp_no_wifi': EV_NTP_NO_WIFI,
+    'ntp_not_synced_detected': EV_NTP_NOT_SYNCED_DETECTED,
+    
+    # 系统相关事件
+    'main_loop_started': EV_MAIN_LOOP_STARTED,
+    'main_loop_stopped': EV_MAIN_LOOP_STOPPED,
+    'system_heartbeat': EV_SYSTEM_HEARTBEAT,
+    'system_status_check': EV_SYSTEM_STATUS_CHECK,
+    'memory_status': EV_MEMORY_STATUS,
+    'low_memory_warning': EV_LOW_MEMORY_WARNING,
+    'loop_counter_reset': EV_LOOP_COUNTER_RESET,
+    'performance_report': EV_PERFORMANCE_REPORT,
+    'config_update': EV_CONFIG_UPDATE,
+    'system_starting': EV_SYSTEM_STARTING,
+    'system_stopped': EV_SYSTEM_STOPPED,
+    'system_shutting_down': EV_SYSTEM_SHUTTING_DOWN,
+    'system_shutdown_requested': EV_SYSTEM_SHUTDOWN_REQUESTED,
+    'system_error': EV_SYSTEM_ERROR,
+    'system_task_error': EV_SYSTEM_TASK_ERROR,
+    
+    # 守护进程相关事件
+    'daemon_started': EV_DAEMON_STARTED,
+    'daemon_start_failed': EV_DAEMON_START_FAILED,
+    'enter_safe_mode': EV_ENTER_SAFE_MODE,
+    'exit_safe_mode': EV_EXIT_SAFE_MODE,
+    'scheduler_interval_adjusted': EV_SCHEDULER_INTERVAL_ADJUSTED,
+    
+    # LED相关事件
+    'led_set_effect': EV_LED_SET_EFFECT,
+    'led_set_brightness': EV_LED_SET_BRIGHTNESS,
+    'led_emergency_off': EV_LED_EMERGENCY_OFF,
+    'led_emergency_off_completed': EV_LED_EMERGENCY_OFF_COMPLETED,
+    'led_initialized': EV_LED_INITIALIZED,
+    'led_deinitialized': EV_LED_DEINITIALIZED,
+    'led_effect_changed': EV_LED_EFFECT_CHANGED,
+    
+    # 异步任务相关事件
+    'async_system_starting': EV_ASYNC_SYSTEM_STARTING,
+    'async_tasks_started': EV_ASYNC_TASKS_STARTED,
+    'async_tasks_cleanup_started': EV_ASYNC_TASKS_CLEANUP_STARTED,
+    'async_tasks_cleanup_completed': EV_ASYNC_TASKS_CLEANUP_COMPLETED,
+    
+    # 日志相关事件
+    'logger_initialized': EV_LOGGER_INITIALIZED,
+}
+
+# === 日志级别映射表 ===
+LOG_LEVEL_MAP = {
+    'log_critical': LOG_LEVEL_CRITICAL,
+    'log_warning': LOG_LEVEL_WARNING,
+    'log_info': LOG_LEVEL_INFO,
+    'log_error': LOG_LEVEL_ERROR,
+}
+
+# === 辅助函数 ===
+def get_event_id(event_name):
+    """获取事件ID，支持字符串和整数输入"""
+    if isinstance(event_name, int):
+        return event_name
+    return EVENT_MAP.get(event_name, event_name)
+
+def get_log_level_id(level_name):
+    """获取日志级别ID，支持字符串和整数输入"""
+    if isinstance(level_name, int):
+        return level_name
+    return LOG_LEVEL_MAP.get(level_name, level_name)
+
+# =============================================================================
 # JSON配置文件管理
 # =============================================================================
 

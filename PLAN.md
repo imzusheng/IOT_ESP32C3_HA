@@ -1,42 +1,207 @@
-您提的这个问题非常好，直接命中了嵌入式系统设计中的核心权衡：**响应性 vs. 功耗**。
+好的，完全理解。在存储空间（Flash）极其宝贵的嵌入式环境中，优化代码体积和优化性能、功耗同等重要。
 
-简单来说：**`SCHEDULER_INTERVAL_MS = 100` 对于一个160MHz的ESP32-C3来说，在性能上完全没有问题，但它可能不是最优的功耗和发热选择。**
+之前的讨论我们侧重于\*\*运行时（Runtime）**的优化（定时器、功耗），现在我们聚焦于**编译时（Compile-time）\*\*的优化，即如何减小最终生成的 `.mpy` 文件的体积。
 
-下面我将从正反两方面为您详细分析：
+以下是针对您这个项目，从代码量角度出发的一系列具体优化策略，同样包含代码示例。
 
-### 为什么说 100ms 在性能上“不频繁”？
+### 核心原则
 
-1.  **CPU处理能力**：ESP32-C3 的主频是 160MHz，这意味着它每秒可以执行数千万条指令。一个100毫秒（即每秒10次）触发的中断，其处理代码本身非常轻量（仅仅是几次 `time.ticks_diff()` 的比较），对于CPU来说几乎是瞬时完成的，占用的计算资源微乎其微。
+MicroPython编译器 (`mpy-cross`) 在将 `.py` 文件编译成字节码时，变量名、函数名、注释、空行都会被移除。**真正影响体积的是：代码的逻辑行数、字符串字面量（String Literals）、以及定义的数据结构（字典、列表等）的大小。**
 
-2.  **任务的实际执行频率低**：关键在于，**调度器中断**（Timer Interrupt）的频繁不等于**任务执行**（Task Execution）的频繁。您的任务，如喂狗（每3秒）、监控（每30秒）、打印性能报告（每30秒），实际执行的频率远低于100毫秒。调度器做的仅仅是快速“看一眼表”，判断任务时间到了没有，这个动作本身开销极小。
+-----
 
-3.  **提供良好的响应粒度**：100ms的间隔意味着系统的“反应速度”在100毫秒级别。例如，如果未来您想添加一个功能，“当某个事件发生后，在100-200毫秒内必须做出反应”，那么这个调度器间隔就非常合适。
+### 1\. **合并功能模块，减少文件开销**
 
-### 为什么说 100ms 可能“过于频繁”？（您的担忧是正确的）
+  - **问题分析**:
+    每个独立的 `.py` 文件，即使内容很少，编译后的 `.mpy` 文件也有一个最小的“基础开销”。此外，多个文件之间的 `import` 语句也会增加一些字节码。在您的项目中，`logger.py` 和 `temp_optimization.py` 的功能相对单一，可以考虑合并到更核心的模块中。
 
-这主要关乎**功耗和温度**，这正是您项目中 `temp_optimization.py` 所关注的重点。
+  - **优化建议**:
 
-1.  **阻止深度睡眠，增加功耗**：嵌入式系统在空闲时会进入不同级别的睡眠模式以节省电能。频繁的中断会持续地将CPU从低功耗的睡眠状态中“唤醒”。即使中断处理本身很快，**唤醒CPU这个动作本身是最耗电的环节之一**。每100毫秒唤醒一次，意味着CPU几乎没有机会进入更深层次、更省电的睡眠模式。
+    1.  **合并 `logger.py` 到 `daemon.py`**: 日志记录与系统守护进程紧密相关。可以将日志队列和写入逻辑直接整合进守护进程模块。
+    2.  **合并 `temp_optimization.py` 到 `main.py`**: 温度优化逻辑只在 `main.py` 的 `system_coordinator_task` 中被调用。可以将其核心数据结构和函数直接移入 `main.py`。
 
-2.  **增加系统总体发热**：功耗与发热直接相关。持续的唤醒和短暂运行会累积产生热量，这与您在项目中努力进行温度优化的目标是相悖的。`README.md` 和 `temp_optimization.py` 都表明，系统对39°C的运行温度很敏感，因此控制不必要的CPU活动是至关重要的。
+  - **代码示例 (合并 `temp_optimization.py` 到 `main.py`)**:
 
-### 结论与优化建议
+    ```python
+    # main.py
 
-您的直觉是正确的，100ms可能“过于频繁”了，尤其是在一个已经关注温度问题的项目中。这是一个典型的**响应性（Responsiveness）**与**能效（Power Efficiency）**之间的权衡。
+    import gc
+    import machine
+    import uasyncio as asyncio
+    # 移除 import temp_optimization
 
-我建议可以采用一种更折中的或者动态的方案：
+    # ... 其他导入 ...
 
-1.  **折中选择**：可以将间隔适当放宽到 **250ms** 或 **500ms**。
-    * **250ms (每秒4次)**: 这是一个很好的平衡点。对于大多数IoT设备的人机交互或状态更新来说，250ms的延迟用户是无感的，但相比100ms，它将CPU的唤醒次数减少了60%，能效显著提升。
-    * **500ms (每秒2次)**: 如果系统不需要快速响应，这是一个更节能的选择。
+    # === 将 temp_optimization.py 的核心内容直接放在这里 ===
+    TEMP_THRESHOLDS = {
+        'normal': 35.0, 'warning': 40.0, 'critical': 45.0, 'emergency': 50.0
+    }
+    TEMP_LEVEL_CONFIGS = {
+        # ... 各等级的具体配置 ...
+    }
 
-2.  **动态调整（最佳方案）**：将调度器间隔本身也纳入到您的 `temp_optimization.py` 框架中。
-    * 在 `TEMP_LEVEL_CONFIGS` 中为不同的温度等级设置不同的调度器间隔。
-    * **Normal**: 200ms
-    * **Warning**: 500ms
-    * **Critical**: 1000ms (1秒)
-    * **Emergency**: 2000ms (2秒)
-    * 当温度升高时，系统不仅降低任务频率，还降低“检查频率”（即调度器中断频率），从而进入一种更深度的“半休眠”状态，最大程度地降低功耗和发热。这会让您的温度优化系统更加强大和有效。
+    def get_temp_level(temp):
+        # ... 实现 ...
 
-**总结：**
-我最初建议的100ms是从确保功能正确和高响应性的角度出发的一个“安全”的开发基准。但在实际应用和优化阶段，结合您项目对功耗和温度的考量，**放宽到250ms-500ms，或者实现动态调整，是更合理、更高级的优化策略。**
+    def get_optimized_config_for_temp(temp):
+        # ... 实现 ...
+    # =======================================================
+
+    async def system_coordinator_task():
+        """
+        系统协调员任务：直接使用本文件内的温度优化逻辑
+        """
+        print("[COORDINATOR] 启动系统协调员任务...")
+        
+        def on_performance_report(**kwargs):
+            temp = kwargs.get('temperature')
+            if temp is not None:
+                # 直接调用本文件内的函数
+                temp_level = get_temp_level(temp)
+                new_config = get_optimized_config_for_temp(temp)
+                
+                event_bus.publish('config_update', 
+                                 source='temp_optimizer', 
+                                 config=new_config,
+                                 temp_level=temp_level)
+        
+        event_bus.subscribe('performance_report', on_performance_report)
+        # ... 任务循环 ...
+    ```
+
+    **效果**: 减少了一个文件的编译开销，并且减少了 `main.py` 中的一个 `import` 指令。
+
+-----
+
+### 2\. **用整数常量替代字符串**
+
+  - **问题分析**:
+    字符串是占用Flash空间的大户。您的代码中大量使用了字符串作为事件名、日志级别、字典键等，例如 `'wifi_connected'`, `'log_critical'`, `'temperature'`。这些字符串在编译后会原样保留在字节码中。
+
+  - **优化建议**:
+    创建一个统一的常量模块（例如 `constants.py`，或者直接在 `config.py` 里），用整数来定义这些标识符。然后所有模块都引用这些整数常量。
+
+  - **代码示例**:
+
+    1.  **在 `config.py` 中定义常量**:
+
+        ```python
+        # config.py
+
+        # ... 其他配置 ...
+
+        # === 事件和常量定义 ===
+        from micropython import const
+
+        # 事件类型
+        EV_WIFI_CONNECTED = const(1)
+        EV_WIFI_DISCONNECTED = const(2)
+        EV_NTP_SYNCED = const(3)
+        EV_PERF_REPORT = const(4)
+        # ... 其他事件 ...
+
+        # 日志级别
+        LOG_LEVEL_CRITICAL = const(101)
+        LOG_LEVEL_WARNING = const(102)
+        LOG_LEVEL_INFO = const(103)
+        ```
+
+    2.  **在 `event_bus.py`, `main.py`, `utils.py` 等文件中使用**:
+
+        ```python
+        # main.py
+        import config
+        import event_bus
+
+        # 发布事件
+        event_bus.publish(config.EV_PERF_REPORT, temperature=temp)
+
+        # 订阅事件
+        event_bus.subscribe(config.EV_PERF_REPORT, on_performance_report)
+
+        # logger.py (或合并后的 daemon.py)
+        def on_log_critical(message, **kwargs):
+            _add_to_queue(config.LOG_LEVEL_CRITICAL, message)
+        ```
+
+    **效果**: 极大地减少字符串字面量的数量。`const()` 是MicroPython的特定优化，它告诉编译器这是一个真正的常量，有助于进一步优化字节码。这是**代码体积优化中最有效**的手段之一。
+
+-----
+
+### 3\. **精简和复用日志/打印信息**
+
+  - **问题分析**:
+    项目中有很多格式化的打印信息，例如 `print(f"[DAEMON] 看门狗正常喂养，超时设置: {CONFIG['wdt_timeout_ms']}ms")`。这些调试和状态信息对于开发非常有用，但在最终部署的固件中会占用大量空间。
+
+  - **优化建议**:
+
+    1.  **创建全局调试开关**: 在 `config.py` 中设置一个 `DEBUG = False` 的全局开关。所有非关键的 `print` 语句都包裹在 `if config.DEBUG:` 代码块中。发布版本时只需将此开关设为`False`，编译器会自动优化掉所有这些代码块，从而移除其中的字符串。
+    2.  **复用字符串模板**: 对于必须保留的日志，创建通用的日志函数，复用格式化字符串。
+
+  - **代码示例 (调试开关)**:
+
+    ```python
+    # config.py
+    DEBUG = True # 开发时设为 True, 发布时设为 False
+
+    # daemon.py
+    import config
+
+    # ...
+    # 每10次喂养记录一次状态，避免过多日志
+    if config.DEBUG:
+        if current_time % 30000 < 3000:
+            print(f"[DAEMON] 看门狗正常喂养，超时设置: {CONFIG['wdt_timeout_ms']}ms")
+    # ...
+    ```
+
+-----
+
+### 4\. **移除或简化非核心功能**
+
+  - **问题分析**:
+    `README.md` 中提到了丰富的LED效果和状态指示。`utils.py` 中的呼吸灯效果 `led_effect_task` 虽然视觉效果好，但其逻辑 (`_brightness += FADE_STEP * _fade_direction`) 也占用了代码空间。
+
+  - **优化建议**:
+      * **简化LED逻辑**: 放弃呼吸灯，只保留“开”、“关”、“闪烁”这几种最基本的状态指示。这样 `led_effect_task` 的逻辑可以被大大简化，甚至移除。
+      * **简化 `get_system_status`**: `utils.py` 中的 `get_system_status` 函数和 `print_system_status` 函数主要是为了调试和报告，如果设备没有交互接口，可以考虑移除它们，或者简化其内容。
+
+### 5\. **修改 `deploy.py` 以监控优化效果**
+
+为了验证您的优化成果，可以在部署脚本中增加一步，用于打印每个编译后文件的大小。
+
+  - **代码示例 (`deploy.py` 修改)**:
+
+    ```python
+    # deploy.py
+    import os
+
+    def compile_files():
+        # ... (编译逻辑不变) ...
+        print("\n✅ 编译成功完成！\n")
+        
+        # 新增：打印文件大小
+        print("="*50)
+        print("📦 编译后文件大小报告:")
+        print("="*50)
+        total_size = 0
+        mpy_files = glob.glob(os.path.join(DIST_DIR, '*.mpy'))
+        for mpy_file in sorted(mpy_files):
+            size = os.path.getsize(mpy_file)
+            total_size += size
+            print(f"  - {os.path.basename(mpy_file):<25} {size:>6} bytes")
+        print("-" * 50)
+        print(f"  - {'总大小':<25} {total_size:>6} bytes")
+        print("="*50 + "\n")
+        
+        return True
+    ```
+
+**总结与实施路径建议：**
+
+1.  **首先实施第2点（整数常量替代字符串）**，因为这是最立竿见影且效果最显著的优化。
+2.  **其次实施第1点和第3点（合并模块和精简日志）**，这能很好地整理代码结构并移除大量调试信息。
+3.  **最后考虑第4点（简化功能）**，作为进一步压缩体积的手段。
+4.  \*\*全程使用第5点（修改部署脚本）\*\*来量化您的每一步优化成果。
+
+通过以上这些方法，您可以在不牺牲核心功能稳定性的前提下，显著减小最终固件的代码体积，使其能更好地适应存储空间有限的ESP32-C3设备。

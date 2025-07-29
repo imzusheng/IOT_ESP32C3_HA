@@ -66,6 +66,21 @@ def compile_files():
             return False
             
     print("\n✅ 编译成功完成！\n")
+    
+    # 新增：打印文件大小
+    print("="*50)
+    print("📦 编译后文件大小报告:")
+    print("="*50)
+    total_size = 0
+    mpy_files = glob.glob(os.path.join(DIST_DIR, '*.mpy'))
+    for mpy_file in sorted(mpy_files):
+        size = os.path.getsize(mpy_file)
+        total_size += size
+        print(f"  - {os.path.basename(mpy_file):<25} {size:>6} bytes")
+    print("-" * 50)
+    print(f"  - {'总大小':<25} {total_size:>6} bytes")
+    print("="*50 + "\n")
+    
     return True
 
 

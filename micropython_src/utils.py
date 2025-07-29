@@ -22,7 +22,8 @@ import esp32
 import uasyncio as asyncio
 from enum import Enum
 import config
-import event_bus
+import core  # 使用合并的核心模块
+from config import get_event_id, DEBUG, EV_WIFI_CONNECTING, EV_WIFI_CONNECTED, EV_WIFI_ERROR, EV_WIFI_TIMEOUT, EV_LED_SET_EFFECT, EV_LED_SET_BRIGHTNESS, EV_LED_EMERGENCY_OFF, EV_CONFIG_UPDATE
 
 # === WiFi状态机枚举 ===
 class WifiState(Enum):
@@ -130,11 +131,12 @@ def _subscribe_to_led_events():
     """
     订阅LED相关的事件
     """
-    event_bus.subscribe('led_set_effect', _on_led_set_effect)
-    event_bus.subscribe('led_set_brightness', _on_led_set_brightness)
-    event_bus.subscribe('led_emergency_off', _on_led_emergency_off)
-    event_bus.subscribe('config_update', _on_config_update)
-    print("[LED] 已订阅LED控制事件")
+    core.subscribe(EV_LED_SET_EFFECT, _on_led_set_effect)
+    core.subscribe(EV_LED_SET_BRIGHTNESS, _on_led_set_brightness)
+    core.subscribe(EV_LED_EMERGENCY_OFF, _on_led_emergency_off)
+    core.subscribe(EV_CONFIG_UPDATE, _on_config_update)
+    if DEBUG:
+        print("[LED] 已订阅LED控制事件")
 
 def _on_config_update(**kwargs):
     """
@@ -147,20 +149,23 @@ def _on_config_update(**kwargs):
     source = kwargs.get('source', 'unknown')
     
     if source == 'temp_optimizer':
-        print(f"[UTILS] 收到温度优化配置更新，温度级别: {temp_level}")
+        if DEBUG:
+            print(f"[UTILS] 收到温度优化配置更新，温度级别: {temp_level}")
         
         # 更新LED更新间隔
         if 'main_interval_ms' in new_config:
             # 根据主循环间隔调整LED更新频率
             base_interval = new_config['main_interval_ms']
             _led_update_interval_ms = max(50, base_interval // 100)  # 最小50ms
-            print(f"[LED] 更新呼吸灯间隔为: {_led_update_interval_ms}ms")
+            if DEBUG:
+                print(f"[LED] 更新呼吸灯间隔为: {_led_update_interval_ms}ms")
         
         # 更新WiFi检查间隔
         if 'monitor_interval_ms' in new_config:
             # 根据监控间隔调整WiFi检查频率
             _wifi_check_interval_s = max(30, new_config['monitor_interval_ms'] // 1000)
-            print(f"[WiFi] 更新连接检查间隔为: {_wifi_check_interval_s}秒")
+            if DEBUG:
+                print(f"[WiFi] 更新连接检查间隔为: {_wifi_check_interval_s}秒")
         
         # 根据温度级别调整PWM频率和亮度
         if 'pwm_freq' in new_config and _led1_pwm and _led2_pwm:
@@ -169,14 +174,17 @@ def _on_config_update(**kwargs):
                 new_freq = new_config['pwm_freq']
                 _led1_pwm.freq(new_freq)
                 _led2_pwm.freq(new_freq)
-                print(f"[LED] 更新PWM频率为: {new_freq}Hz")
+                if DEBUG:
+                    print(f"[LED] 更新PWM频率为: {new_freq}Hz")
             except Exception as e:
-                print(f"[LED] [ERROR] PWM频率更新失败: {e}")
+                if DEBUG:
+                    print(f"[LED] [ERROR] PWM频率更新失败: {e}")
         
         if 'max_brightness' in new_config:
             global MAX_BRIGHTNESS
             MAX_BRIGHTNESS = new_config['max_brightness']
-            print(f"[LED] 更新最大亮度为: {MAX_BRIGHTNESS}")
+            if DEBUG:
+                print(f"[LED] 更新最大亮度为: {MAX_BRIGHTNESS}")
 
 def _on_led_set_effect(event_data):
     """
@@ -209,9 +217,10 @@ def _on_led_emergency_off(event_data):
     """
     处理紧急关闭LED的事件
     """
-    print("[LED] 收到紧急关闭信号")
+    if DEBUG:
+        print("[LED] 收到紧急关闭信号")
     set_effect('off')
-    event_bus.publish('led_emergency_off_completed')
+    core.publish(get_event_id('led_emergency_off_completed'))
 
 # --- 异步任务管理变量 ---
 # 异步任务状态控制
@@ -262,10 +271,11 @@ def init_leds():
         
         _leds_initialized = True
         
-        print(f"[LED] 初始化成功 - 引脚: {LED_PIN_1}, {LED_PIN_2}, 频率: {PWM_FREQ}Hz")
+        if DEBUG:
+            print(f"[LED] 初始化成功 - 引脚: {LED_PIN_1}, {LED_PIN_2}, 频率: {PWM_FREQ}Hz")
         
         # 通过事件总线发布初始化成功事件
-        event_bus.publish('led_initialized', success=True)
+        core.publish(get_event_id('led_initialized'), success=True)
         
         # 订阅LED控制事件
         _subscribe_to_led_events()
@@ -274,11 +284,12 @@ def init_leds():
         
     except Exception as e:
         error_msg = f"LED初始化失败: {e}"
-        print(f"[LED] [ERROR] {error_msg}")
+        if DEBUG:
+            print(f"[LED] [ERROR] {error_msg}")
         
         # 通过事件总线发布初始化失败事件
-        event_bus.publish('led_initialized', success=False, error=error_msg)
-        event_bus.publish('log_critical', message=error_msg)
+        core.publish(get_event_id('led_initialized'), success=False, error=error_msg)
+        core.publish(get_event_id('log_critical'), message=error_msg)
         
         _led1_pwm = None
         _led2_pwm = None
@@ -297,15 +308,17 @@ def deinit_leds():
         _led2_pwm = None
         _leds_initialized = False
         
-        print("[LED] PWM 已关闭")
+        if DEBUG:
+            print("[LED] PWM 已关闭")
         
         # 通过事件总线发布LED关闭事件
-        event_bus.publish('led_deinitialized')
+        core.publish(get_event_id('led_deinitialized'))
         
     except Exception as e:
         error_msg = f"PWM 关闭失败: {e}"
-        print(f"[LED] [ERROR] {error_msg}")
-        event_bus.publish('log_error', message=error_msg)
+        if DEBUG:
+            print(f"[LED] [ERROR] {error_msg}")
+        core.publish(get_event_id('log_error'), message=error_msg)
 
 def set_effect(mode, led_num=1, brightness_u16=MAX_BRIGHTNESS):
     """
@@ -319,12 +332,14 @@ def set_effect(mode, led_num=1, brightness_u16=MAX_BRIGHTNESS):
     global _effect_mode, _brightness, _fade_direction, _current_effect, _effect_params
     
     if not _led1_pwm or not _led2_pwm:
-        error_msg = "PWM未初始化，无法设置灯效"
-        print(f"[LED] [WARNING] {error_msg}")
-        event_bus.publish('log_warning', message=error_msg)
+        error_msg = f"PWM未初始化，无法设置灯效"
+        if DEBUG:
+            print(f"[LED] [WARNING] {error_msg}")
+        core.publish(get_event_id('log_warning'), message=error_msg)
         return
 
-    print(f"[LED] 设置灯效为: {mode}")
+    if DEBUG:
+        print(f"[LED] 设置灯效为: {mode}")
     _effect_mode = mode
     _current_effect = mode
     _effect_params = {'led_num': led_num, 'brightness_u16': brightness_u16}
@@ -348,13 +363,14 @@ def set_effect(mode, led_num=1, brightness_u16=MAX_BRIGHTNESS):
         _fade_direction = 1
     else:
         error_msg = f"未知的灯效模式: {mode}"
-        print(f"[LED] [WARNING] {error_msg}")
-        event_bus.publish('log_warning', message=error_msg)
+        if DEBUG:
+            print(f"[LED] [WARNING] {error_msg}")
+        core.publish(get_event_id('log_warning'), message=error_msg)
         _effect_mode = 'off' # 设为安全默认值
         _current_effect = 'off'
     
     # 通过事件总线发布灯效变化事件
-    event_bus.publish('led_effect_changed', 
+    core.publish(get_event_id('led_effect_changed'), 
                      effect=_current_effect, 
                      params=_effect_params)
 
@@ -404,7 +420,8 @@ async def led_effect_task():
                 # 非动画模式下，降低检查频率
                 await asyncio.sleep_ms(500)
         except Exception as e:
-            print(f"[LED] 异步任务错误: {e}")
+            if DEBUG:
+                print(f"[LED] 异步任务错误: {e}")
             await asyncio.sleep_ms(1000)
 
 # ==================================================================
@@ -475,7 +492,7 @@ async def connect_wifi_attempt(wifi_configs):
     password = config["password"]
     
     print(f"[WiFi] 尝试连接到: {ssid}")
-    event_bus.publish('wifi_trying', ssid=ssid)
+    core.publish(get_event_id('wifi_trying'), ssid=ssid)
     
     # 开始连接过程
     wlan.connect(ssid, password)
@@ -487,7 +504,7 @@ async def connect_wifi_attempt(wifi_configs):
         if time.time() - start_time > WIFI_CONNECT_TIMEOUT_S:
             error_msg = f"连接 {ssid} 超时"
             print(f"\n[WiFi] [ERROR] {error_msg}！")
-            event_bus.publish('wifi_timeout', ssid=ssid)
+            core.publish(EV_WIFI_TIMEOUT, ssid=ssid)
             return False
         
         # 每2秒闪烁一次LED
@@ -504,8 +521,8 @@ async def connect_wifi_attempt(wifi_configs):
         print(f"\n[WiFi] [SUCCESS] 成功连接到: {ssid}")
         print(f"[WiFi] IP地址: {ip}")
         _wifi_connected = True
-        event_bus.publish('wifi_connected', ssid=ssid, ip=ip, reconnect=True)
-        event_bus.publish('log_info', message=f"WiFi连接成功: {ssid} ({ip})")
+        core.publish(EV_WIFI_CONNECTED, ssid=ssid, ip=ip, reconnect=True)
+        core.publish(get_event_id('log_info'), message=f"WiFi连接成功: {ssid} ({ip})")
         return True
     
     return False
@@ -521,7 +538,7 @@ async def connect_wifi():
     global _wifi_connected
     
     print("[WiFi] 开始智能WiFi连接...")
-    event_bus.publish('wifi_connecting')
+    core.publish(EV_WIFI_CONNECTING)
     wlan = network.WLAN(network.STA_IF)
     
     if not wlan.active():
@@ -535,7 +552,7 @@ async def connect_wifi():
         print(f"[WiFi] IP地址: {ip}")
         if not _wifi_connected:
             _wifi_connected = True
-            event_bus.publish('wifi_connected', ssid=ssid, ip=ip, reconnect=False)
+            core.publish(EV_WIFI_CONNECTED, ssid=ssid, ip=ip, reconnect=False)
         return True
 
     # 扫描可用网络
@@ -543,8 +560,8 @@ async def connect_wifi():
     if not available_networks:
         error_msg = "未发现任何可用网络"
         print(f"[WiFi] [ERROR] {error_msg}")
-        event_bus.publish('wifi_scan_failed')
-        event_bus.publish('log_warning', message=error_msg)
+        core.publish(get_event_id('wifi_scan_failed'))
+        core.publish(get_event_id('log_warning'), message=error_msg)
         return False
 
     # 尝试连接配置中的第一个可用网络
@@ -554,7 +571,7 @@ async def connect_wifi():
         
         if ssid in available_networks:
             print(f"[WiFi] 尝试连接到: {ssid}")
-            event_bus.publish('wifi_trying', ssid=ssid)
+            core.publish(get_event_id('wifi_trying'), ssid=ssid)
             
             # 开始连接过程
             wlan.connect(ssid, password)
@@ -566,7 +583,7 @@ async def connect_wifi():
                 if time.time() - start_time > WIFI_CONNECT_TIMEOUT_S:
                     error_msg = f"连接 {ssid} 超时"
                     print(f"\n[WiFi] [ERROR] {error_msg}！")
-                    event_bus.publish('wifi_timeout', ssid=ssid)
+                    core.publish(EV_WIFI_TIMEOUT, ssid=ssid)
                     break
                 
                 # 每2秒闪烁一次LED
@@ -583,21 +600,21 @@ async def connect_wifi():
                 print(f"\n[WiFi] [SUCCESS] 成功连接到: {ssid}")
                 print(f"[WiFi] IP地址: {ip}")
                 _wifi_connected = True
-                event_bus.publish('wifi_connected', ssid=ssid, ip=ip, reconnect=True)
-                event_bus.publish('log_info', message=f"WiFi连接成功: {ssid} ({ip})")
+                core.publish(EV_WIFI_CONNECTED, ssid=ssid, ip=ip, reconnect=True)
+                core.publish(get_event_id('log_info'), message=f"WiFi连接成功: {ssid} ({ip})")
                 return True
             else:
                 error_msg = f"连接 {ssid} 失败"
                 print(f"[WiFi] [WARNING] {error_msg}")
-                event_bus.publish('wifi_error', ssid=ssid, error=error_msg)
+                core.publish(EV_WIFI_ERROR, ssid=ssid, error=error_msg)
                 # 单次尝试失败后直接退出，不再尝试其他网络
                 break
     
     error_msg = "WiFi连接失败"
     print(f"[WiFi] [ERROR] {error_msg}")
     _wifi_connected = False
-    event_bus.publish('wifi_failed')
-    event_bus.publish('log_warning', message=error_msg)
+    core.publish(get_event_id('wifi_failed'))
+    core.publish(get_event_id('log_warning'), message=error_msg)
     return False
 
 async def wifi_task():
@@ -729,13 +746,13 @@ async def sync_ntp_time():
     if not wlan.isconnected():
         error_msg = "未连接到WiFi，无法同步时间"
         print(f"[NTP] [ERROR] {error_msg}。")
-        event_bus.publish('ntp_no_wifi')
-        event_bus.publish('log_warning', message=error_msg)
+        core.publish(get_event_id('ntp_no_wifi'))
+        core.publish(get_event_id('log_warning'), message=error_msg)
         return False
 
     try:
         print("[NTP] 正在尝试同步网络时间...")
-        event_bus.publish('ntp_syncing')
+        core.publish(get_event_id('ntp_syncing'))
         ntptime.settime()
         
         if time.localtime()[0] > 2023:
@@ -746,17 +763,17 @@ async def sync_ntp_time():
             print(f"[NTP] UTC时间: {format_time(utc_time)}")
             print(f"[NTP] 本地时间: {format_time(local_time)} (UTC+{TIMEZONE_OFFSET_HOURS})")
             _ntp_synced = True
-            event_bus.publish('ntp_synced', 
+            core.publish(get_event_id('ntp_synced'), 
                             utc_time=format_time(utc_time),
                             local_time=format_time(local_time),
                             timezone_offset=TIMEZONE_OFFSET_HOURS)
-            event_bus.publish('log_info', message=f"时间同步成功: {format_time(local_time)}")
+            core.publish(get_event_id('log_info'), message=f"时间同步成功: {format_time(local_time)}")
             return True
     except Exception as e:
         error_msg = f"时间同步失败: {e}"
         print(f"[NTP] [WARNING] {error_msg}")
-        event_bus.publish('ntp_failed', error=str(e))
-        event_bus.publish('log_warning', message=error_msg)
+        core.publish(get_event_id('ntp_failed'), error=str(e))
+        core.publish(get_event_id('log_warning'), message=error_msg)
         return False
 
 # 注意：WiFi连接后的NTP同步现在通过事件总线处理
