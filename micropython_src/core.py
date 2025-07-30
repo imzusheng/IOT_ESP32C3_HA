@@ -1,31 +1,17 @@
 # core.py
 """
-核心事件总线模块
+核心模块 - 事件总线
 
-重构后的核心模块专注于事件总线功能：
-- 轻量级事件总线实现
-- 异步和同步事件处理
-- 事件订阅和发布管理
-- 基础工具函数
-
-其他功能已分离到独立模块：
-- 日志系统: logger.py
-- LED控制: led.py
+提供轻量级事件总线功能：
+- 支持异步和同步事件处理
+- 事件订阅和发布机制
+- 错误隔离和调试支持
 """
 
-import asyncio
 import gc
 import time
-import machine
-import network
-from machine import Pin, PWM
-from collections import defaultdict, deque
-from config import (
-    get_event_id, get_log_level_id, DEBUG,
-    EV_WIFI_CONNECTING, EV_WIFI_CONNECTED, EV_WIFI_ERROR, EV_WIFI_TIMEOUT,
-    EV_LED_SET_EFFECT, EV_LED_SET_BRIGHTNESS, EV_LED_EMERGENCY_OFF,
-    LOG_LEVEL_CRITICAL, LOG_LEVEL_WARNING, LOG_LEVEL_INFO
-)
+import uasyncio as asyncio
+from config import DEBUG
 
 # =============================================================================
 # 轻量级事件总线
@@ -198,42 +184,15 @@ def format_time(timestamp=None):
         return "时间格式化失败"
 
 # =============================================================================
-# LED接口函数（委托给led模块）
+# 事件总线清理功能
 # =============================================================================
 
-def init_led():
-    """初始化LED（委托给led模块）"""
-    try:
-        import led
-        return led.init_led()
-    except ImportError:
-        if DEBUG:
-            print("[Core] LED模块未找到")
-        return False
-
-def deinit_led():
-    """关闭LED（委托给led模块）"""
-    try:
-        import led
-        led.deinit_led()
-    except ImportError:
-        pass
-
-def set_led_effect(effect, **params):
-    """设置LED效果（委托给led模块）"""
-    try:
-        import led
-        return led.set_led_effect(effect, **params)
-    except ImportError:
-        return False
-
-def set_led_brightness(led_num, brightness):
-    """设置LED亮度（委托给led模块）"""
-    try:
-        import led
-        return led.set_led_brightness(led_num, brightness)
-    except ImportError:
-        return False
+def clear_all_events():
+    """清理所有事件订阅"""
+    global _global_event_bus
+    _global_event_bus._subscribers.clear()
+    if DEBUG:
+        print("[CORE] 所有事件订阅已清理")
 
 # =============================================================================
 # 兼容性函数
@@ -262,32 +221,28 @@ def process_log_queue():
 # 初始化函数
 # =============================================================================
 
-def init_core_systems():
-    """初始化核心系统"""
+def init_system():
+    """初始化系统核心组件（仅事件总线）"""
     try:
-        # 初始化LED
-        init_led()
+        # 清理事件总线
+        clear_all_events()
         
         if DEBUG:
-            print("[Core] 核心系统初始化完成")
+            print("[CORE] 事件总线初始化完成")
         
-        log_info("核心系统初始化完成")
         return True
     except Exception as e:
+        error_msg = f"事件总线初始化失败: {e}"
         if DEBUG:
-            print(f"[Core] 核心系统初始化失败: {e}")
-        log_critical(f"核心系统初始化失败: {e}")
+            print(f"[CORE] [ERROR] {error_msg}")
         return False
 
-def cleanup_core_systems():
-    """清理核心系统"""
+def cleanup_system():
+    """清理系统资源"""
     try:
-        deinit_led()
-        _global_logger.clear_logs()
-        gc.collect()
-        
+        clear_all_events()
         if DEBUG:
-            print("[Core] 核心系统清理完成")
+            print("[CORE] 事件总线资源清理完成")
     except Exception as e:
         if DEBUG:
-            print(f"[Core] 核心系统清理失败: {e}")
+            print(f"[CORE] [ERROR] 事件总线清理失败: {e}")

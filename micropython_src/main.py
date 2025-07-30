@@ -31,111 +31,12 @@ import uasyncio as asyncio
 # 导入项目模块
 import config
 import core  # 使用合并的核心模块
-import utils
 import daemon
+from lib import wifi, ntp, temp_optimizer
+from lib.led import init_led, deinit_led, start_led_task, stop_led_task
 from config import get_event_id, DEBUG, EV_PERFORMANCE_REPORT, EV_SYSTEM_HEARTBEAT, EV_LOW_MEMORY_WARNING, EV_SYSTEM_STARTING, EV_SYSTEM_STOPPED, EV_SYSTEM_SHUTTING_DOWN, EV_ASYNC_SYSTEM_STARTING, EV_ASYNC_TASKS_STARTED, EV_ASYNC_TASKS_CLEANUP_STARTED, EV_ASYNC_TASKS_CLEANUP_COMPLETED
 
-# =============================================================================
-# 温度优化配置 (合并自temp_optimization.py)
-# =============================================================================
 
-# 温度分级配置
-TEMP_THRESHOLDS = {
-    'normal': 35.0,      # 正常温度阈值
-    'warning': 40.0,     # 警告温度阈值
-    'critical': 45.0,    # 危险温度阈值
-    'emergency': 50.0,   # 紧急温度阈值
-}
-
-# 不同温度级别的配置调整
-TEMP_LEVEL_CONFIGS = {
-    'normal': {
-        'main_interval_ms': 5000,
-        'monitor_interval_ms': 30000,
-        'scheduler_interval_ms': 200,
-        'pwm_freq': 60,
-        'max_brightness': 20000,
-        'led_interval_ms': 50,
-        'wifi_check_interval_s': 30,
-    },
-    'warning': {
-        'main_interval_ms': 8000,
-        'monitor_interval_ms': 45000,
-        'scheduler_interval_ms': 400,
-        'pwm_freq': 40,
-        'max_brightness': 15000,
-        'led_interval_ms': 80,
-        'wifi_check_interval_s': 45,
-    },
-    'critical': {
-        'main_interval_ms': 10000,
-        'monitor_interval_ms': 60000,
-        'scheduler_interval_ms': 800,
-        'pwm_freq': 30,
-        'max_brightness': 8000,
-        'led_interval_ms': 100,
-        'wifi_check_interval_s': 60,
-    },
-    'emergency': {
-        'main_interval_ms': 15000,
-        'monitor_interval_ms': 120000,
-        'scheduler_interval_ms': 1500,
-        'pwm_freq': 20,
-        'max_brightness': 3000,
-        'led_interval_ms': 200,
-        'wifi_check_interval_s': 300,
-    }
-}
-
-def get_temperature_level(current_temp):
-    """根据当前温度确定温度级别"""
-    if current_temp >= TEMP_THRESHOLDS['emergency']:
-        return 'emergency'
-    elif current_temp >= TEMP_THRESHOLDS['critical']:
-        return 'critical'
-    elif current_temp >= TEMP_THRESHOLDS['warning']:
-        return 'warning'
-    else:
-        return 'normal'
-
-def get_optimized_config_for_temp(current_temp):
-    """根据当前温度获取优化后的配置"""
-    temp_level = get_temperature_level(current_temp)
-    return TEMP_LEVEL_CONFIGS[temp_level].copy()
-
-def check_and_optimize(current_temp):
-    """检查温度并返回优化信息"""
-    temp_level = get_temperature_level(current_temp)
-    optimized_config = get_optimized_config_for_temp(current_temp)
-    
-    optimization_info = {
-        'current_temp': current_temp,
-        'temp_level': temp_level,
-        'optimized_config': optimized_config,
-        'recommendations': []
-    }
-    
-    # 根据温度级别添加建议
-    if temp_level == 'warning':
-        optimization_info['recommendations'].extend([
-            "降低LED亮度到75%",
-            "延长监控间隔到45秒",
-            "调度器间隔调整到400ms"
-        ])
-    elif temp_level == 'critical':
-        optimization_info['recommendations'].extend([
-            "降低LED亮度到40%",
-            "延长监控间隔到60秒",
-            "调度器间隔调整到800ms"
-        ])
-    elif temp_level == 'emergency':
-        optimization_info['recommendations'].extend([
-            "紧急降低LED亮度到15%",
-            "延长监控间隔到120秒",
-            "调度器间隔调整到1.5秒"
-        ])
-    
-    return optimization_info
 
 async def main_business_loop():
     """
@@ -213,21 +114,8 @@ async def system_coordinator_task():
     def on_performance_report(**kwargs):
         temp = kwargs.get('temperature')
         if temp is not None:
-            # 使用本地温度优化函数检查并获取优化配置
-            optimization_info = check_and_optimize(temp)
-            new_config = optimization_info['optimized_config']
-            
-            # 通过事件总线发布配置更新命令
-            core.publish(get_event_id('config_update'), 
-                        source='temp_optimizer', 
-                        config=new_config,
-                        temp_level=optimization_info['temp_level'])
-            
-            # 发布温度优化日志
-            if optimization_info['recommendations']:
-                recommendations_str = ', '.join(optimization_info['recommendations'])
-                core.publish(get_event_id('log_info'), 
-                            message=f"温度优化建议: {recommendations_str}")
+            # 使用温度优化器模块进行优化
+            temp_optimizer.optimize_by_temperature(temp)
     
     # 订阅性能报告事件
     core.subscribe(EV_PERFORMANCE_REPORT, on_performance_report)
@@ -356,7 +244,7 @@ def main():
     try:
         if DEBUG:
             print("[MAIN] 初始化LED系统...")
-        if utils.init_leds():
+        if init_led():
             if DEBUG:
                 print("[MAIN] LED系统初始化成功")
         else:
@@ -376,9 +264,13 @@ def main():
             # 发布异步系统启动事件
             core.publish(EV_ASYNC_SYSTEM_STARTING)
             
+            # 启动LED异步任务
+            start_led_task()
+            
             # 启动所有异步任务
             tasks = [
-                asyncio.create_task(utils.start_all_tasks()),
+                asyncio.create_task(wifi.wifi_task()),
+                asyncio.create_task(ntp.ntp_task()),
                 asyncio.create_task(main_business_loop()),
                 asyncio.create_task(system_coordinator_task())
             ]
@@ -398,6 +290,10 @@ def main():
                 if DEBUG:
                     print("[MAIN] 正在清理异步任务...")
                 core.publish(EV_ASYNC_TASKS_CLEANUP_STARTED)
+                
+                # 停止LED任务
+                stop_led_task()
+                deinit_led()
                 
                 for i, task in enumerate(tasks):
                     if not task.done():

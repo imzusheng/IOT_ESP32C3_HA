@@ -24,7 +24,7 @@ import time
 import gc
 import config
 import core
-import main
+from lib import temp_optimizer
 from config import get_event_id, DEBUG, EV_ENTER_SAFE_MODE, EV_EXIT_SAFE_MODE, EV_PERFORMANCE_REPORT, EV_SCHEDULER_INTERVAL_ADJUSTED
 
 # === 全局守护进程状态 (内部私有) ===
@@ -260,7 +260,7 @@ def _adjust_scheduler_interval_by_temperature():
                 return  # 温度读取失败，保持当前间隔
             
             # 根据温度获取推荐的调度器间隔
-            temp_config = main.get_optimized_config_for_temp(current_temp)
+            temp_config = temp_optimizer.get_optimized_config_for_temp(current_temp)
             recommended_interval = temp_config['scheduler_interval_ms']
             
             # 如果推荐间隔与当前间隔不同，则需要重新初始化定时器
@@ -278,7 +278,7 @@ def _adjust_scheduler_interval_by_temperature():
                             callback=_scheduler_interrupt
                         )
                         
-                        temp_level = main.get_temperature_level(current_temp)
+                        temp_level = temp_optimizer.get_temperature_level(current_temp)
                         print(f"[DAEMON] [TEMP_OPT] 温度: {current_temp:.1f}°C, 级别: {temp_level}")
                         print(f"[DAEMON] [TEMP_OPT] 调度器间隔调整: {old_interval}ms -> {_current_scheduler_interval_ms}ms")
                         
@@ -459,7 +459,7 @@ def _print_performance_report():
         # 获取温度级别信息
         temp_level = "未知"
         if temp:
-            temp_level = main.get_temperature_level(temp)
+            temp_level = temp_optimizer.get_temperature_level(temp)
         
         # 打印报告
         if DEBUG:
