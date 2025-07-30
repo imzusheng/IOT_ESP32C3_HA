@@ -21,17 +21,71 @@
 try:
     import machine
 except ImportError:
-    machine = None
+    # 为标准Python环境提供machine模块的模拟实现
+    class MockMachine:
+        class Pin:
+            OUT = 1
+            def __init__(self, pin, mode):
+                self.pin = pin
+                self.mode = mode
+            def on(self): pass
+            def off(self): pass
+        
+        class WDT:
+            def __init__(self, timeout=5000):
+                self.timeout = timeout
+            def feed(self): pass
+            def deinit(self): pass
+        
+        class Timer:
+            PERIODIC = 1
+            def __init__(self, id=0):
+                self.id = id
+            def init(self, period=1000, mode=1, callback=None):
+                self.period = period
+                self.mode = mode
+                self.callback = callback
+            def deinit(self): pass
+        
+        @staticmethod
+        def reset():
+            print("[MOCK] 模拟硬件重置")
+    
+    machine = MockMachine()
+
 try:
     import esp32
 except ImportError:
-    esp32 = None
+    # 为标准Python环境提供esp32模块的模拟实现
+    class MockESP32:
+        @staticmethod
+        def mcu_temperature():
+            return 45.0  # 模拟温度
+    
+    esp32 = MockESP32()
 import time
 import gc
 from . import core
 from . import temp_optimizer
-from .config import get_event_id, DEBUG, EV_ENTER_SAFE_MODE, EV_EXIT_SAFE_MODE, EV_PERFORMANCE_REPORT, EV_SCHEDULER_INTERVAL_ADJUSTED
 
+# 兼容性处理：为标准Python环境提供MicroPython函数
+if not hasattr(time, 'ticks_ms'):
+    import time as _time
+    def _ticks_ms():
+        return int(_time.time() * 1000)
+    def _ticks_diff(new, old):
+        return new - old
+    time.ticks_ms = _ticks_ms
+    time.ticks_diff = _ticks_diff
+
+# 兼容性处理：为标准Python环境提供gc模块的MicroPython方法
+if not hasattr(gc, 'mem_alloc'):
+    def _mem_alloc():
+        return 50000  # 模拟已分配内存
+    def _mem_free():
+        return 200000  # 模拟可用内存
+    gc.mem_alloc = _mem_alloc
+    gc.mem_free = _mem_free
 # === 全局守护进程状态 (内部私有) ===
 _daemon_active = False
 _safe_mode_active = False
@@ -54,8 +108,16 @@ _wdt = None
 _timer_scheduler = None  # 统一调度器定时器
 
 # === 配置获取函数 ===
-# 使用config模块的函数获取配置
-import config
+# 配置将通过依赖注入提供
+_config_getter = None
+_debug = False
+_get_event_id = None
+
+# 事件常量（将通过依赖注入设置）
+_EV_ENTER_SAFE_MODE = None
+_EV_EXIT_SAFE_MODE = None
+_EV_PERFORMANCE_REPORT = None
+_EV_SCHEDULER_INTERVAL_ADJUSTED = None
 
 # === 优化后的统一调度器配置 ===
 # 统一调度器的动态间隔（毫秒）- 根据温度自动调整
@@ -115,7 +177,11 @@ def _log_critical_error(error_msg):
         _last_error_time = time.ticks_ms()
         
         # 通过事件总线发布日志事件，而不是直接操作日志队列
-        core.publish(get_event_id('log_critical'), message=error_msg)
+        if _get_event_id:
+            core.publish(_get_event_id('log_critical'), message=error_msg)
+        else:
+            # 如果依赖注入未初始化，使用默认事件ID
+            core.publish('log_critical', message=error_msg)
         
     except Exception as e:
         # 如果事件总线也失败了，至少打印到控制台
@@ -208,7 +274,10 @@ def _check_restart_loop_protection():
     if _restart_count >= _max_restart_count:
         error_msg = f"检测到重启循环（{_restart_count}次），进入安全模式"
         print(f"[DAEMON] [CRITICAL] {error_msg}")
-        core.publish(get_event_id('log_critical'), message=error_msg)
+        if _get_event_id:
+            core.publish(_get_event_id('log_critical'), message=error_msg)
+        else:
+            core.publish('log_critical', message=error_msg)
         _enter_safe_mode(error_msg)
         return False
     
@@ -230,7 +299,10 @@ def _emergency_hardware_reset():
             return  # 进入安全模式，不执行重启
         
         print(f"[EMERGENCY] 守护进程触发紧急硬件重置（第{_restart_count}次）...")
-        core.publish(get_event_id('log_critical'), message=f"守护进程触发紧急硬件重置（第{_restart_count}次）")
+        if _get_event_id:
+            core.publish(_get_event_id('log_critical'), message=f"守护进程触发紧急硬件重置（第{_restart_count}次）")
+        else:
+            core.publish('log_critical', message=f"守护进程触发紧急硬件重置（第{_restart_count}次）")
         time.sleep(0.1)  # 给事件处理一点时间
         machine.reset()
     except:
@@ -247,10 +319,18 @@ def _safe_mode_emergency_blink():
     """
     try:
         # 使用配置中的LED引脚
-        led1 = machine.Pin(config.get_led_pin_1(), machine.Pin.OUT)
-        led2 = machine.Pin(config.get_led_pin_2(), machine.Pin.OUT)
+        if _config_getter:
+            led_pin_1 = _config_getter('led')['pin_1']
+            led_pin_2 = _config_getter('led')['pin_2']
+            safety_config = _config_getter('safety')
+        else:
+            # 使用默认引脚
+            led_pin_1 = 2
+            led_pin_2 = 3
+            safety_config = {'blink_interval_ms': 500}
         
-        safety_config = config.get_safety_config()
+        led1 = machine.Pin(led_pin_1, machine.Pin.OUT)
+        led2 = machine.Pin(led_pin_2, machine.Pin.OUT)
         blink_cycle = safety_config['blink_interval_ms'] * 2
         current_time = time.ticks_ms()
         cycle_position = time.ticks_diff(current_time, _safe_mode_start_time) % blink_cycle
@@ -352,13 +432,14 @@ def _scheduler_interrupt(timer):
         _adjust_scheduler_interval_by_temperature()
         
         # 任务1：看门狗喂养（最高优先级，按配置间隔执行）
-        if time.ticks_diff(current_time, _last_watchdog_feed_ms) >= DAEMON_CONFIG['watchdog_interval_ms']:
+        daemon_config = _config_getter('daemon') if _config_getter else {'watchdog_interval_ms': 5000}
+        if time.ticks_diff(current_time, _last_watchdog_feed_ms) >= daemon_config['watchdog_interval_ms']:
             _last_watchdog_feed_ms = current_time
             try:
                 if _wdt:
                     _wdt.feed()
                     # 每10次喂养记录一次状态，避免过多日志
-                    if DEBUG and current_time % 30000 < 3000:  # 大约每30秒记录一次
+                    if _debug and current_time % 30000 < 3000:  # 大约每30秒记录一次
                         print(f"[DAEMON] 看门狗正常喂养，当前调度器间隔: {_current_scheduler_interval_ms}ms")
             except Exception as e:
                 _log_critical_error(f"看门狗喂养失败: {e}")
@@ -367,8 +448,8 @@ def _scheduler_interrupt(timer):
                 return
         
         # 任务2：系统监控（按配置间隔执行）
-        daemon_config = config.get_daemon_config()
-        safety_config = config.get_safety_config()
+        daemon_config = _config_getter('daemon') if _config_getter else {'monitor_interval_ms': 10000}
+        safety_config = _config_getter('safety') if _config_getter else {'temperature_threshold': 80.0, 'error_reset_interval_ms': 300000}
         
         if time.ticks_diff(current_time, _last_monitor_check_ms) >= daemon_config['monitor_interval_ms']:
             _last_monitor_check_ms = current_time
@@ -397,7 +478,7 @@ def _scheduler_interrupt(timer):
             
     except Exception as e:
         _log_critical_error(f"统一调度器中断处理失败: {e}")
-        safety_config = config.get_safety_config()
+        safety_config = _config_getter('safety') if _config_getter else {'max_error_count': 10}
         if _error_count > safety_config['max_error_count']:
             _emergency_hardware_reset()
 
@@ -414,7 +495,7 @@ def _enter_safe_mode(reason):
     
     if not _safe_mode_active:
         try:
-            if DEBUG:
+            if _debug:
                 print("\n" + "!"*60 + f"\n!!! 关键警告：系统进入紧急安全模式 (原因: {reason})\n" + "!"*60 + "\n")
             
             # 通过事件总线通知其他模块进入安全模式
@@ -442,13 +523,19 @@ def _check_safe_mode_recovery():
     
     try:
         temp = _get_internal_temperature()
-        safety_config = config.get_safety_config()
+        if _config_getter:
+            safety_config = _config_getter('safety')
+        else:
+            safety_config = {
+                'temperature_threshold': 80.0,
+                'safe_mode_cooldown_ms': 30000
+            }
         
         # 检查恢复条件：温度降低且冷却时间足够
         if (temp and temp < safety_config['temperature_threshold'] - 5.0 and
             time.ticks_diff(time.ticks_ms(), _safe_mode_start_time) > safety_config['safe_mode_cooldown_ms']):
             
-            if DEBUG:
+            if _debug:
                 print("[RECOVERY] 系统条件恢复，尝试退出安全模式...")
             
             # 通过事件总线通知其他模块退出安全模式
@@ -456,9 +543,12 @@ def _check_safe_mode_recovery():
             
             _safe_mode_active = False
             
-            if DEBUG:
+            if _debug:
                 print("[RECOVERY] 成功退出安全模式，恢复正常运行")
-            core.publish(get_event_id('log_info'), message="系统成功退出安全模式")
+            if _get_event_id:
+                core.publish(_get_event_id('log_info'), message="系统成功退出安全模式")
+            else:
+                core.publish('log_info', message="系统成功退出安全模式")
             
     except Exception as e:
         _log_critical_error(f"安全模式恢复检查失败: {e}")
@@ -494,7 +584,7 @@ def _print_performance_report():
             temp_level = temp_optimizer.get_temperature_level(temp)
         
         # 打印报告
-        if DEBUG:
+        if _debug:
             print("\n" + "="*50 + "\n        关键系统守护进程状态报告\n" + "="*50)
             print(time_info)
             print(f"运行时间: {uptime_str}")
@@ -506,7 +596,10 @@ def _print_performance_report():
             print("="*50 + "\n")
         
         # 通过事件总线发布性能信息
-        core.publish(get_event_id('log_info'), message=f"系统状态报告 - 温度:{temp:.1f}°C 内存:{mem_percent:.1f}% 错误:{_error_count}")
+        if _get_event_id:
+            core.publish(_get_event_id('log_info'), message=f"系统状态报告 - 温度:{temp:.1f}°C 内存:{mem_percent:.1f}% 错误:{_error_count}")
+        else:
+            core.publish('log_info', message=f"系统状态报告 - 温度:{temp:.1f}°C 内存:{mem_percent:.1f}% 错误:{_error_count}")
         
         # 发布性能报告事件，供温度优化器使用
         try:
@@ -545,7 +638,7 @@ class CriticalSystemDaemon:
         
         for attempt in range(3):
             try:
-                if DEBUG:
+                if _debug:
                     print(f"[DAEMON] 尝试初始化看门狗 (第{attempt + 1}次)...")
                 
                 # 如果已有看门狗实例，先释放
@@ -556,11 +649,14 @@ class CriticalSystemDaemon:
                         pass
                 
                 # 创建新的看门狗实例
-                safety_config = config.get_safety_config()
+                if _config_getter:
+                    safety_config = _config_getter('safety')
+                else:
+                    safety_config = {'wdt_timeout_ms': 8000}  # 默认8秒超时
                 _wdt = machine.WDT(timeout=safety_config['wdt_timeout_ms'])
                 _wdt.feed()
                 
-                if DEBUG:
+                if _debug:
                     print(f"[DAEMON] 看门狗初始化成功，超时时间: {safety_config['wdt_timeout_ms']}ms")
                 return True
                 
@@ -592,7 +688,7 @@ class CriticalSystemDaemon:
                 callback=_scheduler_interrupt  # 使用统一的调度器回调
             )
             
-            if DEBUG:
+            if _debug:
                 print(f"[DAEMON] 统一调度器定时器初始化成功，初始调度间隔: {_current_scheduler_interval_ms}ms")
                 print("[DAEMON] [优化] 已将两个定时器合并为一个，节省硬件资源")
                 print("[DAEMON] [温度优化] 调度器间隔将根据温度自动调整")
@@ -615,7 +711,7 @@ class CriticalSystemDaemon:
             print("[DAEMON] [WARNING] 守护进程已经启动")
             return True
         
-        if DEBUG:
+        if _debug:
             print("[DAEMON] 正在启动关键系统守护进程...")
         
         try:
@@ -638,15 +734,21 @@ class CriticalSystemDaemon:
             _daemon_active = True
             self._initialized = True
             
-            if DEBUG:
+            if _debug:
                 print("[DAEMON] 关键系统守护进程启动成功（温度优化版本）")
-            core.publish(get_event_id('log_info'), message="关键系统守护进程启动成功（温度优化版本）")
+            if _get_event_id:
+                core.publish(_get_event_id('log_info'), message="关键系统守护进程启动成功（温度优化版本）")
+            else:
+                core.publish('log_info', message="关键系统守护进程启动成功（温度优化版本）")
             
             return True
             
         except Exception as e:
             print(f"[DAEMON] [ERROR] 守护进程启动失败: {e}")
-            core.publish(get_event_id('log_critical'), message=f"守护进程启动失败: {e}")
+            if _get_event_id:
+                core.publish(_get_event_id('log_critical'), message=f"守护进程启动失败: {e}")
+            else:
+                core.publish('log_critical', message=f"守护进程启动失败: {e}")
             return False
     
     def stop(self):
@@ -655,7 +757,7 @@ class CriticalSystemDaemon:
         """
         global _daemon_active, _timer_scheduler, _wdt
         
-        if DEBUG:
+        if _debug:
             print("[DAEMON] 正在停止守护进程...")
         
         try:
@@ -665,13 +767,13 @@ class CriticalSystemDaemon:
             if _timer_scheduler:
                 _timer_scheduler.deinit()
                 _timer_scheduler = None
-                if DEBUG:
+                if _debug:
                     print("[DAEMON] 统一调度器定时器已停止")
             
             # 注意：不停止看门狗，让它继续运行以保护系统
             
             self._initialized = False
-            if DEBUG:
+            if _debug:
                 print("[DAEMON] 守护进程已停止（优化版本）")
             
         except Exception as e:
@@ -712,6 +814,33 @@ class CriticalSystemDaemon:
 
 # === 全局守护进程实例 ===
 _global_daemon = CriticalSystemDaemon()
+
+# === 依赖注入初始化 ===
+
+def init_daemon_dependencies(config_getter_func, get_event_id_func, debug_flag=False):
+    """
+    初始化守护进程的依赖注入
+    
+    Args:
+        config_getter_func: 配置获取函数
+        get_event_id_func: 事件ID获取函数
+        debug_flag: 调试标志
+    """
+    global _config_getter, _get_event_id, _debug
+    global _EV_ENTER_SAFE_MODE, _EV_EXIT_SAFE_MODE, _EV_PERFORMANCE_REPORT, _EV_SCHEDULER_INTERVAL_ADJUSTED
+    
+    _config_getter = config_getter_func
+    _get_event_id = get_event_id_func
+    _debug = debug_flag
+    
+    # 设置事件常量
+    _EV_ENTER_SAFE_MODE = get_event_id_func('enter_safe_mode')
+    _EV_EXIT_SAFE_MODE = get_event_id_func('exit_safe_mode')
+    _EV_PERFORMANCE_REPORT = get_event_id_func('performance_report')
+    _EV_SCHEDULER_INTERVAL_ADJUSTED = get_event_id_func('scheduler_interval_adjusted')
+    
+    if debug_flag:
+        print("[DAEMON] 依赖注入初始化完成")
 
 # === 公共接口函数 ===
 

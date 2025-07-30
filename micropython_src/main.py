@@ -175,6 +175,15 @@ def start_critical_daemon():
             return False
         
         if DEBUG:
+            print("[MAIN] 初始化守护进程依赖注入...")
+        # 初始化守护进程的依赖注入
+        daemon.init_daemon_dependencies(
+            config_getter_func=lambda section: config._get_config_value(section, None),
+            get_event_id_func=config.get_event_id,
+            debug_flag=DEBUG
+        )
+        
+        if DEBUG:
             print("[MAIN] 启动守护进程...")
         daemon_result = daemon.start_critical_daemon()
         
@@ -281,13 +290,64 @@ def main():
             # 启动LED异步任务
             start_led_task()
             
+            # 初始化WiFi管理器（依赖注入）
+            try:
+                if DEBUG:
+                    print("[MAIN] 初始化WiFi管理器...")
+                wifi_manager = wifi.init_wifi_manager(
+                    event_bus=core._ensure_global_event_bus(),
+                    wifi_configs=config.get_wifi_configs(),
+                    connect_timeout_s=config.get_wifi_connect_timeout(),
+                    wifi_check_interval_s=config.get_wifi_check_interval(),
+                    retry_interval_s=config.get_wifi_retry_interval()
+                )
+                if DEBUG:
+                    print("[MAIN] WiFi管理器初始化成功")
+                core.publish(get_event_id('log_info'), message="WiFi管理器初始化成功")
+            except Exception as e:
+                print(f"[MAIN] [ERROR] WiFi管理器初始化失败: {e}")
+                core.publish(get_event_id('log_critical'), message=f"WiFi管理器初始化失败: {e}")
+                return
+            
+            # 初始化LED管理器（依赖注入）
+            try:
+                if DEBUG:
+                    print("[MAIN] 初始化LED管理器...")
+                led_manager = led.create_led_manager(event_bus=core, config_getter=config)
+                if DEBUG:
+                    print("[MAIN] LED管理器初始化成功")
+                core.publish(get_event_id('log_info'), message="LED管理器初始化成功")
+            except Exception as e:
+                print(f"[MAIN] [WARNING] LED管理器初始化失败: {e}")
+                core.publish(get_event_id('log_warning'), message=f"LED管理器初始化失败: {e}")
+                led_manager = None
+            
+            # 初始化NTP管理器（依赖注入）
+            try:
+                if DEBUG:
+                    print("[MAIN] 初始化NTP管理器...")
+                ntp_manager = ntp.create_ntp_manager(event_bus=core, config_getter=config)
+                if DEBUG:
+                    print("[MAIN] NTP管理器初始化成功")
+                core.publish(get_event_id('log_info'), message="NTP管理器初始化成功")
+            except Exception as e:
+                print(f"[MAIN] [WARNING] NTP管理器初始化失败: {e}")
+                core.publish(get_event_id('log_warning'), message=f"NTP管理器初始化失败: {e}")
+                ntp_manager = None
+            
             # 启动所有异步任务
             tasks = [
-                asyncio.create_task(wifi.wifi_task()),
-                asyncio.create_task(ntp.ntp_task()),
+                asyncio.create_task(wifi_manager.wifi_task()),
                 asyncio.create_task(main_business_loop()),
                 asyncio.create_task(system_coordinator_task())
             ]
+            
+            # 添加可选的管理器任务
+            if ntp_manager:
+                tasks.append(asyncio.create_task(ntp_manager.ntp_task()))
+            if led_manager:
+                # 启动LED任务（LED管理器使用不同的启动方式）
+                led_manager.start_led_task()
             
             # 发布任务启动完成事件
             core.publish(EV_ASYNC_TASKS_STARTED, task_count=len(tasks))

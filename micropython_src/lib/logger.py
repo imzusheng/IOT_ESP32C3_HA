@@ -12,26 +12,52 @@
 import time
 import gc
 from collections import deque
-from .config import get_event_id, DEBUG, LOG_LEVEL_CRITICAL, LOG_LEVEL_WARNING, LOG_LEVEL_INFO, LOG_LEVEL_ERROR
 
 class SimpleLogger:
     """简化的日志系统"""
     
-    def __init__(self, max_queue_size=50):
+    def __init__(self, max_queue_size=50, config_getter=None, debug=False):
         self.log_queue = deque((), max_queue_size)
         self.enabled = True
-        self.min_log_level = LOG_LEVEL_INFO  # 默认记录INFO及以上级别
+        self.config_getter = config_getter
+        self.debug = debug
+        
+        # 获取日志级别常量
+        if self.config_getter is not None:
+            self.LOG_LEVEL_CRITICAL = getattr(config_getter, 'LOG_LEVEL_CRITICAL', 101)
+            self.LOG_LEVEL_ERROR = getattr(config_getter, 'LOG_LEVEL_ERROR', 104)
+            self.LOG_LEVEL_WARNING = getattr(config_getter, 'LOG_LEVEL_WARNING', 102)
+            self.LOG_LEVEL_INFO = getattr(config_getter, 'LOG_LEVEL_INFO', 103)
+            self.debug = getattr(config_getter, 'DEBUG', debug)
+        else:
+            # 尝试导入默认配置
+            try:
+                from .config import LOG_LEVEL_CRITICAL, LOG_LEVEL_ERROR, LOG_LEVEL_WARNING, LOG_LEVEL_INFO, DEBUG
+                self.LOG_LEVEL_CRITICAL = LOG_LEVEL_CRITICAL
+                self.LOG_LEVEL_ERROR = LOG_LEVEL_ERROR
+                self.LOG_LEVEL_WARNING = LOG_LEVEL_WARNING
+                self.LOG_LEVEL_INFO = LOG_LEVEL_INFO
+                self.debug = DEBUG
+            except ImportError:
+                # 使用默认值
+                self.LOG_LEVEL_CRITICAL = 101
+                self.LOG_LEVEL_ERROR = 104
+                self.LOG_LEVEL_WARNING = 102
+                self.LOG_LEVEL_INFO = 103
+                self.debug = debug
+        
+        self.min_log_level = self.LOG_LEVEL_INFO  # 默认记录INFO及以上级别
         self._level_names = {
-            LOG_LEVEL_CRITICAL: "CRITICAL",
-            LOG_LEVEL_ERROR: "ERROR", 
-            LOG_LEVEL_WARNING: "WARNING",
-            LOG_LEVEL_INFO: "INFO"
+            self.LOG_LEVEL_CRITICAL: "CRITICAL",
+            self.LOG_LEVEL_ERROR: "ERROR", 
+            self.LOG_LEVEL_WARNING: "WARNING",
+            self.LOG_LEVEL_INFO: "INFO"
         }
         
     def set_log_level(self, level):
         """动态设置日志级别"""
         self.min_log_level = level
-        if DEBUG:
+        if self.debug:
             level_name = self._level_names.get(level, str(level))
             print(f"[Logger] 日志级别设置为: {level_name}")
     
@@ -50,15 +76,15 @@ class SimpleLogger:
             log_entry = f"[{level_name}] {timestamp}: {message}"
             self.log_queue.append(log_entry)
             
-            if DEBUG:
+            if self.debug:
                 print(log_entry)
                 
             # 如果是严重错误，考虑立即写入闪存（如果需要的话）
-            if level == LOG_LEVEL_CRITICAL:
+            if level == self.LOG_LEVEL_CRITICAL:
                 self._handle_critical_log(log_entry)
                 
         except Exception as e:
-            if DEBUG:
+            if self.debug:
                 print(f"[Logger] 日志记录失败: {e}")
     
     def _handle_critical_log(self, log_entry):
@@ -90,24 +116,24 @@ class SimpleLogger:
                     pass
                     
         except Exception as e:
-            if DEBUG:
+            if self.debug:
                 print(f"[Logger] 关键日志写入失败: {e}")
     
     def log_critical(self, message):
         """记录关键日志"""
-        self.log(LOG_LEVEL_CRITICAL, message)
+        self.log(self.LOG_LEVEL_CRITICAL, message)
     
     def log_error(self, message):
         """记录错误日志"""
-        self.log(LOG_LEVEL_ERROR, message)
+        self.log(self.LOG_LEVEL_ERROR, message)
     
     def log_warning(self, message):
         """记录警告日志"""
-        self.log(LOG_LEVEL_WARNING, message)
+        self.log(self.LOG_LEVEL_WARNING, message)
     
     def log_info(self, message):
         """记录信息日志"""
-        self.log(LOG_LEVEL_INFO, message)
+        self.log(self.LOG_LEVEL_INFO, message)
     
     def get_recent_logs(self, count=10):
         """获取最近的日志"""
@@ -127,43 +153,55 @@ class SimpleLogger:
             'min_level': self.min_log_level
         }
 
-# 全局日志实例
-_global_logger = SimpleLogger()
+# 全局日志实例（延迟初始化）
+_global_logger = None
+
+def _ensure_global_logger():
+    """确保全局日志实例已初始化"""
+    global _global_logger
+    if _global_logger is None:
+        _global_logger = SimpleLogger()
+    return _global_logger
 
 def init_logger():
     """初始化日志系统"""
-    if DEBUG:
+    logger = _ensure_global_logger()
+    if logger.debug:
         print("[Logger] 日志系统已初始化")
     return True
 
+def create_logger(max_queue_size=50, config_getter=None, debug=False):
+    """创建日志实例（依赖注入工厂函数）"""
+    return SimpleLogger(max_queue_size=max_queue_size, config_getter=config_getter, debug=debug)
+
 def set_log_level(level):
     """设置全局日志级别"""
-    _global_logger.set_log_level(level)
+    _ensure_global_logger().set_log_level(level)
 
 def log_critical(message):
     """记录关键日志"""
-    _global_logger.log_critical(message)
+    _ensure_global_logger().log_critical(message)
 
 def log_error(message):
     """记录错误日志"""
-    _global_logger.log_error(message)
+    _ensure_global_logger().log_error(message)
 
 def log_warning(message):
     """记录警告日志"""
-    _global_logger.log_warning(message)
+    _ensure_global_logger().log_warning(message)
 
 def log_info(message):
     """记录信息日志"""
-    _global_logger.log_info(message)
+    _ensure_global_logger().log_info(message)
 
 def get_recent_logs(count=10):
     """获取最近的日志"""
-    return _global_logger.get_recent_logs(count)
+    return _ensure_global_logger().get_recent_logs(count)
 
 def clear_logs():
     """清空日志"""
-    _global_logger.clear_logs()
+    _ensure_global_logger().clear_logs()
 
 def get_log_stats():
     """获取日志统计信息"""
-    return _global_logger.get_log_stats()
+    return _ensure_global_logger().get_log_stats()

@@ -30,71 +30,71 @@ def clean_local_dist():
 
 def compile_files(mode='dev'):
     """
-    递归编译源文件到 dist 目录。
-    - dev 模式: 保留 print 日志。
-    - prod 模式: 开启优化，移除日志和断言。
+    【最终安全版】递归编译源文件到 dist 目录。
+    此版本不再修改任何原始源文件，保证源码安全。
     """
     clean_local_dist()
     print("="*50 + f"\n🚀 步骤 1: 开始交叉编译源文件 (模式: {mode.upper()})...\n" + "="*50)
-    
-    src_path, dist_path = Path(SRC_DIR), Path(DIST_DIR)
-    config_py_path = src_path / 'lib' / 'config.py'
-    config_py_backup_path = config_py_path.with_suffix('.py.bak')
 
+    src_path = Path(SRC_DIR)
+    dist_path = Path(DIST_DIR)
     if not src_path.exists():
-        print(f"❌ 错误: 源文件目录 '{SRC_DIR}' 不存在！"); return False
+        print(f"❌ 错误: 源文件目录 '{SRC_DIR}' 不存在！")
+        return False
     dist_path.mkdir(parents=True, exist_ok=True)
-    
-    # 备份并根据模式修改 config.py 中的 DEBUG 标志
-    if not config_py_path.exists():
-        print(f"🟡 警告: 未找到 '{config_py_path}'，无法设置 DEBUG 模式。");
-    else:
-        shutil.copy(config_py_path, config_py_backup_path)
-        print(f"  - 备份 config.py -> {config_py_backup_path.name}")
+
+    source_files = list(src_path.rglob('*.py'))
+    if not source_files:
+        print("🟡 警告: 没有在源目录中找到任何 .py 文件。")
+        return True
+
+    for py_path in source_files:
+        relative_path = py_path.relative_to(src_path)
+        mpy_path = dist_path / relative_path.with_suffix('.mpy')
+        mpy_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        source_to_compile = py_path
+        temp_config_path = None
+
         try:
-            print(f"  - 正在设置 DEBUG = {'True' if mode == 'dev' else 'False'}...")
-            with fileinput.FileInput(config_py_path, inplace=True) as file:
-                for line in file:
-                    if line.strip().startswith('DEBUG ='):
-                        print(f"DEBUG = {'True' if mode == 'dev' else 'False'}", end='\n')
-                    else:
-                        print(line, end='')
-        except Exception as e:
-            print(f"❌ 错误: 修改 '{config_py_path}' 失败: {e}")
-            shutil.move(config_py_backup_path, config_py_path) # 出错时恢复
-            return False
+            # --- 安全地处理 config.py ---
+            if relative_path == Path('lib/config.py'):
+                print(f"  - 正在处理 {relative_path} (设置 DEBUG = {'True' if mode == 'dev' else 'False'})...")
+                temp_config_path = mpy_path.with_suffix('.py')
+                
+                with open(py_path, 'r', encoding='utf-8') as f_read:
+                    lines = f_read.readlines()
 
-    # 开始编译
-    try:
-        source_files = list(src_path.rglob('*.py'))
-        if not source_files:
-            print("🟡 警告: 没有在源目录中找到任何 .py 文件。"); return True
+                with open(temp_config_path, 'w', encoding='utf-8') as f_write:
+                    for line in lines:
+                        if line.strip().startswith('DEBUG ='):
+                            f_write.write(f"DEBUG = {'True' if mode == 'dev' else 'False'}\n")
+                        else:
+                            f_write.write(line)
+                
+                source_to_compile = temp_config_path
 
-        for py_path in source_files:
-            relative_path = py_path.relative_to(src_path)
-            mpy_path = dist_path / relative_path.with_suffix('.mpy')
-            mpy_path.parent.mkdir(parents=True, exist_ok=True)
-            
+            # --- 执行编译 ---
             command = [MPY_CROSS_EXECUTABLE]
             if mode == 'prod':
-                command.append('-O1') # 添加优化级别
-            command.extend([str(py_path), '-o', str(mpy_path)])
+                command.append('-O1')
+            command.extend([str(source_to_compile), '-o', str(mpy_path)])
 
-            try:
-                print(f"  - 编译中: {relative_path}")
-                subprocess.run(command, check=True, capture_output=True, text=True)
-            except (FileNotFoundError, subprocess.CalledProcessError) as e:
-                print(f"❌ 错误: 编译 {relative_path} 失败。")
-                print(f"  请确保 '{MPY_CROSS_EXECUTABLE}' 已安装并位于系统 PATH 中。")
-                if hasattr(e, 'stderr'): print(f"  错误信息: {e.stderr}")
-                return False
-        print("\n✅ 编译成功完成！\n")
-        return True
-    finally:
-        # 无论编译成功与否，都恢复原始的 config.py
-        if config_py_backup_path.exists():
-            shutil.move(config_py_backup_path, config_py_path)
-            print(f"  - 已恢复原始 config.py 文件。")
+            print(f"  - 编译中: {relative_path}")
+            subprocess.run(command, check=True, capture_output=True, text=True, encoding='utf-8')
+
+        except (FileNotFoundError, subprocess.CalledProcessError) as e:
+            print(f"❌ 错误: 编译 {relative_path} 失败。")
+            print(f"  请确保 '{MPY_CROSS_EXECUTABLE}' 已安装并位于系统 PATH 中。")
+            if hasattr(e, 'stderr'): print(f"  错误信息: {e.stderr}")
+            return False
+        finally:
+            # --- 清理临时文件 ---
+            if temp_config_path and temp_config_path.exists():
+                temp_config_path.unlink()
+    
+    print("\n✅ 编译成功完成！\n")
+    return True
 
 
 def detect_serial_port():

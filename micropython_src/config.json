@@ -5,7 +5,8 @@
       {"ssid": "CMCC-pdRG", "password": "7k77ed5p"}
     ],
     "connect_timeout_s": 15,
-    "retry_interval_s": 60
+    "retry_interval_s": 60,
+    "check_interval_s": 30
   },
   "ntp": {
     "retry_delay_s": 60,

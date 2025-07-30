@@ -270,29 +270,17 @@ def reload_config():
         if _loaded_config:
             print("[CONFIG] 配置重载成功")
             
-            # 发布配置更新事件，包含新旧配置对比和变更部分
-            try:
-                from .core import publish
-                
+            # 配置模块只负责加载配置，不发布事件
+            # 事件发布由调用者负责
+            if DEBUG:
                 # 检查哪些配置部分发生了变化
                 changed_sections = []
                 for section in ['led', 'wifi', 'logging', 'daemon', 'ntp', 'general']:
                     if old_config.get(section, {}) != _loaded_config.get(section, {}):
                         changed_sections.append(section)
                 
-                # 只发布一个通用的配置更新事件
-                publish(EV_CONFIG_UPDATE, 
-                       new_config=_loaded_config, 
-                       old_config=old_config, 
-                       changed=changed_sections)
-                
-                if DEBUG and changed_sections:
+                if changed_sections:
                     print(f"[CONFIG] 配置变更部分: {', '.join(changed_sections)}")
-                    
-            except ImportError:
-                # 如果core模块不可用，跳过事件发布
-                if DEBUG:
-                    print("[CONFIG] core模块不可用，跳过事件发布")
             
             return True
         else:
@@ -354,6 +342,13 @@ def get_wifi_connect_timeout():
 def get_wifi_retry_interval():
     """获取WiFi重连间隔时间"""
     return _get_config_value('wifi', 'retry_interval_s')
+
+def get_wifi_check_interval():
+    """获取WiFi连接检查间隔时间"""
+    try:
+        return _get_config_value('wifi', 'check_interval_s')
+    except KeyError:
+        return 30  # 默认30秒
 
 
 
@@ -535,9 +530,54 @@ def load_all_configs():
     print("[CONFIG] 系统配置加载完成")
     return True
 
+# =============================================================================
+# 向后兼容的常量定义（延迟加载）
+# =============================================================================
+
+def _get_wifi_constants():
+    """获取WiFi常量，用于向后兼容"""
+    try:
+        return {
+            'WIFI_CONFIGS': get_wifi_configs(),
+            'WIFI_CONNECT_TIMEOUT_S': get_wifi_connect_timeout(),
+            'WIFI_RETRY_INTERVAL_S': get_wifi_retry_interval(),
+            'WIFI_CHECK_INTERVAL_S': get_wifi_check_interval()
+        }
+    except (ConfigFileNotFoundError, ConfigLoadError, KeyError):
+        # 如果配置文件不存在，返回None，让调用者处理
+        return None
+
+# 延迟加载的全局常量
+_wifi_constants = None
+
+def _ensure_wifi_constants():
+    """确保WiFi常量已加载"""
+    global _wifi_constants
+    if _wifi_constants is None:
+        _wifi_constants = _get_wifi_constants()
+    return _wifi_constants
+
+# 向后兼容的属性访问
+def __getattr__(name):
+    """动态属性访问，用于向后兼容"""
+    wifi_constants = _ensure_wifi_constants()
+    if wifi_constants and name in wifi_constants:
+        return wifi_constants[name]
+    
+    led_constants = _get_led_constants()
+    if led_constants and name in led_constants:
+        return led_constants[name]
+    
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+
 # 在模块加载时验证配置
 if __name__ == "__main__":
     validate_config()
 else:
     # 模块被导入时也进行验证
-    validate_config()
+    try:
+        validate_config()
+    except (ConfigFileNotFoundError, ConfigLoadError, KeyError):
+        # 如果配置文件不存在或有问题，不阻止模块加载
+        # 让调用者处理这些异常
+        pass

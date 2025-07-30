@@ -13,7 +13,6 @@ try:
     import uasyncio as asyncio
 except ImportError:
     import asyncio
-from .config import DEBUG, get_event_id, LOG_LEVEL_CRITICAL, LOG_LEVEL_WARNING, LOG_LEVEL_INFO
 from .utils import get_memory_info, get_system_status, format_time
 
 try:
@@ -46,36 +45,52 @@ except ImportError:
 class EventBus:
     """轻量级事件总线 - 优化版本"""
     
-    def __init__(self):
+    def __init__(self, config_getter=None, debug=False):
         self._subscribers = defaultdict(list)
+        self.config_getter = config_getter
+        self.debug = debug
+        
+        # 如果没有提供config_getter，尝试导入默认配置
+        if self.config_getter is None:
+            try:
+                from .config import get_event_id, DEBUG
+                self.get_event_id = get_event_id
+                self.debug = DEBUG
+            except ImportError:
+                # 提供默认的get_event_id实现
+                self.get_event_id = lambda x: x
+                self.debug = debug
+        else:
+            self.get_event_id = getattr(config_getter, 'get_event_id', lambda x: x)
+            self.debug = getattr(config_getter, 'DEBUG', debug)
     
     def subscribe(self, event_type, callback):
         """订阅事件"""
         if not callable(callback):
             raise ValueError("Callback must be callable")
         
-        event_id = get_event_id(event_type)
+        event_id = self.get_event_id(event_type)
         self._subscribers[event_id].append(callback)
         
-        if DEBUG:
+        if self.debug:
             print(f"[EventBus] 订阅事件: {event_type} (ID:{event_id})")
         
         def unsubscribe():
             if callback in self._subscribers[event_id]:
                 self._subscribers[event_id].remove(callback)
-                if DEBUG:
+                if self.debug:
                     print(f"[EventBus] 取消订阅: {event_type} (ID:{event_id})")
         
         return unsubscribe
     
     def publish(self, event_type, **kwargs):
         """发布事件"""
-        event_id = get_event_id(event_type)
+        event_id = self.get_event_id(event_type)
         
         if event_id not in self._subscribers:
             return
         
-        if DEBUG:
+        if self.debug:
             print(f"[EventBus] 发布事件: {event_type} (ID:{event_id})")
         
         try:
@@ -93,7 +108,7 @@ class EventBus:
                 else:
                     callback(**kwargs)
             except Exception as e:
-                if DEBUG:
+                if self.debug:
                     print(f"[EventBus] 回调错误: {e}")
                 if callback in self._subscribers[event_id]:
                     self._subscribers[event_id].remove(callback)
@@ -106,7 +121,7 @@ class EventBus:
                 if not asyncio.iscoroutinefunction(callback):
                     callback(**kwargs)
             except Exception as e:
-                if DEBUG:
+                if self.debug:
                     print(f"[EventBus] 回调错误: {e}")
                 if callback in self._subscribers[event_id]:
                     self._subscribers[event_id].remove(callback)
@@ -114,23 +129,34 @@ class EventBus:
     
     def get_subscribers_count(self, event_type):
         """获取订阅者数量"""
-        event_id = get_event_id(event_type)
+        event_id = self.get_event_id(event_type)
         return len(self._subscribers.get(event_id, []))
 
-# 全局事件总线实例
-_global_event_bus = EventBus()
+# 全局事件总线实例（延迟初始化）
+_global_event_bus = None
+
+def _ensure_global_event_bus():
+    """确保全局事件总线已初始化"""
+    global _global_event_bus
+    if _global_event_bus is None:
+        _global_event_bus = EventBus()
+    return _global_event_bus
 
 def subscribe(event_type, callback):
     """全局订阅函数"""
-    return _global_event_bus.subscribe(event_type, callback)
+    return _ensure_global_event_bus().subscribe(event_type, callback)
 
 def publish(event_type, **kwargs):
     """全局发布函数"""
-    _global_event_bus.publish(event_type, **kwargs)
+    _ensure_global_event_bus().publish(event_type, **kwargs)
 
 def get_subscribers_count(event_type):
     """获取订阅者数量"""
-    return _global_event_bus.get_subscribers_count(event_type)
+    return _ensure_global_event_bus().get_subscribers_count(event_type)
+
+def create_event_bus(config_getter=None, debug=False):
+    """创建事件总线实例（依赖注入工厂函数）"""
+    return EventBus(config_getter=config_getter, debug=debug)
 
 # =============================================================================
 # 日志接口函数（委托给logger模块）
@@ -138,15 +164,27 @@ def get_subscribers_count(event_type):
 
 def log_critical(message):
     """记录关键日志"""
-    publish(LOG_LEVEL_CRITICAL, message=message)
+    try:
+        from .config import LOG_LEVEL_CRITICAL
+        publish(LOG_LEVEL_CRITICAL, message=message)
+    except ImportError:
+        publish(101, message=message)  # 使用默认值
 
 def log_warning(message):
     """记录警告日志"""
-    publish(LOG_LEVEL_WARNING, message=message)
+    try:
+        from .config import LOG_LEVEL_WARNING
+        publish(LOG_LEVEL_WARNING, message=message)
+    except ImportError:
+        publish(102, message=message)  # 使用默认值
 
 def log_info(message):
     """记录信息日志"""
-    publish(LOG_LEVEL_INFO, message=message)
+    try:
+        from .config import LOG_LEVEL_INFO
+        publish(LOG_LEVEL_INFO, message=message)
+    except ImportError:
+        publish(103, message=message)  # 使用默认值
 
 
 
@@ -157,9 +195,15 @@ def log_info(message):
 def clear_all_events():
     """清理所有事件订阅"""
     global _global_event_bus
-    _global_event_bus._subscribers.clear()
-    if DEBUG:
-        print("[CORE] 所有事件订阅已清理")
+    if _global_event_bus is not None:
+        _global_event_bus._subscribers.clear()
+        try:
+            from .config import DEBUG
+            debug = DEBUG
+        except ImportError:
+            debug = False
+        if debug:
+            print("[CORE] 所有事件订阅已清理")
 
 
 
@@ -173,13 +217,24 @@ def init_system():
         # 清理事件总线
         clear_all_events()
         
-        if DEBUG:
+        try:
+            from .config import DEBUG
+            debug = DEBUG
+        except ImportError:
+            debug = False
+            
+        if debug:
             print("[CORE] 事件总线初始化完成")
         
         return True
     except Exception as e:
         error_msg = f"事件总线初始化失败: {e}"
-        if DEBUG:
+        try:
+            from .config import DEBUG
+            debug = DEBUG
+        except ImportError:
+            debug = False
+        if debug:
             print(f"[CORE] [ERROR] {error_msg}")
         return False
 
@@ -187,8 +242,18 @@ def cleanup_system():
     """清理系统资源"""
     try:
         clear_all_events()
-        if DEBUG:
+        try:
+            from .config import DEBUG
+            debug = DEBUG
+        except ImportError:
+            debug = False
+        if debug:
             print("[CORE] 事件总线资源清理完成")
     except Exception as e:
-        if DEBUG:
+        try:
+            from .config import DEBUG
+            debug = DEBUG
+        except ImportError:
+            debug = False
+        if debug:
             print(f"[CORE] [ERROR] 事件总线清理失败: {e}")

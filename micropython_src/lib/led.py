@@ -23,19 +23,22 @@ try:
     from machine import Pin, PWM
 except ImportError:
     Pin = PWM = None
-from . import core
 from .config import (
     get_event_id, DEBUG, 
     EV_LED_SET_EFFECT, EV_LED_SET_BRIGHTNESS, EV_LED_EMERGENCY_OFF
 )
-from . import config
 
 class LEDManager:
     """增强的LED管理器 - 支持异步灯效和事件驱动"""
     
-    def __init__(self):
-        self.pin1 = config.get_led_pin_1()
-        self.pin2 = config.get_led_pin_2()
+    def __init__(self, event_bus=None, config_getter=None):
+        # 依赖注入
+        self.event_bus = event_bus
+        self.config_getter = config_getter
+        
+        # 获取LED配置
+        self.pin1 = config_getter.get_led_pin_1() if config_getter else 2
+        self.pin2 = config_getter.get_led_pin_2() if config_getter else 3
         self.pwm1 = None
         self.pwm2 = None
         self.initialized = False
@@ -53,8 +56,8 @@ class LEDManager:
         
         # 动态配置变量（用于温度优化）
         self.led_update_interval_ms = 50
-        self.current_pwm_freq = config.get_pwm_freq()
-        self.current_max_brightness = config.get_max_brightness()
+        self.current_pwm_freq = config_getter.get_pwm_freq() if config_getter else 1000
+        self.current_max_brightness = config_getter.get_max_brightness() if config_getter else 1023
         
         # 任务控制
         self.task_running = False
@@ -81,7 +84,8 @@ class LEDManager:
                 print(f"[LED] 初始化成功 - 引脚: {self.pin1}, {self.pin2}, 频率: {self.current_pwm_freq}Hz")
             
             # 发布初始化成功事件
-            core.publish(get_event_id('led_initialized'), success=True)
+            if self.event_bus:
+                self.event_bus.publish(get_event_id('led_initialized'), success=True)
             
             # 订阅LED控制事件
             self._subscribe_to_events()
@@ -93,8 +97,9 @@ class LEDManager:
             if DEBUG:
                 print(f"[LED] [ERROR] {error_msg}")
             
-            core.publish(get_event_id('led_initialized'), success=False, error=error_msg)
-            core.publish(get_event_id('log_critical'), message=error_msg)
+            if self.event_bus:
+                self.event_bus.publish(get_event_id('led_initialized'), success=False, error=error_msg)
+                self.event_bus.publish(get_event_id('log_critical'), message=error_msg)
             
             self.pwm1 = None
             self.pwm2 = None
@@ -117,24 +122,27 @@ class LEDManager:
             if DEBUG:
                 print("[LED] PWM 已关闭")
             
-            core.publish(get_event_id('led_deinitialized'))
+            if self.event_bus:
+                self.event_bus.publish(get_event_id('led_deinitialized'))
             
         except Exception as e:
             error_msg = f"PWM 关闭失败: {e}"
             if DEBUG:
                 print(f"[LED] [ERROR] {error_msg}")
-            core.publish(get_event_id('log_error'), message=error_msg)
+            if self.event_bus:
+                self.event_bus.publish(get_event_id('log_error'), message=error_msg)
     
     def _subscribe_to_events(self):
         """订阅LED相关的事件"""
-        core.subscribe(EV_LED_SET_EFFECT, self._on_led_set_effect)
-        core.subscribe(EV_LED_SET_BRIGHTNESS, self._on_led_set_brightness)
-        core.subscribe(EV_LED_EMERGENCY_OFF, self._on_led_emergency_off)
-        core.subscribe(get_event_id('config_update'), self._on_config_update)
-        core.subscribe(get_event_id('wifi_connecting_blink'), self._on_wifi_connecting_blink)
-        
-        if DEBUG:
-            print("[LED] 已订阅LED控制事件")
+        if self.event_bus:
+            self.event_bus.subscribe(EV_LED_SET_EFFECT, self._on_led_set_effect)
+            self.event_bus.subscribe(EV_LED_SET_BRIGHTNESS, self._on_led_set_brightness)
+            self.event_bus.subscribe(EV_LED_EMERGENCY_OFF, self._on_led_emergency_off)
+            self.event_bus.subscribe(get_event_id('config_update'), self._on_config_update)
+            self.event_bus.subscribe(get_event_id('wifi_connecting_blink'), self._on_wifi_connecting_blink)
+            
+            if DEBUG:
+                print("[LED] 已订阅LED控制事件")
     
     def _on_config_update(self, **kwargs):
         """处理配置更新事件"""
@@ -201,7 +209,8 @@ class LEDManager:
         if DEBUG:
             print("[LED] 收到紧急关闭信号")
         self.set_effect('off')
-        core.publish(get_event_id('led_emergency_off_completed'))
+        if self.event_bus:
+            self.event_bus.publish(get_event_id('led_emergency_off_completed'))
     
     async def _on_wifi_connecting_blink(self, **event_data):
         """WiFi连接时的LED闪烁指示"""
@@ -285,13 +294,15 @@ class LEDManager:
             error_msg = f"未知的灯效模式: {mode}"
             if DEBUG:
                 print(f"[LED] [WARNING] {error_msg}")
-            core.publish(get_event_id('log_warning'), message=error_msg)
+            if self.event_bus:
+                self.event_bus.publish(get_event_id('log_warning'), message=error_msg)
             self.current_effect = 'off'
         
         # 发布灯效变化事件
-        core.publish(get_event_id('led_effect_changed'), 
-                    effect=self.current_effect, 
-                    params=self.effect_params)
+        if self.event_bus:
+            self.event_bus.publish(get_event_id('led_effect_changed'), 
+                        effect=self.current_effect, 
+                        params=self.effect_params)
         
         return True
     
@@ -411,7 +422,8 @@ class LEDManager:
                 error_msg = f"LED效果任务错误: {e}"
                 if DEBUG:
                     print(f"[LED] [ERROR] {error_msg}")
-                core.publish(get_event_id('log_warning'), message=error_msg)
+                if self.event_bus:
+                    self.event_bus.publish(get_event_id('log_warning'), message=error_msg)
                 # 发生错误时等待更长时间，避免错误循环
                 await asyncio.sleep_ms(2000)
         
@@ -432,44 +444,71 @@ class LEDManager:
             'max_brightness': self.current_max_brightness
         }
 
-# 全局LED管理器实例
-_global_led_manager = LEDManager()
+# 全局LED管理器实例（向后兼容）
+_global_led_manager = None
+
+def _ensure_global_led_manager():
+    """确保全局LED管理器已初始化（向后兼容）"""
+    global _global_led_manager
+    if _global_led_manager is None:
+        # 导入core和config以保持向后兼容性
+        try:
+            from . import core
+            from . import config
+            _global_led_manager = LEDManager(event_bus=core, config_getter=config)
+        except ImportError:
+            _global_led_manager = LEDManager()
+    return _global_led_manager
 
 # 外部接口函数
 def init_led():
     """初始化LED"""
-    return _global_led_manager.init()
+    manager = _ensure_global_led_manager()
+    return manager.init()
 
 def deinit_led():
     """关闭LED"""
-    _global_led_manager.deinit()
+    manager = _ensure_global_led_manager()
+    manager.deinit()
 
 def set_led_effect(effect, **params):
     """设置LED效果"""
+    manager = _ensure_global_led_manager()
     led_num = params.get('led_num', 1)
-    brightness = params.get('brightness', _global_led_manager.current_max_brightness)
-    return _global_led_manager.set_effect(effect, led_num, brightness)
+    brightness = params.get('brightness', manager.current_max_brightness)
+    return manager.set_effect(effect, led_num, brightness)
 
 def set_led_brightness(led_num, brightness):
     """设置LED亮度"""
-    return _global_led_manager.set_brightness(led_num, brightness)
+    manager = _ensure_global_led_manager()
+    return manager.set_brightness(led_num, brightness)
 
 def start_led_task():
     """启动LED异步任务"""
-    _global_led_manager.start_led_task()
+    manager = _ensure_global_led_manager()
+    manager.start_led_task()
 
 def stop_led_task():
     """停止LED异步任务"""
-    _global_led_manager.stop_led_task()
+    manager = _ensure_global_led_manager()
+    manager.stop_led_task()
 
 def emergency_led_off():
     """紧急关闭LED"""
-    _global_led_manager.set_effect('off')
+    manager = _ensure_global_led_manager()
+    manager.set_effect('off')
 
 def get_led_status():
     """获取LED状态"""
-    return _global_led_manager.get_status()
+    manager = _ensure_global_led_manager()
+    return manager.get_status()
 
 def update_led_config(new_config):
     """更新LED配置"""
-    _global_led_manager._on_config_update(config=new_config, source='manual')
+    manager = _ensure_global_led_manager()
+    manager._on_config_update(config=new_config, source='manual')
+
+# 依赖注入接口
+def create_led_manager(event_bus, config_getter):
+    """创建LED管理器实例（依赖注入）"""
+    return LEDManager(event_bus=event_bus, config_getter=config_getter)
