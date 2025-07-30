@@ -385,11 +385,12 @@ def _adjust_scheduler_interval_by_temperature():
                         print("[DAEMON] [TEMP_OPT] 调度器间隔调整: {}ms -> {}ms".format(old_interval, _current_scheduler_interval_ms))
                         
                         # 通过事件总线发布调度器间隔调整事件
-                        core.publish(EV_SCHEDULER_INTERVAL_ADJUSTED, 
-                                        old_interval=old_interval,
-                                        new_interval=_current_scheduler_interval_ms,
-                                        temperature=current_temp,
-                                        temp_level=temp_level)
+                        if _EV_SCHEDULER_INTERVAL_ADJUSTED is not None:
+                            core.publish(_EV_SCHEDULER_INTERVAL_ADJUSTED, 
+                                            old_interval=old_interval,
+                                            new_interval=_current_scheduler_interval_ms,
+                                            temperature=current_temp,
+                                            temp_level=temp_level)
                         
                     except Exception as e:
                         _log_critical_error("调度器间隔调整失败: " + str(e))
@@ -494,7 +495,8 @@ def _enter_safe_mode(reason):
                 print("\n" + "!"*60 + "\n!!! 关键警告：系统进入紧急安全模式 (原因: " + reason + ")\n" + "!"*60 + "\n")
             
             # 通过事件总线通知其他模块进入安全模式
-            core.publish(EV_ENTER_SAFE_MODE, reason=reason)
+            if _EV_ENTER_SAFE_MODE is not None:
+                core.publish(_EV_ENTER_SAFE_MODE, reason=reason)
             
             _safe_mode_active = True
             _safe_mode_start_time = time.ticks_ms()
@@ -534,7 +536,8 @@ def _check_safe_mode_recovery():
                 print("[RECOVERY] 系统条件恢复，尝试退出安全模式...")
             
             # 通过事件总线通知其他模块退出安全模式
-            core.publish(EV_EXIT_SAFE_MODE, temperature=temp)
+            if _EV_EXIT_SAFE_MODE is not None:
+                core.publish(_EV_EXIT_SAFE_MODE, temperature=temp)
             
             _safe_mode_active = False
             
@@ -593,11 +596,12 @@ def _print_performance_report():
         
         # 发布性能报告事件，供温度优化器使用
         try:
-            core.publish(EV_PERFORMANCE_REPORT, 
-                             temperature=temp, 
-                             mem_percent=mem_percent, 
-                             error_count=_error_count,
-                             uptime_ms=time.ticks_diff(current_time, _start_ticks_ms))
+            if _EV_PERFORMANCE_REPORT is not None:
+                core.publish(_EV_PERFORMANCE_REPORT, 
+                                 temperature=temp, 
+                                 mem_percent=mem_percent, 
+                                 error_count=_error_count,
+                                 uptime_ms=time.ticks_diff(current_time, _start_ticks_ms))
         except Exception as e:
             _log_critical_error("性能报告事件发布失败: " + str(e))
         

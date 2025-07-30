@@ -2,9 +2,12 @@
 """
 LED控制模块 - 增强版本
 
-合并了utils.py中的LED功能，提供完整的LED管理�?- PWM硬件控制
-- 多种灯效模式和异步任�?- 事件驱动控制
-- 动态配置更�?- 温度优化支持
+合并了utils.py中的LED功能，提供完整的LED管理：
+- PWM硬件控制
+- 多种灯效模式和异步任务
+- 事件驱动控制
+- 动态配置更新
+- 温度优化支持
 """
 
 try:
@@ -21,8 +24,24 @@ from .config import (
     EV_LED_SET_EFFECT, EV_LED_SET_BRIGHTNESS, EV_LED_EMERGENCY_OFF
 )
 
+# 常量定义
+DEFAULT_LED_PIN_1 = 2
+DEFAULT_LED_PIN_2 = 3
+DEFAULT_PWM_FREQ = 1000
+DEFAULT_MAX_BRIGHTNESS = 1023
+MIN_LED_UPDATE_INTERVAL = 50
+FAST_BLINK_INTERVAL = 200
+SLOW_BLINK_INTERVAL = 1000
+ALTERNATE_BLINK_INTERVAL = 500
+DOUBLE_BLINK_FLASH_INTERVAL = 150
+DOUBLE_BLINK_PAUSE_INTERVAL = 800
+HEARTBEAT_PULSE_INTERVAL = 100
+HEARTBEAT_PAUSE_INTERVAL = 600
+ERROR_RECOVERY_INTERVAL = 2000
+MAX_PWM_DUTY = 65535
+
 class LEDManager:
-    """增强的LED管理�?- 支持异步灯效和事件驱�?""
+    """增强的LED管理器 - 支持异步灯效和事件驱动"""
 
     def __init__(self, event_bus=None, config_getter=None):
         # 依赖注入
@@ -30,24 +49,31 @@ class LEDManager:
         self.config_getter = config_getter
 
         # 获取LED配置
-        self.pin1 = config_getter.get_led_pin_1() if config_getter else 2
-        self.pin2 = config_getter.get_led_pin_2() if config_getter else 3
+        self.pin1 = config_getter.get_led_pin_1() if config_getter else DEFAULT_LED_PIN_1
+        self.pin2 = config_getter.get_led_pin_2() if config_getter else DEFAULT_LED_PIN_2
         self.pwm1 = None
         self.pwm2 = None
         self.initialized = False
 
-        # 灯效状�?        self.current_effect = 'off'
+        # 灯效状态
+        self.current_effect = 'off'
         self.effect_params = {}
         self.led1_brightness = 0
         self.led2_brightness = 0
 
-        # 动画状�?        self.blink_state = False
+        # 动画状态
+        self.blink_state = False
         self.blink_counter = 0
         self.safe_mode_active = False
 
-        # 动态配置变量（用于温度优化�?        self.led_update_interval_ms = 50
-        self.current_pwm_freq = config_getter.get_pwm_freq() if config_getter else 1000
-        self.current_max_brightness = config_getter.get_max_brightness() if config_getter else 1023
+        # 动态配置变量（用于温度优化）
+        self.led_update_interval_ms = MIN_LED_UPDATE_INTERVAL
+        self.current_pwm_freq = (
+            config_getter.get_pwm_freq() if config_getter else DEFAULT_PWM_FREQ
+        )
+        self.current_max_brightness = (
+            config_getter.get_max_brightness() if config_getter else DEFAULT_MAX_BRIGHTNESS
+        )
 
         # 任务控制
         self.task_running = False
@@ -71,7 +97,8 @@ class LEDManager:
             self.initialized = True
 
             if DEBUG:
-                print("[LED] 初始化成功 - 引脚:", str(self.pin1) + ",", str(self.pin2) + ", 频率:", str(self.current_pwm_freq) + "Hz")
+                print(f"[LED] 初始化成功 - 引脚: {self.pin1}, {self.pin2}, "
+                      f"频率: {self.current_pwm_freq}Hz")
 
             # 发布初始化成功事件
             if self.event_bus:
@@ -168,9 +195,11 @@ class LEDManager:
     def _update_led_interval(self, new_config):
         """更新LED更新间隔"""
         if 'led_interval_ms' in new_config:
-            self.led_update_interval_ms = max(50, new_config['led_interval_ms'])
+            self.led_update_interval_ms = max(
+                MIN_LED_UPDATE_INTERVAL, new_config['led_interval_ms']
+            )
             if DEBUG:
-                print("[LED] 更新呼吸灯间隔为:", str(self.led_update_interval_ms) + "ms")
+                print(f"[LED] LED更新间隔已调整为: {self.led_update_interval_ms}ms")
 
     def _update_pwm_frequency(self, new_config):
         """更新PWM频率"""
@@ -183,35 +212,35 @@ class LEDManager:
             self.pwm2.freq(new_freq)
             self.current_pwm_freq = new_freq
             if DEBUG:
-                print("[LED] 更新PWM频率为:", str(new_freq) + "Hz")
+                print(f"[LED] 更新PWM频率为: {new_freq}Hz")
         except (OSError, ValueError) as e:
             if DEBUG:
                 print("[LED] [ERROR] PWM频率更新失败:", str(e))
 
     def _update_max_brightness(self, new_config):
-        """更新最大亮度""
+        """更新最大亮度"""
         if 'max_brightness' in new_config:
             self.current_max_brightness = new_config['max_brightness']
             if DEBUG:
-                print("[LED] 更新最大亮度为:", str(self.current_max_brightness))
+                print(f"[LED] 更新最大亮度为: {self.current_max_brightness}")
 
     def _on_led_set_effect(self, **event_data):
-        """处理设置LED效果的事�?""
+        """处理设置LED效果的事件"""
         mode = event_data.get('mode', 'off')
         led_num = event_data.get('led_num', 1)
         brightness = event_data.get('brightness', self.current_max_brightness)
         self.set_effect(mode, led_num, brightness)
 
     def _on_led_set_brightness(self, **event_data):
-        """处理设置LED亮度的事�?""
+        """处理设置LED亮度的事件"""
         led_num = event_data.get('led_num', 1)
         brightness = event_data.get('brightness', self.current_max_brightness)
         self.set_brightness(led_num, brightness)
 
     def _on_led_emergency_off(self, **_event_data):
-        """处理紧急关闭LED的事�?""
+        """处理紧急关闭LED的事件"""
         if DEBUG:
-            print("[LED] 收到紧急关闭信�?)
+            print("[LED] 收到紧急关闭信号")
         self.set_effect('off')
         if self.event_bus:
             self.event_bus.publish(get_event_id('led_emergency_off_completed'))
@@ -221,7 +250,8 @@ class LEDManager:
         if not self.pwm1 or not self.pwm2:
             return
 
-        # 异步闪烁：使用asyncio.sleep实现非阻塞延�?        self.pwm1.duty_u16(self.current_max_brightness)
+        # 异步闪烁：使用asyncio.sleep实现非阻塞延迟
+        self.pwm1.duty_u16(self.current_max_brightness)
         self.pwm2.duty_u16(self.current_max_brightness)
         await asyncio.sleep_ms(100)
         self.pwm1.duty_u16(0)
@@ -237,7 +267,11 @@ class LEDManager:
             # 确保亮度在有效范围内
             brightness = max(0, min(brightness, self.current_max_brightness))
 
-            # 转换�?6位PWM�?            duty = int(brightness * 65535 / self.current_max_brightness) if self.current_max_brightness > 0 else 0
+            # 转换为16位PWM值
+            duty = (
+                int(brightness * MAX_PWM_DUTY / self.current_max_brightness)
+                if self.current_max_brightness > 0 else 0
+            )
 
             if led_num == 1 and self.pwm1:
                 self.pwm1.duty_u16(duty)
@@ -245,7 +279,8 @@ class LEDManager:
             elif led_num == 2 and self.pwm2:
                 self.pwm2.duty_u16(duty)
                 self.led2_brightness = brightness
-            elif led_num == 0:  # 两个LED都设�?                if self.pwm1:
+            elif led_num == 0:  # 两个LED都设置
+                if self.pwm1:
                     self.pwm1.duty_u16(duty)
                     self.led1_brightness = brightness
                 if self.pwm2:
@@ -262,25 +297,29 @@ class LEDManager:
         """设置LED效果"""
         if not self.initialized:
             if DEBUG:
-                print("[LED] [WARNING] PWM未初始化，无法设置灯�?)
+                print("[LED] [WARNING] PWM未初始化，无法设置灯效")
             return False
 
         if brightness_u16 is None:
             brightness_u16 = self.current_max_brightness
 
         if DEBUG:
-            print("[LED] 设置灯效�?", mode)
+            print("[LED] 设置灯效:", mode)
 
         self.current_effect = mode
         self.effect_params = {'led_num': led_num, 'brightness_u16': brightness_u16}
 
-        # 使用字典映射来减少分�?        effect_handlers = {
+        # 使用字典映射来减少分支
+        effect_handlers = {
             'off': self._handle_off_effect,
             'single_on': self._handle_single_on_effect,
             'both_on': self._handle_both_on_effect
         }
 
-        blink_effects = ['fast_blink', 'slow_blink', 'alternate_blink', 'double_blink', 'heartbeat_blink']
+        blink_effects = [
+            'fast_blink', 'slow_blink', 'alternate_blink',
+            'double_blink', 'heartbeat_blink'
+        ]
 
         if mode in effect_handlers:
             effect_handlers[mode](led_num, brightness_u16)
@@ -291,9 +330,11 @@ class LEDManager:
 
         # 发布灯效变化事件
         if self.event_bus:
-            self.event_bus.publish(get_event_id('led_effect_changed'),
-                        effect=self.current_effect,
-                        params=self.effect_params)
+            self.event_bus.publish(
+                get_event_id('led_effect_changed'),
+                effect=self.current_effect,
+                params=self.effect_params
+            )
 
         return True
 
@@ -303,7 +344,7 @@ class LEDManager:
         self.set_brightness(2, 0)
 
     def _handle_single_on_effect(self, led_num, brightness_u16):
-        """处理单个LED开启效�?""
+        """处理单个LED开启效果"""
         if led_num == 1:
             self.set_brightness(1, brightness_u16)
             self.set_brightness(2, 0)
@@ -312,7 +353,7 @@ class LEDManager:
             self.set_brightness(2, brightness_u16)
 
     def _handle_both_on_effect(self, _led_num, brightness_u16):
-        """处理两个LED都开启效�?""
+        """处理两个LED都开启效果"""
         self.set_brightness(1, brightness_u16)
         self.set_brightness(2, brightness_u16)
 
@@ -323,7 +364,7 @@ class LEDManager:
 
     def _handle_unknown_effect(self, mode):
         """处理未知效果"""
-        error_msg = "未知的灯效模�? " + mode
+        error_msg = "未知的灯效模式: " + mode
         if DEBUG:
             print("[LED] [WARNING]", error_msg)
         if self.event_bus:
@@ -336,7 +377,7 @@ class LEDManager:
             self.task_running = True
             self.led_task = asyncio.create_task(self._led_effect_task())
             if DEBUG:
-                print("[LED] LED异步任务已启�?)
+                print("[LED] LED异步任务已启动")
 
     def stop_led_task(self):
         """停止LED异步任务"""
@@ -344,13 +385,14 @@ class LEDManager:
         if self.led_task and not self.led_task.done():
             self.led_task.cancel()
             if DEBUG:
-                print("[LED] LED异步任务已停�?)
+                print("[LED] LED异步任务已停止")
 
     async def _led_effect_task(self):
-        """LED效果异步任务：处理各种闪烁效�?""
-        print("[LED] LED效果异步任务已启�?)
+        """LED效果异步任务：处理各种闪烁效果"""
+        print("[LED] LED效果异步任务已启动")
 
-        # 效果处理器映�?        effect_handlers = {
+        # 效果处理器映射
+        effect_handlers = {
             'fast_blink': self._handle_fast_blink,
             'slow_blink': self._handle_slow_blink,
             'alternate_blink': self._handle_alternate_blink,
@@ -364,33 +406,35 @@ class LEDManager:
                 if handler:
                     await handler()
                 else:
-                    # 非动画模式下，使用动态更新间�?                    await asyncio.sleep_ms(self.led_update_interval_ms)
+                    # 非动画模式下，使用动态更新间隔
+                    await asyncio.sleep_ms(self.led_update_interval_ms)
 
-            except (OSError, ValueError, AttributeError,
-                    asyncio.CancelledError) as e:
+            except (
+                OSError, ValueError, AttributeError, asyncio.CancelledError
+            ) as e:
                 error_msg = "LED效果任务错误: " + str(e)
                 if DEBUG:
                     print("[LED] [ERROR]", error_msg)
                 if self.event_bus:
                     self.event_bus.publish(get_event_id('log_warning'), message=error_msg)
                 # 发生错误时等待更长时间，避免错误循环
-                await asyncio.sleep_ms(2000)
+                await asyncio.sleep_ms(ERROR_RECOVERY_INTERVAL)
 
-        print("[LED] LED效果异步任务已停�?)
+        print("[LED] LED效果异步任务已停止")
 
     async def _handle_fast_blink(self):
         """处理快闪效果"""
         if self.pwm1 and self.pwm2:
             brightness = self.effect_params.get('brightness_u16', self.current_max_brightness)
             self._toggle_both_leds(brightness)
-        await asyncio.sleep_ms(200)
+        await asyncio.sleep_ms(FAST_BLINK_INTERVAL)
 
     async def _handle_slow_blink(self):
         """处理慢闪效果"""
         if self.pwm1 and self.pwm2:
             brightness = self.effect_params.get('brightness_u16', self.current_max_brightness)
             self._toggle_both_leds(brightness)
-        await asyncio.sleep_ms(1000)
+        await asyncio.sleep_ms(SLOW_BLINK_INTERVAL)
 
     async def _handle_alternate_blink(self):
         """处理交替闪烁效果"""
@@ -403,7 +447,7 @@ class LEDManager:
                 self.set_brightness(1, 0)
                 self.set_brightness(2, brightness)
             self.blink_state = not self.blink_state
-        await asyncio.sleep_ms(500)
+        await asyncio.sleep_ms(ALTERNATE_BLINK_INTERVAL)
 
     async def _handle_double_blink(self):
         """处理双闪效果"""
@@ -413,14 +457,14 @@ class LEDManager:
         brightness = self.effect_params.get('brightness_u16', self.current_max_brightness)
         self.blink_counter += 1
 
-        if self.blink_counter <= 4:  # 两次闪烁（开-�?开-关）
+        if self.blink_counter <= 4:  # 两次闪烁（开-关-开-关）
             self._toggle_both_leds(brightness)
-            await asyncio.sleep_ms(150)
+            await asyncio.sleep_ms(DOUBLE_BLINK_FLASH_INTERVAL)
         else:
             # 暂停阶段
             self.set_brightness(1, 0)
             self.set_brightness(2, 0)
-            await asyncio.sleep_ms(800)
+            await asyncio.sleep_ms(DOUBLE_BLINK_PAUSE_INTERVAL)
             self.blink_counter = 0
             self.blink_state = False
 
@@ -433,15 +477,18 @@ class LEDManager:
         self.blink_counter += 1
 
         if self.blink_counter == 1:
-            # 第一次跳�?            await self._heartbeat_pulse(brightness)
+            # 第一次跳动
+            await self._heartbeat_pulse(brightness)
         elif self.blink_counter == 2:
-            # 第二次跳�?            await self._heartbeat_pulse(brightness)
-            await asyncio.sleep_ms(600)  # 长暂�?            self.blink_counter = 0
+            # 第二次跳动
+            await self._heartbeat_pulse(brightness)
+            await asyncio.sleep_ms(HEARTBEAT_PAUSE_INTERVAL)  # 长暂停
+            self.blink_counter = 0
         else:
             self.blink_counter = 0
 
     def _toggle_both_leds(self, brightness):
-        """切换两个LED的状�?""
+        """切换两个LED的状态"""
         if self.blink_state:
             self.set_brightness(1, brightness)
             self.set_brightness(2, brightness)
@@ -454,13 +501,13 @@ class LEDManager:
         """心跳脉冲"""
         self.set_brightness(1, brightness)
         self.set_brightness(2, brightness)
-        await asyncio.sleep_ms(100)
+        await asyncio.sleep_ms(HEARTBEAT_PULSE_INTERVAL)
         self.set_brightness(1, 0)
         self.set_brightness(2, 0)
-        await asyncio.sleep_ms(100)
+        await asyncio.sleep_ms(HEARTBEAT_PULSE_INTERVAL)
 
     def get_status(self):
-        """获取LED状�?""
+        """获取LED状态"""
         return {
             'initialized': self.initialized,
             'current_effect': self.current_effect,
@@ -474,20 +521,22 @@ class LEDManager:
             'max_brightness': self.current_max_brightness
         }
 
-# 全局LED管理器实例（向后兼容�?_global_led_manager = None
+# 全局LED管理器实例（向后兼容）
+GLOBAL_LED_MANAGER = None
 
 def _ensure_global_led_manager():
-    """确保全局LED管理器已初始化（向后兼容�?""
+    """确保全局LED管理器已初始化（向后兼容）"""
     # pylint: disable=global-statement,import-outside-toplevel
-    global _global_led_manager
-    if _global_led_manager is None:
-        # 导入core和config以保持向后兼容�?        try:
+    global GLOBAL_LED_MANAGER
+    if GLOBAL_LED_MANAGER is None:
+        # 导入core和config以保持向后兼容
+        try:
             from . import core
             from . import config
-            _global_led_manager = LEDManager(event_bus=core, config_getter=config)
+            GLOBAL_LED_MANAGER = LEDManager(event_bus=core, config_getter=config)
         except ImportError:
-            _global_led_manager = LEDManager()
-    return _global_led_manager
+            GLOBAL_LED_MANAGER = LEDManager()
+    return GLOBAL_LED_MANAGER
 
 # 外部接口函数
 def init_led():
@@ -528,7 +577,7 @@ def emergency_led_off():
     manager.set_effect('off')
 
 def get_led_status():
-    """获取LED状�?""
+    """获取LED状态"""
     manager = _ensure_global_led_manager()
     return manager.get_status()
 
@@ -540,5 +589,5 @@ def update_led_config(new_config):
 
 # 依赖注入接口
 def create_led_manager(event_bus, config_getter):
-    """创建LED管理器实例（依赖注入�?""
+    """创建LED管理器实例（依赖注入）"""
     return LEDManager(event_bus=event_bus, config_getter=config_getter)

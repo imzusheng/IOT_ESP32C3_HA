@@ -13,7 +13,6 @@ try:
     import uasyncio as asyncio
 except ImportError:
     import asyncio
-from .utils import get_memory_info, get_system_status, format_time
 
 # 内存优化：预分配常用的小对象
 _EMPTY_DICT = {}
@@ -27,21 +26,16 @@ except ImportError:
         def __init__(self, default_factory):
             self.default_factory = default_factory
             self.data = {}
-        
         def __getitem__(self, key):
             if key not in self.data:
                 self.data[key] = self.default_factory()
             return self.data[key]
-        
         def __setitem__(self, key, value):
             self.data[key] = value
-        
         def get(self, key, default=None):
             return self.data.get(key, default)
-        
         def clear(self):
             self.data.clear()
-
 # =============================================================================
 # 轻量级事件总线
 # =============================================================================

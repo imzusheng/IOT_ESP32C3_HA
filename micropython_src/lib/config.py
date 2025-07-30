@@ -18,6 +18,7 @@
 """
 
 import os
+import time
 
 try:
     import ujson as json
@@ -279,10 +280,10 @@ class ConfigLoadError(Exception):
 def _load_json_config():
     """
     从JSON文件加载配置
-    
+
     Returns:
         dict: 配置字典
-    
+
     Raises:
         ConfigFileNotFoundError: 配置文件不存在
         ConfigLoadError: 配置文件加载失败
@@ -290,8 +291,8 @@ def _load_json_config():
     try:
         if CONFIG_FILE_PATH not in os.listdir():
             raise ConfigFileNotFoundError(f"配置文件 {CONFIG_FILE_PATH} 不存在，请先创建配置文件")
-        
-        with open(CONFIG_FILE_PATH, 'r') as f:
+
+        with open(CONFIG_FILE_PATH, 'r', encoding='utf-8') as f:
             config_data = json.load(f)
         print(f"[CONFIG] 成功从 {CONFIG_FILE_PATH} 加载配置")
         return config_data
@@ -303,15 +304,15 @@ def _load_json_config():
 def _save_json_config(config_data):
     """
     保存配置到JSON文件
-    
+
     Args:
         config_data (dict): 要保存的配置数据
-    
+
     Returns:
         bool: 保存是否成功
     """
     try:
-        with open(CONFIG_FILE_PATH, 'w') as f:
+        with open(CONFIG_FILE_PATH, 'w', encoding='utf-8') as f:
             json.dump(config_data, f, indent=2)
         print(f"[CONFIG] 配置已保存到 {CONFIG_FILE_PATH}")
         return True
@@ -322,20 +323,20 @@ def _save_json_config(config_data):
 def reload_config():
     """
     重新加载配置文件
-    
+
     Returns:
         bool: 重载是否成功
     """
     global _loaded_config, _config_load_time
-    
+
     try:
         old_config = _loaded_config.copy() if _loaded_config else {}
         _loaded_config = _load_json_config()
         _config_load_time = time.ticks_ms() if 'time' in globals() else 0
-        
+
         if _loaded_config:
             print("[CONFIG] 配置重载成功")
-            
+
             # 配置模块只负责加载配置，不发布事件
             # 事件发布由调用者负责
             if DEBUG:
@@ -344,15 +345,15 @@ def reload_config():
                 for section in ['led', 'wifi', 'logging', 'daemon', 'ntp', 'general']:
                     if old_config.get(section, {}) != _loaded_config.get(section, {}):
                         changed_sections.append(section)
-                
+
                 if changed_sections:
                     print(f"[CONFIG] 配置变更部分: {', '.join(changed_sections)}")
-            
+
             return True
         else:
             print("[CONFIG] 配置重载失败，使用默认配置")
             return False
-            
+
     except Exception as e:
         print(f"[CONFIG] [ERROR] 配置重载失败: {e}")
         return False
@@ -360,37 +361,37 @@ def reload_config():
 def _get_config_value(section, key):
     """
     从配置中获取值，要求配置文件必须存在
-    
+
     Args:
         section (str): 配置节名称
         key (str): 配置键名称，如果为None则返回整个配置节
-    
+
     Returns:
         配置值或配置节
-    
+
     Raises:
         ConfigFileNotFoundError: 配置文件不存在
         ConfigLoadError: 配置加载失败
         KeyError: 配置项不存在
     """
     global _loaded_config
-    
+
     # 如果还没有加载过配置，先尝试加载
     if _loaded_config is None:
         _loaded_config = _load_json_config()
-    
+
     # 检查配置节是否存在
     if section not in _loaded_config:
         raise KeyError(f"配置节 '{section}' 不存在")
-    
+
     # 如果key为None，返回整个配置节
     if key is None:
         return _loaded_config[section]
-    
+
     # 检查配置项是否存在
     if key not in _loaded_config[section]:
         raise KeyError(f"配置项 '{section}.{key}' 不存在")
-    
+
     return _loaded_config[section][key]
 
 # =============================================================================
@@ -506,7 +507,7 @@ def get_general_config():
 def validate_config():
     """
     验证配置的有效性
-    
+
     Returns:
         bool: 配置是否有效
     """
@@ -516,28 +517,28 @@ def validate_config():
         if not wifi_configs or not isinstance(wifi_configs, list):
             print("[CONFIG] [ERROR] WiFi配置无效")
             return False
-        
+
         for wifi_config in wifi_configs:
             if not isinstance(wifi_config, dict) or 'ssid' not in wifi_config or 'password' not in wifi_config:
                 print("[CONFIG] [ERROR] WiFi配置格式无效")
                 return False
-        
+
         # 验证引脚配置
         led_pin_1 = get_led_pin_1()
         led_pin_2 = get_led_pin_2()
         if not isinstance(led_pin_1, int) or not isinstance(led_pin_2, int):
             print("[CONFIG] [ERROR] LED引脚配置无效")
             return False
-        
+
         # 验证温度阈值
         safety_config = get_safety_config()
         if not isinstance(safety_config.get('temperature_threshold'), (int, float)):
             print("[CONFIG] [ERROR] 温度阈值配置无效")
             return False
-        
+
         print("[CONFIG] 配置验证通过")
         return True
-        
+
     except Exception as e:
         print(f"[CONFIG] [ERROR] 配置验证失败: {e}")
         return False
@@ -545,7 +546,7 @@ def validate_config():
 def get_led_config():
     """
     获取LED配置
-    
+
     Returns:
         dict: LED配置字典
     """
@@ -560,7 +561,7 @@ def get_led_config():
 def get_network_config():
     """
     获取网络配置
-    
+
     Returns:
         dict: 网络配置字典
     """
@@ -574,25 +575,25 @@ def get_network_config():
 def load_all_configs():
     """
     加载并验证所有配置
-    
+
     Returns:
         bool: 配置加载是否成功
-    
+
     Raises:
         ConfigFileNotFoundError: 配置文件不存在
         ConfigLoadError: 配置加载失败
         KeyError: 配置项不存在
     """
     print("[CONFIG] 正在加载系统配置...")
-    
+
     # 强制加载配置文件，如果失败会抛出异常
     global _loaded_config
     _loaded_config = _load_json_config()
-    
+
     # 验证配置有效性
     if not validate_config():
         raise ConfigLoadError("配置验证失败")
-    
+
     print("[CONFIG] 系统配置加载完成")
     return True
 
@@ -629,11 +630,11 @@ def __getattr__(name):
     wifi_constants = _ensure_wifi_constants()
     if wifi_constants and name in wifi_constants:
         return wifi_constants[name]
-    
+
     led_constants = _get_led_constants()
     if led_constants and name in led_constants:
         return led_constants[name]
-    
+
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 # 在模块加载时验证配置
@@ -647,3 +648,4 @@ else:
         # 如果配置文件不存在或有问题，不阻止模块加载
         # 让调用者处理这些异常
         pass
+

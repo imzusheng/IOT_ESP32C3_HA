@@ -32,7 +32,7 @@ def get_memory_info():
         free = gc.mem_free()
         allocated = gc.mem_alloc()
         total = free + allocated
-        
+
         # 复用模板字典以减少内存分配
         result = _MEMORY_INFO_TEMPLATE.copy()
         result['free'] = free
@@ -63,9 +63,9 @@ def get_system_status():
         import network
         wlan = network.WLAN(network.STA_IF)
         wifi_connected = wlan.isconnected()
-        
+
         memory_info = get_memory_info()
-        
+
         # 尝试获取温度信息
         temp = None
         try:
@@ -73,7 +73,7 @@ def get_system_status():
             temp = esp32.raw_temperature()
         except:
             pass
-        
+
         # 复用模板字典
         result = _SYSTEM_STATUS_TEMPLATE.copy()
         result['wifi_connected'] = wifi_connected
@@ -97,7 +97,7 @@ def format_time(timestamp=None):
     try:
         if timestamp is None:
             timestamp = time.time()
-        
+
         local_time = time.localtime(timestamp)
         return f"{local_time[0]}-{local_time[1]:02d}-{local_time[2]:02d} {local_time[3]:02d}:{local_time[4]:02d}:{local_time[5]:02d}"
     except:
