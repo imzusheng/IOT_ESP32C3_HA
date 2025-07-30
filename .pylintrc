@@ -1,0 +1,19 @@
+# .pylintrc
+
+[MESSAGES CONTROL]
+
+# 禁用掉那些在 MicroPython 环境下必然会发生的误报
+# import-error: Pylint 在标准 Python 环境找不到 machine, network 等模块
+# no-member: Pylint 无法静态分析出 machine 模块里有 Pin 这个成员
+disable=
+    import-error,
+    no-member,
+    missing-function-docstring,
+    missing-class-docstring,
+    missing-module-docstring,
+    invalid-name
+
+[REPORTS]
+
+# 输出报告的格式，可以保持默认
+output-format=text

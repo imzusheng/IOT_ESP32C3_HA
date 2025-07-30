@@ -24,26 +24,29 @@
 - 资源优化：合理使用内存和CPU资源
 """
 
-import time
 import gc
-try:
-    import machine
-except ImportError:
-    machine = None
-try:
-    import esp32
-except ImportError:
-    esp32 = None
+from lib import config, core, daemon, ntp, temp_optimizer, wifi
+from lib.config import (
+    DEBUG,
+    EV_ASYNC_SYSTEM_STARTING,
+    EV_ASYNC_TASKS_CLEANUP_COMPLETED,
+    EV_ASYNC_TASKS_CLEANUP_STARTED,
+    EV_ASYNC_TASKS_STARTED,
+    EV_LOW_MEMORY_WARNING,
+    EV_PERFORMANCE_REPORT,
+    EV_SYSTEM_HEARTBEAT,
+    EV_SYSTEM_SHUTTING_DOWN,
+    EV_SYSTEM_STARTING,
+    EV_SYSTEM_STOPPED,
+    get_event_id,
+)
+from lib.led import deinit_led, init_led, start_led_task, stop_led_task
 try:
     import uasyncio as asyncio
 except ImportError:
     import asyncio
 
 # 导入项目模块
-from lib import config, core, daemon, wifi, ntp, temp_optimizer
-from lib.led import init_led, deinit_led, start_led_task, stop_led_task
-from lib.config import get_event_id, DEBUG, EV_PERFORMANCE_REPORT, EV_SYSTEM_HEARTBEAT, EV_LOW_MEMORY_WARNING, EV_SYSTEM_STARTING, EV_SYSTEM_STOPPED, EV_SYSTEM_SHUTTING_DOWN, EV_ASYNC_SYSTEM_STARTING, EV_ASYNC_TASKS_STARTED, EV_ASYNC_TASKS_CLEANUP_STARTED, EV_ASYNC_TASKS_CLEANUP_COMPLETED
-
 
 
 async def main_business_loop():

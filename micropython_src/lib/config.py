@@ -105,7 +105,7 @@ LOG_LEVEL_ERROR = const(104)
 
 # === 调试开关 ===
 # 发布版本时设为 False 可移除所有调试信息
-DEBUG = False  # 开发时设为 True, 发布时设为 False
+DEBUG = True  # 开发时设为 True, 发布时设为 False
 # === 事件常量映射表 ===
 # 用于字符串到整数的转换
 EVENT_MAP = {
