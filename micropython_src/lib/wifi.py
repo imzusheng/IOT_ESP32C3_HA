@@ -9,13 +9,22 @@ WiFi管理模块
 - 事件驱动的状态通知
 """
 
-import network
+try:
+    import network
+except ImportError:
+    network = None
 import time
-import esp32
-import uasyncio as asyncio
+try:
+    import esp32
+except ImportError:
+    esp32 = None
+try:
+    import uasyncio as asyncio
+except ImportError:
+    import asyncio
 from enum import Enum
-from lib import core
-from config import (
+from . import core
+from .config import (
     get_event_id, DEBUG, 
     EV_WIFI_CONNECTING, EV_WIFI_CONNECTED, EV_WIFI_ERROR, EV_WIFI_TIMEOUT,
     WIFI_CONNECT_TIMEOUT_S, WIFI_RETRY_INTERVAL_S, WIFI_CONFIGS
@@ -35,22 +44,34 @@ _wifi_connected = False
 _wifi_check_interval_s = 30  # 动态配置变量（用于温度优化）
 
 def _on_config_update(**kwargs):
-    """处理配置更新事件（温度优化）"""
+    """处理配置更新事件"""
     global _wifi_check_interval_s
     
-    new_config = kwargs.get('config', {})
-    temp_level = kwargs.get('temp_level', 'normal')
-    source = kwargs.get('source', 'unknown')
+    changed_sections = kwargs.get('changed', [])
+    new_config = kwargs.get('new_config', {})
+    source = kwargs.get('source', 'config_reload')
     
-    if source == 'temp_optimizer':
+    # 检查是否有WiFi相关的配置变更
+    if 'wifi' in changed_sections or source == 'temp_optimizer':
         if DEBUG:
-            print(f"[WiFi] 收到温度优化配置更新，温度级别: {temp_level}")
+            print(f"[WiFi] 收到配置更新，来源: {source}")
         
-        # 更新WiFi检查间隔
-        if 'wifi_check_interval_s' in new_config:
-            _wifi_check_interval_s = max(30, new_config['wifi_check_interval_s'])
+        # 处理温度优化配置
+        if source == 'temp_optimizer':
+            temp_level = kwargs.get('temp_level', 'normal')
             if DEBUG:
-                print(f"[WiFi] 更新连接检查间隔为: {_wifi_check_interval_s}秒")
+                print(f"[WiFi] 温度优化级别: {temp_level}")
+            
+            # 更新WiFi检查间隔
+            if 'wifi_check_interval_s' in new_config:
+                _wifi_check_interval_s = max(30, new_config['wifi_check_interval_s'])
+                if DEBUG:
+                    print(f"[WiFi] 更新连接检查间隔为: {_wifi_check_interval_s}秒")
+        
+        # 处理WiFi配置变更
+        elif 'wifi' in changed_sections:
+            if DEBUG:
+                print("[WiFi] WiFi配置已更新，将在下次连接时生效")
 
 async def scan_available_networks():
     """扫描可用的WiFi网络 - 异步版本"""

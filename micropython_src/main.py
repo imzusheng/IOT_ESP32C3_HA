@@ -24,17 +24,25 @@
 - 资源优化：合理使用内存和CPU资源
 """
 
+import time
 import gc
-import machine
-import uasyncio as asyncio
+try:
+    import machine
+except ImportError:
+    machine = None
+try:
+    import esp32
+except ImportError:
+    esp32 = None
+try:
+    import uasyncio as asyncio
+except ImportError:
+    import asyncio
 
 # 导入项目模块
-import config
-import core  # 使用合并的核心模块
-import daemon
-from lib import wifi, ntp, temp_optimizer
+from lib import config, core, daemon, wifi, ntp, temp_optimizer
 from lib.led import init_led, deinit_led, start_led_task, stop_led_task
-from config import get_event_id, DEBUG, EV_PERFORMANCE_REPORT, EV_SYSTEM_HEARTBEAT, EV_LOW_MEMORY_WARNING, EV_SYSTEM_STARTING, EV_SYSTEM_STOPPED, EV_SYSTEM_SHUTTING_DOWN, EV_ASYNC_SYSTEM_STARTING, EV_ASYNC_TASKS_STARTED, EV_ASYNC_TASKS_CLEANUP_STARTED, EV_ASYNC_TASKS_CLEANUP_COMPLETED
+from lib.config import get_event_id, DEBUG, EV_PERFORMANCE_REPORT, EV_SYSTEM_HEARTBEAT, EV_LOW_MEMORY_WARNING, EV_SYSTEM_STARTING, EV_SYSTEM_STOPPED, EV_SYSTEM_SHUTTING_DOWN, EV_ASYNC_SYSTEM_STARTING, EV_ASYNC_TASKS_STARTED, EV_ASYNC_TASKS_CLEANUP_STARTED, EV_ASYNC_TASKS_CLEANUP_COMPLETED
 
 
 
@@ -147,7 +155,7 @@ def start_critical_daemon():
     try:
         if DEBUG:
             print("[MAIN] 初始化事件总线...")
-        core.init_event_bus()
+        # 事件总线自动初始化
         
         if DEBUG:
             print("[MAIN] 加载系统配置...")
@@ -228,17 +236,10 @@ def main():
     if DEBUG:
         print("[MAIN] 守护进程启动成功，开始初始化异步系统...")
     
-    # 初始化日志系统
-    try:
-        if DEBUG:
-            print("[MAIN] 初始化日志系统...")
-        core.init_logger()
-        core.publish(get_event_id('logger_initialized'))
-        if DEBUG:
-            print("[MAIN] 日志系统初始化成功")
-    except Exception as e:
-        print(f"[MAIN] [ERROR] 日志系统初始化失败: {e}")
-        # 日志系统失败不应阻止系统启动
+    # 日志系统通过事件总线自动初始化
+    if DEBUG:
+        print("[MAIN] 日志系统已就绪")
+    core.publish(get_event_id('logger_initialized'))
     
     # 初始化LED系统
     try:
@@ -322,11 +323,9 @@ def main():
         # 发布系统关闭事件
         core.publish(EV_SYSTEM_SHUTTING_DOWN)
         
-        # 最后处理日志队列
-        try:
-            core.process_log_queue()
-        except Exception as e:
-            print(f"[MAIN] [ERROR] 最终日志处理失败: {e}")
+        # 日志由事件系统自动处理
+        if DEBUG:
+            print("[MAIN] 日志系统自动处理中...")
         
         if DEBUG:
             print("[MAIN] 系统已停止，守护进程继续运行")

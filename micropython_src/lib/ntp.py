@@ -10,11 +10,20 @@ NTP时间同步模块
 """
 
 import time
-import ntptime
-import network
-import uasyncio as asyncio
-from lib import core
-from config import (
+try:
+    import ntptime
+except ImportError:
+    ntptime = None
+try:
+    import network
+except ImportError:
+    network = None
+try:
+    import uasyncio as asyncio
+except ImportError:
+    import asyncio
+from . import core
+from .config import (
     get_event_id, DEBUG,
     NTP_RETRY_DELAY_S, TIMEZONE_OFFSET_HOURS,
     EV_WIFI_CONNECTED

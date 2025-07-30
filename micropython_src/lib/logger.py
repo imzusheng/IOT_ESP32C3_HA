@@ -12,7 +12,7 @@
 import time
 import gc
 from collections import deque
-from config import get_event_id, DEBUG, LOG_LEVEL_CRITICAL, LOG_LEVEL_WARNING, LOG_LEVEL_INFO, LOG_LEVEL_ERROR
+from .config import get_event_id, DEBUG, LOG_LEVEL_CRITICAL, LOG_LEVEL_WARNING, LOG_LEVEL_INFO, LOG_LEVEL_ERROR
 
 class SimpleLogger:
     """简化的日志系统"""

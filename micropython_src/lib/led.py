@@ -11,11 +11,20 @@ LED控制模块 - 增强版本
 """
 
 import time
-import machine
-import uasyncio as asyncio
-from machine import Pin, PWM
-from lib import core
-from config import (
+try:
+    import machine
+except ImportError:
+    machine = None
+try:
+    import uasyncio as asyncio
+except ImportError:
+    import asyncio
+try:
+    from machine import Pin, PWM
+except ImportError:
+    Pin = PWM = None
+from . import core
+from .config import (
     get_event_id, DEBUG, 
     EV_LED_SET_EFFECT, EV_LED_SET_BRIGHTNESS, EV_LED_EMERGENCY_OFF,
     LED_PIN_1, LED_PIN_2, PWM_FREQ, MAX_BRIGHTNESS, FADE_STEP
@@ -128,39 +137,51 @@ class LEDManager:
             print("[LED] 已订阅LED控制事件")
     
     def _on_config_update(self, **kwargs):
-        """处理配置更新事件（温度优化）"""
-        new_config = kwargs.get('config', {})
-        temp_level = kwargs.get('temp_level', 'normal')
-        source = kwargs.get('source', 'unknown')
+        """处理配置更新事件"""
+        changed_sections = kwargs.get('changed', [])
+        new_config = kwargs.get('new_config', {})
+        source = kwargs.get('source', 'config_reload')
         
-        if source == 'temp_optimizer':
+        # 检查是否有LED相关的配置变更
+        if 'led' in changed_sections or source == 'temp_optimizer':
             if DEBUG:
-                print(f"[LED] 收到温度优化配置更新，温度级别: {temp_level}")
+                print(f"[LED] 收到配置更新，来源: {source}")
             
-            # 更新LED更新间隔
-            if 'led_interval_ms' in new_config:
-                self.led_update_interval_ms = max(50, new_config['led_interval_ms'])
+            # 处理温度优化配置
+            if source == 'temp_optimizer':
+                temp_level = kwargs.get('temp_level', 'normal')
                 if DEBUG:
-                    print(f"[LED] 更新呼吸灯间隔为: {self.led_update_interval_ms}ms")
-            
-            # 更新PWM频率
-            if 'pwm_freq' in new_config and self.pwm1 and self.pwm2:
-                try:
-                    new_freq = new_config['pwm_freq']
-                    self.pwm1.freq(new_freq)
-                    self.pwm2.freq(new_freq)
-                    self.current_pwm_freq = new_freq
+                    print(f"[LED] 温度优化级别: {temp_level}")
+                
+                # 更新LED更新间隔
+                if 'led_interval_ms' in new_config:
+                    self.led_update_interval_ms = max(50, new_config['led_interval_ms'])
                     if DEBUG:
-                        print(f"[LED] 更新PWM频率为: {new_freq}Hz")
-                except Exception as e:
+                        print(f"[LED] 更新呼吸灯间隔为: {self.led_update_interval_ms}ms")
+                
+                # 更新PWM频率
+                if 'pwm_freq' in new_config and self.pwm1 and self.pwm2:
+                    try:
+                        new_freq = new_config['pwm_freq']
+                        self.pwm1.freq(new_freq)
+                        self.pwm2.freq(new_freq)
+                        self.current_pwm_freq = new_freq
+                        if DEBUG:
+                            print(f"[LED] 更新PWM频率为: {new_freq}Hz")
+                    except Exception as e:
+                        if DEBUG:
+                            print(f"[LED] [ERROR] PWM频率更新失败: {e}")
+                
+                # 更新最大亮度
+                if 'max_brightness' in new_config:
+                    self.current_max_brightness = new_config['max_brightness']
                     if DEBUG:
-                        print(f"[LED] [ERROR] PWM频率更新失败: {e}")
+                        print(f"[LED] 更新最大亮度为: {self.current_max_brightness}")
             
-            # 更新最大亮度
-            if 'max_brightness' in new_config:
-                self.current_max_brightness = new_config['max_brightness']
+            # 处理LED配置变更
+            elif 'led' in changed_sections:
                 if DEBUG:
-                    print(f"[LED] 更新最大亮度为: {self.current_max_brightness}")
+                    print("[LED] LED配置已更新，将在下次初始化时生效")
     
     def _on_led_set_effect(self, **event_data):
         """处理设置LED效果的事件"""
@@ -452,18 +473,3 @@ def get_led_status():
 def update_led_config(new_config):
     """更新LED配置"""
     _global_led_manager._on_config_update(config=new_config, source='manual')
-
-# 兼容性函数（保持向后兼容）
-def init_leds():
-    """初始化LED（兼容性函数）"""
-    return init_led()
-
-def deinit_leds():
-    """关闭LED（兼容性函数）"""
-    deinit_led()
-
-def set_effect(mode, led_num=1, brightness_u16=None):
-    """设置LED效果（兼容性函数）"""
-    if brightness_u16 is None:
-        brightness_u16 = _global_led_manager.current_max_brightness
-    return _global_led_manager.set_effect(mode, led_num, brightness_u16)

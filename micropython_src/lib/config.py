@@ -107,7 +107,7 @@ LOG_LEVEL_ERROR = const(104)
 # 发布版本时设为 False 可移除所有调试信息
 DEBUG = False  # 开发时设为 True, 发布时设为 False
 # === 事件常量映射表 ===
-# 用于向后兼容和字符串到整数的转换
+# 用于字符串到整数的转换
 EVENT_MAP = {
     # WiFi相关事件
     'wifi_connecting': EV_WIFI_CONNECTING,
@@ -258,27 +258,29 @@ def reload_config():
         if _loaded_config:
             print("[CONFIG] 配置重载成功")
             
-            # 发布配置更新事件，包含新旧配置对比
+            # 发布配置更新事件，包含新旧配置对比和变更部分
             try:
-                from event_bus import publish
-                publish(EV_CONFIG_UPDATE, config=_loaded_config, old_config=old_config)
+                from .core import publish
                 
-                # 如果LED配置发生变化，发布LED配置更新事件
-                if old_config.get('led', {}) != _loaded_config.get('led', {}):
-                    publish(get_event_id('led_config_updated'), led_config=_loaded_config.get('led', {}))
+                # 检查哪些配置部分发生了变化
+                changed_sections = []
+                for section in ['led', 'wifi', 'logging', 'daemon', 'ntp', 'general']:
+                    if old_config.get(section, {}) != _loaded_config.get(section, {}):
+                        changed_sections.append(section)
                 
-                # 如果WiFi配置发生变化，发布WiFi配置更新事件
-                if old_config.get('wifi', {}) != _loaded_config.get('wifi', {}):
-                    publish(get_event_id('wifi_config_updated'), wifi_config=_loaded_config.get('wifi', {}))
+                # 只发布一个通用的配置更新事件
+                publish(EV_CONFIG_UPDATE, 
+                       new_config=_loaded_config, 
+                       old_config=old_config, 
+                       changed=changed_sections)
                 
-                # 如果日志配置发生变化，发布日志配置更新事件
-                if old_config.get('logging', {}) != _loaded_config.get('logging', {}):
-                    publish(get_event_id('log_config_updated'), log_config=_loaded_config.get('logging', {}))
+                if DEBUG and changed_sections:
+                    print(f"[CONFIG] 配置变更部分: {', '.join(changed_sections)}")
                     
             except ImportError:
-                # 如果event_bus模块不可用，跳过事件发布
+                # 如果core模块不可用，跳过事件发布
                 if DEBUG:
-                    print("[CONFIG] event_bus模块不可用，跳过事件发布")
+                    print("[CONFIG] core模块不可用，跳过事件发布")
             
             return True
         else:
@@ -346,10 +348,7 @@ def get_wifi_retry_interval():
     """获取WiFi重连间隔时间（支持JSON配置）"""
     return _get_config_value('wifi', 'retry_interval_s', _DEFAULT_WIFI_RETRY_INTERVAL_S)
 
-# 向后兼容的常量（从动态配置获取）
-WIFI_CONFIGS = get_wifi_configs()
-WIFI_CONNECT_TIMEOUT_S = get_wifi_connect_timeout()
-WIFI_RETRY_INTERVAL_S = get_wifi_retry_interval()
+
 
 # =============================================================================
 # NTP 时间同步配置
@@ -370,9 +369,7 @@ def get_timezone_offset():
     """获取时区偏移（支持JSON配置）"""
     return _get_config_value('ntp', 'timezone_offset_hours', _DEFAULT_TIMEZONE_OFFSET_HOURS)
 
-# 向后兼容的常量
-NTP_RETRY_DELAY_S = get_ntp_retry_delay()
-TIMEZONE_OFFSET_HOURS = get_timezone_offset()
+
 
 # =============================================================================
 # LED 硬件配置

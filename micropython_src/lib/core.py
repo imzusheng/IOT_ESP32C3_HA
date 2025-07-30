@@ -9,9 +9,35 @@
 """
 
 import gc
-import time
-import uasyncio as asyncio
-from config import DEBUG
+try:
+    import uasyncio as asyncio
+except ImportError:
+    import asyncio
+from .config import DEBUG, get_event_id, LOG_LEVEL_CRITICAL, LOG_LEVEL_WARNING, LOG_LEVEL_INFO
+from .utils import get_memory_info, get_system_status, format_time
+
+try:
+    from collections import defaultdict
+except ImportError:
+    # MicroPython fallback
+    class defaultdict:
+        def __init__(self, default_factory):
+            self.default_factory = default_factory
+            self.data = {}
+        
+        def __getitem__(self, key):
+            if key not in self.data:
+                self.data[key] = self.default_factory()
+            return self.data[key]
+        
+        def __setitem__(self, key, value):
+            self.data[key] = value
+        
+        def get(self, key, default=None):
+            return self.data.get(key, default)
+        
+        def clear(self):
+            self.data.clear()
 
 # =============================================================================
 # 轻量级事件总线
@@ -122,66 +148,7 @@ def log_info(message):
     """记录信息日志"""
     publish(LOG_LEVEL_INFO, message=message)
 
-# =============================================================================
-# 基础工具函数
-# =============================================================================
 
-def get_memory_info():
-    """获取内存信息"""
-    try:
-        import gc
-        gc.collect()
-        free = gc.mem_free()
-        allocated = gc.mem_alloc()
-        total = free + allocated
-        return {
-            'free': free,
-            'allocated': allocated,
-            'total': total,
-            'percent_used': (allocated / total) * 100 if total > 0 else 0
-        }
-    except:
-        return {'free': 0, 'allocated': 0, 'total': 0, 'percent_used': 0}
-
-def get_system_status():
-    """获取系统状态"""
-    try:
-        # 检查WiFi状态
-        wlan = network.WLAN(network.STA_IF)
-        wifi_connected = wlan.isconnected()
-        
-        # 获取内存信息
-        mem_info = get_memory_info()
-        
-        # 获取温度（如果支持）
-        temp = None
-        try:
-            import esp32
-            temp = esp32.mcu_temperature()
-        except:
-            pass
-        
-        return {
-            'wifi_connected': wifi_connected,
-            'memory': mem_info,
-            'temperature': temp,
-            'timestamp': time.time()
-        }
-    except Exception as e:
-        if DEBUG:
-            print(f"[Utils] 获取系统状态失败: {e}")
-        return {}
-
-def format_time(timestamp=None):
-    """格式化时间"""
-    try:
-        if timestamp is None:
-            timestamp = time.time()
-        
-        local_time = time.localtime(timestamp)
-        return f"{local_time[0]}-{local_time[1]:02d}-{local_time[2]:02d} {local_time[3]:02d}:{local_time[4]:02d}:{local_time[5]:02d}"
-    except:
-        return "时间格式化失败"
 
 # =============================================================================
 # 事件总线清理功能
@@ -194,28 +161,7 @@ def clear_all_events():
     if DEBUG:
         print("[CORE] 所有事件订阅已清理")
 
-# =============================================================================
-# 兼容性函数
-# =============================================================================
 
-def init():
-    """初始化事件总线（兼容性函数）"""
-    if DEBUG:
-        print("[Core] 事件总线已初始化")
-
-def init_event_bus():
-    """初始化事件总线"""
-    init()
-
-def init_logger():
-    """初始化日志系统"""
-    if DEBUG:
-        print("[Core] 日志系统已初始化")
-
-def process_log_queue():
-    """处理日志队列（兼容性函数）"""
-    # 简化版本，日志由事件系统自动处理
-    pass
 
 # =============================================================================
 # 初始化函数

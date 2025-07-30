@@ -18,14 +18,19 @@
 - 安全模式：在异常情况下进入紧急安全模式
 """
 
-import machine
-import esp32
+try:
+    import machine
+except ImportError:
+    machine = None
+try:
+    import esp32
+except ImportError:
+    esp32 = None
 import time
 import gc
-import config
-import core
-from lib import temp_optimizer
-from config import get_event_id, DEBUG, EV_ENTER_SAFE_MODE, EV_EXIT_SAFE_MODE, EV_PERFORMANCE_REPORT, EV_SCHEDULER_INTERVAL_ADJUSTED
+from . import core
+from . import temp_optimizer
+from .config import get_event_id, DEBUG, EV_ENTER_SAFE_MODE, EV_EXIT_SAFE_MODE, EV_PERFORMANCE_REPORT, EV_SCHEDULER_INTERVAL_ADJUSTED
 
 # === 全局守护进程状态 (内部私有) ===
 _daemon_active = False
