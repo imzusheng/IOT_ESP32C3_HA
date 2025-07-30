@@ -15,6 +15,10 @@ except ImportError:
     import asyncio
 from .utils import get_memory_info, get_system_status, format_time
 
+# 内存优化：预分配常用的小对象
+_EMPTY_DICT = {}
+_EMPTY_LIST = []
+
 try:
     from collections import defaultdict
 except ImportError:
@@ -101,7 +105,15 @@ class EventBus:
     
     async def _notify_async(self, event_id, **kwargs):
         """异步通知订阅者"""
-        for callback in self._subscribers[event_id][:]:
+        subscribers = self._subscribers[event_id]
+        if not subscribers:
+            return
+            
+        # 创建订阅者副本以避免迭代时修改
+        callback_list = subscribers[:]
+        failed_callbacks = []
+        
+        for callback in callback_list:
             try:
                 if asyncio.iscoroutinefunction(callback):
                     await callback(**kwargs)
@@ -110,21 +122,43 @@ class EventBus:
             except Exception as e:
                 if self.debug:
                     print(f"[EventBus] 回调错误: {e}")
-                if callback in self._subscribers[event_id]:
-                    self._subscribers[event_id].remove(callback)
+                failed_callbacks.append(callback)
+        
+        # 批量移除失败的回调
+        if failed_callbacks:
+            for callback in failed_callbacks:
+                if callback in subscribers:
+                    subscribers.remove(callback)
+        
+        # 定期垃圾回收
         gc.collect()
     
     def _notify_sync(self, event_id, **kwargs):
         """同步通知订阅者"""
-        for callback in self._subscribers[event_id][:]:
+        subscribers = self._subscribers[event_id]
+        if not subscribers:
+            return
+            
+        # 创建订阅者副本以避免迭代时修改
+        callback_list = subscribers[:]
+        failed_callbacks = []
+        
+        for callback in callback_list:
             try:
                 if not asyncio.iscoroutinefunction(callback):
                     callback(**kwargs)
             except Exception as e:
                 if self.debug:
                     print(f"[EventBus] 回调错误: {e}")
-                if callback in self._subscribers[event_id]:
-                    self._subscribers[event_id].remove(callback)
+                failed_callbacks.append(callback)
+        
+        # 批量移除失败的回调
+        if failed_callbacks:
+            for callback in failed_callbacks:
+                if callback in subscribers:
+                    subscribers.remove(callback)
+        
+        # 定期垃圾回收
         gc.collect()
     
     def get_subscribers_count(self, event_type):
@@ -159,32 +193,12 @@ def create_event_bus(config_getter=None, debug=False):
     return EventBus(config_getter=config_getter, debug=debug)
 
 # =============================================================================
-# 日志接口函数（委托给logger模块）
+# 日志接口函数（委托给logger模块） - [FIX] 移除以下所有函数
 # =============================================================================
 
-def log_critical(message):
-    """记录关键日志"""
-    try:
-        from .config import LOG_LEVEL_CRITICAL
-        publish(LOG_LEVEL_CRITICAL, message=message)
-    except ImportError:
-        publish(101, message=message)  # 使用默认值
-
-def log_warning(message):
-    """记录警告日志"""
-    try:
-        from .config import LOG_LEVEL_WARNING
-        publish(LOG_LEVEL_WARNING, message=message)
-    except ImportError:
-        publish(102, message=message)  # 使用默认值
-
-def log_info(message):
-    """记录信息日志"""
-    try:
-        from .config import LOG_LEVEL_INFO
-        publish(LOG_LEVEL_INFO, message=message)
-    except ImportError:
-        publish(103, message=message)  # 使用默认值
+# def log_critical(message): ...
+# def log_warning(message): ...
+# def log_info(message): ...
 
 
 

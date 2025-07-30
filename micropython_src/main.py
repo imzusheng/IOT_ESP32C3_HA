@@ -25,7 +25,7 @@
 """
 
 import gc
-from lib import config, core, daemon, ntp, temp_optimizer, wifi
+from lib import config, core, daemon, logger, ntp, temp_optimizer, wifi
 from lib.config import (
     DEBUG,
     EV_ASYNC_SYSTEM_STARTING,
@@ -45,6 +45,12 @@ try:
     import uasyncio as asyncio
 except ImportError:
     import asyncio
+
+# 内存优化：设置垃圾回收阈值
+try:
+    gc.threshold(gc.mem_free() // 4)
+except:
+    pass  # 某些MicroPython版本可能不支持threshold
 
 # 导入项目模块
 
@@ -82,14 +88,23 @@ async def main_business_loop():
             # 定期垃圾回收
             if loop_count % gc_interval == 0:
                 try:
+                    # 强制垃圾回收
                     gc.collect()
-                    mem_info = core.get_memory_info()
-                    if DEBUG:
-                        print(f"[MAIN] 垃圾回收完成，可用内存: {mem_info['free']} bytes")
                     
-                    # 内存不足检查
-                    if mem_info['free'] < 10000:
-                        core.publish(EV_LOW_MEMORY_WARNING, free_bytes=mem_info['free'])
+                    # 获取内存信息
+                    free_mem = gc.mem_free()
+                    alloc_mem = gc.mem_alloc()
+                    
+                    if DEBUG:
+                        print(f"[MAIN] 垃圾回收完成，可用内存: {free_mem} bytes")
+                    
+                    # 内存不足检查 - 使用更严格的阈值
+                    if free_mem < 15000:  # 提高阈值到15KB
+                        core.publish(EV_LOW_MEMORY_WARNING, 
+                                   free_bytes=free_mem, 
+                                   allocated_bytes=alloc_mem)
+                        # 额外的垃圾回收
+                        gc.collect()
                         
                 except Exception as e:
                     print(f"[MAIN] [ERROR] 垃圾回收失败: {e}")
@@ -106,7 +121,7 @@ async def main_business_loop():
         core.publish(get_event_id('main_loop_stopped'))
     except Exception as e:
         print(f"\n[MAIN] [ERROR] 主业务循环异常: {e}")
-        core.publish(get_event_id('log_critical'), message=f"主业务循环异常: {e}")
+        logger.log_critical(f"主业务循环异常: {e}")
 
 async def system_coordinator_task():
     """
@@ -121,12 +136,32 @@ async def system_coordinator_task():
     if DEBUG:
         print("[COORDINATOR] 启动系统协调员任务...")
     
+    last_temp_level = None
+    
     # 订阅守护进程的性能报告事件
     def on_performance_report(**kwargs):
+        nonlocal last_temp_level
         temp = kwargs.get('temperature')
         if temp is not None:
-            # 使用温度优化器模块进行优化
-            temp_optimizer.optimize_by_temperature(temp)
+            # 正确调用温度优化模块，并发布配置更新事件
+            optimization_info = temp_optimizer.check_and_optimize(temp)
+            current_temp_level = optimization_info.get('temp_level')
+            
+            # 仅在温度级别变化时发布更新，避免过于频繁的事件
+            if current_temp_level != last_temp_level:
+                last_temp_level = current_temp_level
+                optimized_config = optimization_info.get('optimized_config', {})
+                
+                if DEBUG:
+                    print(f"[COORDINATOR] 温度级别变化: {current_temp_level}。发布配置更新。")
+                
+                core.publish(
+                    get_event_id('config_update'),
+                    changed=['daemon', 'led', 'wifi'],
+                    new_config=optimized_config,
+                    source='temp_optimizer',
+                    temp_level=current_temp_level
+                )
     
     # 订阅性能报告事件
     core.subscribe(EV_PERFORMANCE_REPORT, on_performance_report)
@@ -140,7 +175,7 @@ async def system_coordinator_task():
             print("[COORDINATOR] 系统协调员任务已停止")
     except Exception as e:
         print(f"[COORDINATOR] [ERROR] 系统协调员任务异常: {e}")
-        core.publish(get_event_id('log_critical'), message=f"系统协调员任务异常: {e}")
+        logger.log_critical(f"系统协调员任务异常: {e}")
 
 def start_critical_daemon():
     """
@@ -191,19 +226,19 @@ def start_critical_daemon():
             if DEBUG:
                 print("[MAIN] 守护进程启动成功")
             core.publish(get_event_id('daemon_started'))
-            core.publish(get_event_id('log_info'), message="守护进程启动成功")
+            logger.log_info("守护进程启动成功")
             return True
         else:
             if DEBUG:
                 print("[MAIN] [ERROR] 守护进程启动失败")
             core.publish(get_event_id('daemon_start_failed'))
-            core.publish(get_event_id('log_critical'), message="守护进程启动失败")
+            logger.log_critical("守护进程启动失败")
             return False
             
     except Exception as e:
         print(f"[MAIN] [ERROR] 守护进程初始化异常: {e}")
         try:
-            core.publish(get_event_id('log_critical'), message=f"守护进程初始化异常: {e}")
+            logger.log_critical(f"守护进程初始化异常: {e}")
         except:
             pass  # 如果事件总线也失败，至少保证程序不崩溃
         return False
@@ -219,11 +254,11 @@ def clear_restart_counter():
             os.remove(restart_count_file)
             if DEBUG:
                 print("[MAIN] 重启计数器已清除")
-            core.publish(get_event_id('log_info'), message="重启计数器已清除")
+            logger.log_info("重启计数器已清除")
     except Exception as e:
         if DEBUG:
             print(f"[MAIN] [WARNING] 清除重启计数器失败: {e}")
-        core.publish(get_event_id('log_warning'), message=f"清除重启计数器失败: {e}")
+        logger.log_warning(f"清除重启计数器失败: {e}")
 
 def main():
     """
@@ -279,7 +314,7 @@ def main():
     
     # 发布系统启动事件
     core.publish(EV_SYSTEM_STARTING)
-    core.publish(get_event_id('log_info'), message="系统启动中...")
+    logger.log_info("系统启动中...")
 
     try:
         # 定义异步系统运行函数
@@ -303,10 +338,10 @@ def main():
                 )
                 if DEBUG:
                     print("[MAIN] WiFi管理器初始化成功")
-                core.publish(get_event_id('log_info'), message="WiFi管理器初始化成功")
+                logger.log_info("WiFi管理器初始化成功")
             except Exception as e:
                 print(f"[MAIN] [ERROR] WiFi管理器初始化失败: {e}")
-                core.publish(get_event_id('log_critical'), message=f"WiFi管理器初始化失败: {e}")
+                logger.log_critical(f"WiFi管理器初始化失败: {e}")
                 return
             
             # 初始化LED管理器（依赖注入）
@@ -316,10 +351,10 @@ def main():
                 led_manager = led.create_led_manager(event_bus=core, config_getter=config)
                 if DEBUG:
                     print("[MAIN] LED管理器初始化成功")
-                core.publish(get_event_id('log_info'), message="LED管理器初始化成功")
+                logger.log_info("LED管理器初始化成功")
             except Exception as e:
                 print(f"[MAIN] [WARNING] LED管理器初始化失败: {e}")
-                core.publish(get_event_id('log_warning'), message=f"LED管理器初始化失败: {e}")
+                logger.log_warning(f"LED管理器初始化失败: {e}")
                 led_manager = None
             
             # 初始化NTP管理器（依赖注入）
@@ -329,10 +364,10 @@ def main():
                 ntp_manager = ntp.create_ntp_manager(event_bus=core, config_getter=config)
                 if DEBUG:
                     print("[MAIN] NTP管理器初始化成功")
-                core.publish(get_event_id('log_info'), message="NTP管理器初始化成功")
+                logger.log_info("NTP管理器初始化成功")
             except Exception as e:
                 print(f"[MAIN] [WARNING] NTP管理器初始化失败: {e}")
-                core.publish(get_event_id('log_warning'), message=f"NTP管理器初始化失败: {e}")
+                logger.log_warning(f"NTP管理器初始化失败: {e}")
                 ntp_manager = None
             
             # 启动所有异步任务
@@ -351,13 +386,13 @@ def main():
             
             # 发布任务启动完成事件
             core.publish(EV_ASYNC_TASKS_STARTED, task_count=len(tasks))
-            core.publish(get_event_id('log_info'), message=f"启动了 {len(tasks)} 个异步任务")
+            logger.log_info(f"启动了 {len(tasks)} 个异步任务")
             
             try:
                 await asyncio.gather(*tasks)
             except Exception as e:
                 print(f"[MAIN] [ERROR] 系统任务错误: {e}")
-                core.publish(get_event_id('log_critical'), message=f"系统任务错误: {e}")
+                logger.log_critical(f"系统任务错误: {e}")
                 core.publish(get_event_id('system_task_error'), error=str(e))
             finally:
                 # 清理任务
@@ -376,22 +411,22 @@ def main():
                             print(f"[MAIN] 取消任务 {i+1}/{len(tasks)}")
                 
                 core.publish(EV_ASYNC_TASKS_CLEANUP_COMPLETED)
-                core.publish(get_event_id('log_info'), message="异步任务清理完成")
+                logger.log_info("异步任务清理完成")
         
         # 运行异步系统
         if DEBUG:
             print("[MAIN] 启动异步任务系统...")
-        core.publish(get_event_id('log_info'), message="启动异步任务系统")
+        logger.log_info("启动异步任务系统")
         asyncio.run(run_system())
         
     except KeyboardInterrupt:
         print("\n[MAIN] 收到中断信号，正在关闭系统...")
         core.publish(get_event_id('system_shutdown_requested'), reason="keyboard_interrupt")
-        core.publish(get_event_id('log_info'), message="收到中断信号，正在关闭系统")
+        logger.log_info("收到中断信号，正在关闭系统")
     except Exception as e:
         print(f"\n[MAIN] [ERROR] 系统运行错误: {e}")
         core.publish(get_event_id('system_error'), error=str(e))
-        core.publish(get_event_id('log_critical'), message=f"系统运行错误: {e}")
+        logger.log_critical(f"系统运行错误: {e}")
     finally:
         # 发布系统关闭事件
         core.publish(EV_SYSTEM_SHUTTING_DOWN)

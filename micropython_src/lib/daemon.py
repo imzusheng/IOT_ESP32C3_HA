@@ -67,6 +67,7 @@ import time
 import gc
 from . import core
 from . import temp_optimizer
+from . import logger
 
 # 兼容性处理：为标准Python环境提供MicroPython函数
 if not hasattr(time, 'ticks_ms'):
@@ -166,7 +167,7 @@ def _get_internal_temperature():
 
 def _log_critical_error(error_msg):
     """
-    记录关键错误并通过事件总线发布
+    记录关键错误并增加错误计数
     
     Args:
         error_msg (str): 错误消息
@@ -176,17 +177,15 @@ def _log_critical_error(error_msg):
         _error_count += 1
         _last_error_time = time.ticks_ms()
         
-        # 通过事件总线发布日志事件，而不是直接操作日志队列
-        if _get_event_id:
-            core.publish(_get_event_id('log_critical'), message=error_msg)
-        else:
-            # 如果依赖注入未初始化，使用默认事件ID
-            core.publish('log_critical', message=error_msg)
+        print("[DAEMON] [CRITICAL]", error_msg)
+        
+        # 直接调用 logger
+        logger.log_critical(error_msg)
         
     except Exception as e:
-        # 如果事件总线也失败了，至少打印到控制台
-        print(f"[DAEMON] [CRITICAL] {error_msg}")
-        print(f"[DAEMON] [ERROR] 日志发布失败: {e}")
+        # 如果日志记录失败，至少打印到控制台
+        print("[DAEMON] [CRITICAL]", error_msg)
+        print("[DAEMON] [ERROR] 日志记录失败:", str(e))
 
 def _get_system_time_info():
     """
@@ -197,10 +196,10 @@ def _get_system_time_info():
     """
     try:
         local_time = time.localtime()
-        time_str = f"{local_time[0]}-{local_time[1]:02d}-{local_time[2]:02d} {local_time[3]:02d}:{local_time[4]:02d}:{local_time[5]:02d}"
-        return f"系统时间: {time_str}"
+        time_str = "{}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format(local_time[0], local_time[1], local_time[2], local_time[3], local_time[4], local_time[5])
+        return "系统时间: " + time_str
     except Exception as e:
-        return f"系统时间: 获取失败 ({e})"
+        return "系统时间: 获取失败 (" + str(e) + ")"
 
 def _load_restart_count():
     """
@@ -238,7 +237,7 @@ def _save_restart_count(count):
         
         # 先写入临时文件
         with open(temp_file, 'w') as f:
-            f.write(f"{count},{current_time}")
+            f.write(str(count) + "," + str(current_time))
             f.flush()  # 确保数据写入存储
         
         # 原子性地重命名文件
@@ -248,7 +247,7 @@ def _save_restart_count(count):
         except (ImportError, OSError):
             # 如果重命名失败，直接写入目标文件
             with open(_restart_count_file, 'w') as f:
-                f.write(f"{count},{current_time}")
+                f.write(str(count) + "," + str(current_time))
                 f.flush()
             # 清理临时文件
             try:
@@ -258,7 +257,7 @@ def _save_restart_count(count):
                 pass
                 
     except Exception as e:
-        print(f"[DAEMON] [WARNING] 保存重启计数器失败: {e}")
+        print("[DAEMON] [WARNING] 保存重启计数器失败:", str(e))
 
 def _check_restart_loop_protection():
     """
@@ -272,18 +271,16 @@ def _check_restart_loop_protection():
     _restart_count = _load_restart_count()
     
     if _restart_count >= _max_restart_count:
-        error_msg = f"检测到重启循环（{_restart_count}次），进入安全模式"
+        error_msg = "检测到重启循环（" + str(_restart_count) + "次），进入安全模式"
         print(f"[DAEMON] [CRITICAL] {error_msg}")
-        if _get_event_id:
-            core.publish(_get_event_id('log_critical'), message=error_msg)
-        else:
-            core.publish('log_critical', message=error_msg)
+        # **[FIX]** 改为直接调用 logger
+        logger.log_critical(error_msg)
         _enter_safe_mode(error_msg)
         return False
     
     _restart_count += 1
     _save_restart_count(_restart_count)
-    print(f"[DAEMON] 重启计数器: {_restart_count}/{_max_restart_count}")
+    print("[DAEMON] 重启计数器:", str(_restart_count) + "/" + str(_max_restart_count))
     return True
 
 def _emergency_hardware_reset():
@@ -298,11 +295,9 @@ def _emergency_hardware_reset():
         if not _check_restart_loop_protection():
             return  # 进入安全模式，不执行重启
         
-        print(f"[EMERGENCY] 守护进程触发紧急硬件重置（第{_restart_count}次）...")
-        if _get_event_id:
-            core.publish(_get_event_id('log_critical'), message=f"守护进程触发紧急硬件重置（第{_restart_count}次）")
-        else:
-            core.publish('log_critical', message=f"守护进程触发紧急硬件重置（第{_restart_count}次）")
+        print("[EMERGENCY] 守护进程触发紧急硬件重置（第" + str(_restart_count) + "次）...")
+        # 直接调用 logger
+        logger.log_critical("守护进程触发紧急硬件重置（第" + str(_restart_count) + "次）")
         time.sleep(0.1)  # 给事件处理一点时间
         machine.reset()
     except:
@@ -343,7 +338,7 @@ def _safe_mode_emergency_blink():
             led2.on()
             
     except Exception as e:
-        _log_critical_error(f"安全模式闪烁失败: {e}")
+        _log_critical_error("安全模式闪烁失败: " + str(e))
 
 def _adjust_scheduler_interval_by_temperature():
     """
@@ -386,8 +381,8 @@ def _adjust_scheduler_interval_by_temperature():
                         )
                         
                         temp_level = temp_optimizer.get_temperature_level(current_temp)
-                        print(f"[DAEMON] [TEMP_OPT] 温度: {current_temp:.1f}°C, 级别: {temp_level}")
-                        print(f"[DAEMON] [TEMP_OPT] 调度器间隔调整: {old_interval}ms -> {_current_scheduler_interval_ms}ms")
+                        print("[DAEMON] [TEMP_OPT] 温度: {:.1f}°C, 级别: {}".format(current_temp, temp_level))
+                        print("[DAEMON] [TEMP_OPT] 调度器间隔调整: {}ms -> {}ms".format(old_interval, _current_scheduler_interval_ms))
                         
                         # 通过事件总线发布调度器间隔调整事件
                         core.publish(EV_SCHEDULER_INTERVAL_ADJUSTED, 
@@ -397,12 +392,12 @@ def _adjust_scheduler_interval_by_temperature():
                                         temp_level=temp_level)
                         
                     except Exception as e:
-                        _log_critical_error(f"调度器间隔调整失败: {e}")
+                        _log_critical_error("调度器间隔调整失败: " + str(e))
                         # 调整失败时恢复原间隔
                         _current_scheduler_interval_ms = old_interval
                         
         except Exception as e:
-            _log_critical_error(f"温度检查用于调度器调整失败: {e}")
+            _log_critical_error("温度检查用于调度器调整失败: " + str(e))
 
 def _scheduler_interrupt(timer):
     """
@@ -440,10 +435,10 @@ def _scheduler_interrupt(timer):
                     _wdt.feed()
                     # 每10次喂养记录一次状态，避免过多日志
                     if _debug and current_time % 30000 < 3000:  # 大约每30秒记录一次
-                        print(f"[DAEMON] 看门狗正常喂养，当前调度器间隔: {_current_scheduler_interval_ms}ms")
+                        print("[DAEMON] 看门狗正常喂养，当前调度器间隔: " + str(_current_scheduler_interval_ms) + "ms")
             except Exception as e:
-                _log_critical_error(f"看门狗喂养失败: {e}")
-                print(f"[DAEMON] [CRITICAL] 看门狗喂养失败，准备重置系统: {e}")
+                _log_critical_error("看门狗喂养失败: " + str(e))
+                print("[DAEMON] [CRITICAL] 看门狗喂养失败，准备重置系统:", str(e))
                 _emergency_hardware_reset()
                 return
         
@@ -457,13 +452,13 @@ def _scheduler_interrupt(timer):
             # 温度监控
             temp = _get_internal_temperature()
             if temp and temp >= safety_config['temperature_threshold']:
-                _enter_safe_mode(f"温度超限: {temp:.1f}°C")
+                _enter_safe_mode("温度超限: {:.1f}°C".format(temp))
                 return
             
             # 错误计数管理
             if time.ticks_diff(current_time, _last_error_time) > safety_config['error_reset_interval_ms']:
                 if _error_count > 0:
-                    print(f"[INFO] 错误计数已自动重置: {_error_count} -> 0")
+                    print("[INFO] 错误计数已自动重置:", str(_error_count), "-> 0")
                     _error_count = 0
         
         # 任务3：性能报告（按配置间隔执行）
@@ -477,7 +472,7 @@ def _scheduler_interrupt(timer):
             _check_safe_mode_recovery()
             
     except Exception as e:
-        _log_critical_error(f"统一调度器中断处理失败: {e}")
+        _log_critical_error("统一调度器中断处理失败: " + str(e))
         safety_config = _config_getter('safety') if _config_getter else {'max_error_count': 10}
         if _error_count > safety_config['max_error_count']:
             _emergency_hardware_reset()
@@ -496,7 +491,7 @@ def _enter_safe_mode(reason):
     if not _safe_mode_active:
         try:
             if _debug:
-                print("\n" + "!"*60 + f"\n!!! 关键警告：系统进入紧急安全模式 (原因: {reason})\n" + "!"*60 + "\n")
+                print("\n" + "!"*60 + "\n!!! 关键警告：系统进入紧急安全模式 (原因: " + reason + ")\n" + "!"*60 + "\n")
             
             # 通过事件总线通知其他模块进入安全模式
             core.publish(EV_ENTER_SAFE_MODE, reason=reason)
@@ -505,10 +500,10 @@ def _enter_safe_mode(reason):
             _safe_mode_start_time = time.ticks_ms()
             
             # 记录日志
-            _log_critical_error(f"系统进入安全模式: {reason}")
+            _log_critical_error("系统进入安全模式: " + reason)
             
         except Exception as e:
-            _log_critical_error(f"进入安全模式失败: {e}")
+            _log_critical_error("进入安全模式失败: " + str(e))
             # 即使发布事件失败，也要设置安全模式状态
             _safe_mode_active = True
             _safe_mode_start_time = time.ticks_ms()
@@ -545,13 +540,11 @@ def _check_safe_mode_recovery():
             
             if _debug:
                 print("[RECOVERY] 成功退出安全模式，恢复正常运行")
-            if _get_event_id:
-                core.publish(_get_event_id('log_info'), message="系统成功退出安全模式")
-            else:
-                core.publish('log_info', message="系统成功退出安全模式")
+            # 直接调用 logger
+            logger.log_info("系统成功退出安全模式")
             
     except Exception as e:
-        _log_critical_error(f"安全模式恢复检查失败: {e}")
+        _log_critical_error("安全模式恢复检查失败: " + str(e))
 
 def _print_performance_report():
     """
@@ -587,19 +580,16 @@ def _print_performance_report():
         if _debug:
             print("\n" + "="*50 + "\n        关键系统守护进程状态报告\n" + "="*50)
             print(time_info)
-            print(f"运行时间: {uptime_str}")
-            print(f"内部温度: {temp:.2f} °C (级别: {temp_level})" if temp else "温度读取失败")
-            print(f"内存使用: {mem_alloc_kb:.2f}KB / {mem_total_kb:.2f}KB ({mem_percent:.1f}%)")
-            print(f"运行模式: {'紧急安全模式' if _safe_mode_active else '正常运行模式'}")
-            print(f"调度器间隔: {_current_scheduler_interval_ms}ms (温度优化)")
-            print(f"错误计数: {_error_count}")
+            print("运行时间:", uptime_str)
+            print("内部温度: {:.2f} °C (级别: {})".format(temp, temp_level) if temp else "温度读取失败")
+            print("内存使用: {:.2f}KB / {:.2f}KB ({:.1f}%)".format(mem_alloc_kb, mem_total_kb, mem_percent))
+            print("运行模式:", "紧急安全模式" if _safe_mode_active else "正常运行模式")
+            print("调度器间隔: " + str(_current_scheduler_interval_ms) + "ms (温度优化)")
+            print("错误计数:", str(_error_count))
             print("="*50 + "\n")
         
-        # 通过事件总线发布性能信息
-        if _get_event_id:
-            core.publish(_get_event_id('log_info'), message=f"系统状态报告 - 温度:{temp:.1f}°C 内存:{mem_percent:.1f}% 错误:{_error_count}")
-        else:
-            core.publish('log_info', message=f"系统状态报告 - 温度:{temp:.1f}°C 内存:{mem_percent:.1f}% 错误:{_error_count}")
+        # **[FIX]** 改为直接调用 logger
+        logger.log_info("系统状态报告 - 温度:{:.1f}°C 内存:{:.1f}% 错误:{}".format(temp, mem_percent, _error_count))
         
         # 发布性能报告事件，供温度优化器使用
         try:
@@ -609,10 +599,10 @@ def _print_performance_report():
                              error_count=_error_count,
                              uptime_ms=time.ticks_diff(current_time, _start_ticks_ms))
         except Exception as e:
-            _log_critical_error(f"性能报告事件发布失败: {e}")
+            _log_critical_error("性能报告事件发布失败: " + str(e))
         
     except Exception as e:
-        _log_critical_error(f"性能报告失败: {e}")
+        _log_critical_error("性能报告失败: " + str(e))
 
 class CriticalSystemDaemon:
     """
@@ -639,7 +629,7 @@ class CriticalSystemDaemon:
         for attempt in range(3):
             try:
                 if _debug:
-                    print(f"[DAEMON] 尝试初始化看门狗 (第{attempt + 1}次)...")
+                    print("[DAEMON] 尝试初始化看门狗 (第" + str(attempt + 1) + "次)...")
                 
                 # 如果已有看门狗实例，先释放
                 if _wdt:
@@ -657,11 +647,11 @@ class CriticalSystemDaemon:
                 _wdt.feed()
                 
                 if _debug:
-                    print(f"[DAEMON] 看门狗初始化成功，超时时间: {safety_config['wdt_timeout_ms']}ms")
+                    print("[DAEMON] 看门狗初始化成功，超时时间: " + str(safety_config['wdt_timeout_ms']) + "ms")
                 return True
                 
             except Exception as e:
-                print(f"[DAEMON] [ERROR] 看门狗初始化失败 (第{attempt + 1}次): {e}")
+                print("[DAEMON] [ERROR] 看门狗初始化失败 (第" + str(attempt + 1) + "次):", str(e))
                 time.sleep(0.5)
         
         print("[DAEMON] [CRITICAL] 看门狗初始化完全失败！")
@@ -689,13 +679,13 @@ class CriticalSystemDaemon:
             )
             
             if _debug:
-                print(f"[DAEMON] 统一调度器定时器初始化成功，初始调度间隔: {_current_scheduler_interval_ms}ms")
+                print("[DAEMON] 统一调度器定时器初始化成功，初始调度间隔: " + str(_current_scheduler_interval_ms) + "ms")
                 print("[DAEMON] [优化] 已将两个定时器合并为一个，节省硬件资源")
                 print("[DAEMON] [温度优化] 调度器间隔将根据温度自动调整")
             return True
             
         except Exception as e:
-            print(f"[DAEMON] [ERROR] 统一调度器定时器初始化失败: {e}")
+            print("[DAEMON] [ERROR] 统一调度器定时器初始化失败:", str(e))
             return False
     
     def start(self):
@@ -724,10 +714,12 @@ class CriticalSystemDaemon:
             
             # 初始化硬件
             if not self._initialize_critical_hardware():
+                self.stop()  # 清理资源
                 return False
             
             # 初始化统一调度器定时器
             if not self._initialize_timers():
+                self.stop()  # 清理资源
                 return False
             
             # 激活守护进程
@@ -736,19 +728,14 @@ class CriticalSystemDaemon:
             
             if _debug:
                 print("[DAEMON] 关键系统守护进程启动成功（温度优化版本）")
-            if _get_event_id:
-                core.publish(_get_event_id('log_info'), message="关键系统守护进程启动成功（温度优化版本）")
-            else:
-                core.publish('log_info', message="关键系统守护进程启动成功（温度优化版本）")
+            logger.log_info("关键系统守护进程启动成功（温度优化版本）")
             
             return True
             
         except Exception as e:
-            print(f"[DAEMON] [ERROR] 守护进程启动失败: {e}")
-            if _get_event_id:
-                core.publish(_get_event_id('log_critical'), message=f"守护进程启动失败: {e}")
-            else:
-                core.publish('log_critical', message=f"守护进程启动失败: {e}")
+            print("[DAEMON] [ERROR] 守护进程启动失败:", str(e))
+            self.stop()  # 清理资源
+            logger.log_critical("守护进程启动失败: " + str(e))
             return False
     
     def stop(self):
@@ -777,7 +764,7 @@ class CriticalSystemDaemon:
                 print("[DAEMON] 守护进程已停止（优化版本）")
             
         except Exception as e:
-            print(f"[DAEMON] [ERROR] 停止守护进程时出错: {e}")
+            print("[DAEMON] [ERROR] 停止守护进程时出错:", str(e))
     
     def is_active(self):
         """

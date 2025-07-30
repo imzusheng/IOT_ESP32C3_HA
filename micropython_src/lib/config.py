@@ -38,158 +38,224 @@ except ImportError:
 
 # === 事件类型常量 ===
 # WiFi相关事件
-EV_WIFI_CONNECTING = const(1)
-EV_WIFI_CONNECTED = const(2)
-EV_WIFI_DISCONNECTED = const(3)
-EV_WIFI_TRYING = const(4)
-EV_WIFI_TIMEOUT = const(5)
-EV_WIFI_ERROR = const(6)
-EV_WIFI_FAILED = const(7)
-EV_WIFI_SCAN_FAILED = const(8)
-EV_WIFI_DISCONNECTED_DETECTED = const(9)
+_EV_WIFI_CONNECTING = const(1)
+_EV_WIFI_CONNECTED = const(2)
+_EV_WIFI_DISCONNECTED = const(3)
+_EV_WIFI_TRYING = const(4)
+_EV_WIFI_TIMEOUT = const(5)
+_EV_WIFI_ERROR = const(6)
+_EV_WIFI_FAILED = const(7)
+_EV_WIFI_SCAN_FAILED = const(8)
+_EV_WIFI_DISCONNECTED_DETECTED = const(9)
 
 # NTP相关事件
-EV_NTP_SYNCING = const(10)
-EV_NTP_SYNCED = const(11)
-EV_NTP_FAILED = const(12)
-EV_NTP_NO_WIFI = const(13)
-EV_NTP_NOT_SYNCED_DETECTED = const(14)
+_EV_NTP_SYNCING = const(10)
+_EV_NTP_SYNCED = const(11)
+_EV_NTP_FAILED = const(12)
+_EV_NTP_NO_WIFI = const(13)
+_EV_NTP_NOT_SYNCED_DETECTED = const(14)
 
 # 系统相关事件
-EV_MAIN_LOOP_STARTED = const(20)
-EV_MAIN_LOOP_STOPPED = const(21)
-EV_SYSTEM_HEARTBEAT = const(22)
-EV_SYSTEM_STATUS_CHECK = const(23)
-EV_MEMORY_STATUS = const(24)
-EV_LOW_MEMORY_WARNING = const(25)
-EV_LOOP_COUNTER_RESET = const(26)
-EV_PERFORMANCE_REPORT = const(27)
-EV_CONFIG_UPDATE = const(28)
-EV_SYSTEM_STARTING = const(29)
-EV_SYSTEM_STOPPED = const(30)
-EV_SYSTEM_SHUTTING_DOWN = const(31)
-EV_SYSTEM_SHUTDOWN_REQUESTED = const(32)
-EV_SYSTEM_ERROR = const(33)
-EV_SYSTEM_TASK_ERROR = const(34)
+_EV_MAIN_LOOP_STARTED = const(20)
+_EV_MAIN_LOOP_STOPPED = const(21)
+_EV_SYSTEM_HEARTBEAT = const(22)
+_EV_SYSTEM_STATUS_CHECK = const(23)
+_EV_MEMORY_STATUS = const(24)
+_EV_LOW_MEMORY_WARNING = const(25)
+_EV_LOOP_COUNTER_RESET = const(26)
+_EV_PERFORMANCE_REPORT = const(27)
+_EV_CONFIG_UPDATE = const(28)
+_EV_SYSTEM_STARTING = const(29)
+_EV_SYSTEM_STOPPED = const(30)
+_EV_SYSTEM_SHUTTING_DOWN = const(31)
+_EV_SYSTEM_SHUTDOWN_REQUESTED = const(32)
+_EV_SYSTEM_ERROR = const(33)
+_EV_SYSTEM_TASK_ERROR = const(34)
 
 # 守护进程相关事件
-EV_DAEMON_STARTED = const(40)
-EV_DAEMON_START_FAILED = const(41)
-EV_ENTER_SAFE_MODE = const(42)
-EV_EXIT_SAFE_MODE = const(43)
-EV_SCHEDULER_INTERVAL_ADJUSTED = const(44)
+_EV_DAEMON_STARTED = const(40)
+_EV_DAEMON_START_FAILED = const(41)
+_EV_ENTER_SAFE_MODE = const(42)
+_EV_EXIT_SAFE_MODE = const(43)
+_EV_SCHEDULER_INTERVAL_ADJUSTED = const(44)
 
 # LED相关事件
-EV_LED_SET_EFFECT = const(50)
-EV_LED_SET_BRIGHTNESS = const(51)
-EV_LED_EMERGENCY_OFF = const(52)
-EV_LED_EMERGENCY_OFF_COMPLETED = const(53)
-EV_LED_INITIALIZED = const(54)
-EV_LED_DEINITIALIZED = const(55)
-EV_LED_EFFECT_CHANGED = const(56)
+_EV_LED_SET_EFFECT = const(50)
+_EV_LED_SET_BRIGHTNESS = const(51)
+_EV_LED_EMERGENCY_OFF = const(52)
+_EV_LED_EMERGENCY_OFF_COMPLETED = const(53)
+_EV_LED_INITIALIZED = const(54)
+_EV_LED_DEINITIALIZED = const(55)
+_EV_LED_EFFECT_CHANGED = const(56)
 
 # 异步任务相关事件
-EV_ASYNC_SYSTEM_STARTING = const(60)
-EV_ASYNC_TASKS_STARTED = const(61)
-EV_ASYNC_TASKS_CLEANUP_STARTED = const(62)
-EV_ASYNC_TASKS_CLEANUP_COMPLETED = const(63)
+_EV_ASYNC_SYSTEM_STARTING = const(60)
+_EV_ASYNC_TASKS_STARTED = const(61)
+_EV_ASYNC_TASKS_CLEANUP_STARTED = const(62)
+_EV_ASYNC_TASKS_CLEANUP_COMPLETED = const(63)
 
 # 日志相关事件
-EV_LOGGER_INITIALIZED = const(70)
+_EV_LOGGER_INITIALIZED = const(70)
 
 # === 日志级别常量 ===
-LOG_LEVEL_CRITICAL = const(101)
-LOG_LEVEL_WARNING = const(102)
-LOG_LEVEL_INFO = const(103)
-LOG_LEVEL_ERROR = const(104)
+_LOG_LEVEL_CRITICAL = const(101)
+_LOG_LEVEL_WARNING = const(102)
+_LOG_LEVEL_INFO = const(103)
+_LOG_LEVEL_ERROR = const(104)
+
+# 导出常量（保持向后兼容）
+EV_WIFI_CONNECTING = _EV_WIFI_CONNECTING
+EV_WIFI_CONNECTED = _EV_WIFI_CONNECTED
+EV_WIFI_DISCONNECTED = _EV_WIFI_DISCONNECTED
+EV_WIFI_TRYING = _EV_WIFI_TRYING
+EV_WIFI_TIMEOUT = _EV_WIFI_TIMEOUT
+EV_WIFI_ERROR = _EV_WIFI_ERROR
+EV_WIFI_FAILED = _EV_WIFI_FAILED
+EV_WIFI_SCAN_FAILED = _EV_WIFI_SCAN_FAILED
+EV_WIFI_DISCONNECTED_DETECTED = _EV_WIFI_DISCONNECTED_DETECTED
+EV_NTP_SYNCING = _EV_NTP_SYNCING
+EV_NTP_SYNCED = _EV_NTP_SYNCED
+EV_NTP_FAILED = _EV_NTP_FAILED
+EV_NTP_NO_WIFI = _EV_NTP_NO_WIFI
+EV_NTP_NOT_SYNCED_DETECTED = _EV_NTP_NOT_SYNCED_DETECTED
+EV_MAIN_LOOP_STARTED = _EV_MAIN_LOOP_STARTED
+EV_MAIN_LOOP_STOPPED = _EV_MAIN_LOOP_STOPPED
+EV_SYSTEM_HEARTBEAT = _EV_SYSTEM_HEARTBEAT
+EV_SYSTEM_STATUS_CHECK = _EV_SYSTEM_STATUS_CHECK
+EV_MEMORY_STATUS = _EV_MEMORY_STATUS
+EV_LOW_MEMORY_WARNING = _EV_LOW_MEMORY_WARNING
+EV_LOOP_COUNTER_RESET = _EV_LOOP_COUNTER_RESET
+EV_PERFORMANCE_REPORT = _EV_PERFORMANCE_REPORT
+EV_CONFIG_UPDATE = _EV_CONFIG_UPDATE
+EV_SYSTEM_STARTING = _EV_SYSTEM_STARTING
+EV_SYSTEM_STOPPED = _EV_SYSTEM_STOPPED
+EV_SYSTEM_SHUTTING_DOWN = _EV_SYSTEM_SHUTTING_DOWN
+EV_SYSTEM_SHUTDOWN_REQUESTED = _EV_SYSTEM_SHUTDOWN_REQUESTED
+EV_SYSTEM_ERROR = _EV_SYSTEM_ERROR
+EV_SYSTEM_TASK_ERROR = _EV_SYSTEM_TASK_ERROR
+EV_DAEMON_STARTED = _EV_DAEMON_STARTED
+EV_DAEMON_START_FAILED = _EV_DAEMON_START_FAILED
+EV_ENTER_SAFE_MODE = _EV_ENTER_SAFE_MODE
+EV_EXIT_SAFE_MODE = _EV_EXIT_SAFE_MODE
+EV_SCHEDULER_INTERVAL_ADJUSTED = _EV_SCHEDULER_INTERVAL_ADJUSTED
+EV_LED_SET_EFFECT = _EV_LED_SET_EFFECT
+EV_LED_SET_BRIGHTNESS = _EV_LED_SET_BRIGHTNESS
+EV_LED_EMERGENCY_OFF = _EV_LED_EMERGENCY_OFF
+EV_LED_EMERGENCY_OFF_COMPLETED = _EV_LED_EMERGENCY_OFF_COMPLETED
+EV_LED_INITIALIZED = _EV_LED_INITIALIZED
+EV_LED_DEINITIALIZED = _EV_LED_DEINITIALIZED
+EV_LED_EFFECT_CHANGED = _EV_LED_EFFECT_CHANGED
+EV_ASYNC_SYSTEM_STARTING = _EV_ASYNC_SYSTEM_STARTING
+EV_ASYNC_TASKS_STARTED = _EV_ASYNC_TASKS_STARTED
+EV_ASYNC_TASKS_CLEANUP_STARTED = _EV_ASYNC_TASKS_CLEANUP_STARTED
+EV_ASYNC_TASKS_CLEANUP_COMPLETED = _EV_ASYNC_TASKS_CLEANUP_COMPLETED
+EV_LOGGER_INITIALIZED = _EV_LOGGER_INITIALIZED
+LOG_LEVEL_CRITICAL = _LOG_LEVEL_CRITICAL
+LOG_LEVEL_WARNING = _LOG_LEVEL_WARNING
+LOG_LEVEL_INFO = _LOG_LEVEL_INFO
+LOG_LEVEL_ERROR = _LOG_LEVEL_ERROR
 
 # === 调试开关 ===
 # 发布版本时设为 False 可移除所有调试信息
 DEBUG = True  # 开发时设为 True, 发布时设为 False
 # === 事件常量映射表 ===
-# 用于字符串到整数的转换
-EVENT_MAP = {
+# 用于字符串到整数的转换 - 优化版本
+# 使用元组减少内存占用
+_EVENT_MAPPINGS = (
     # WiFi相关事件
-    'wifi_connecting': EV_WIFI_CONNECTING,
-    'wifi_connected': EV_WIFI_CONNECTED,
-    'wifi_disconnected': EV_WIFI_DISCONNECTED,
-    'wifi_trying': EV_WIFI_TRYING,
-    'wifi_timeout': EV_WIFI_TIMEOUT,
-    'wifi_error': EV_WIFI_ERROR,
-    'wifi_failed': EV_WIFI_FAILED,
-    'wifi_scan_failed': EV_WIFI_SCAN_FAILED,
-    'wifi_disconnected_detected': EV_WIFI_DISCONNECTED_DETECTED,
-    
+    ('wifi_connecting', _EV_WIFI_CONNECTING),
+    ('wifi_connected', _EV_WIFI_CONNECTED),
+    ('wifi_disconnected', _EV_WIFI_DISCONNECTED),
+    ('wifi_trying', _EV_WIFI_TRYING),
+    ('wifi_timeout', _EV_WIFI_TIMEOUT),
+    ('wifi_error', _EV_WIFI_ERROR),
+    ('wifi_failed', _EV_WIFI_FAILED),
+    ('wifi_scan_failed', _EV_WIFI_SCAN_FAILED),
+    ('wifi_disconnected_detected', _EV_WIFI_DISCONNECTED_DETECTED),
     # NTP相关事件
-    'ntp_syncing': EV_NTP_SYNCING,
-    'ntp_synced': EV_NTP_SYNCED,
-    'ntp_failed': EV_NTP_FAILED,
-    'ntp_no_wifi': EV_NTP_NO_WIFI,
-    'ntp_not_synced_detected': EV_NTP_NOT_SYNCED_DETECTED,
-    
+    ('ntp_syncing', _EV_NTP_SYNCING),
+    ('ntp_synced', _EV_NTP_SYNCED),
+    ('ntp_failed', _EV_NTP_FAILED),
+    ('ntp_no_wifi', _EV_NTP_NO_WIFI),
+    ('ntp_not_synced_detected', _EV_NTP_NOT_SYNCED_DETECTED),
     # 系统相关事件
-    'main_loop_started': EV_MAIN_LOOP_STARTED,
-    'main_loop_stopped': EV_MAIN_LOOP_STOPPED,
-    'system_heartbeat': EV_SYSTEM_HEARTBEAT,
-    'system_status_check': EV_SYSTEM_STATUS_CHECK,
-    'memory_status': EV_MEMORY_STATUS,
-    'low_memory_warning': EV_LOW_MEMORY_WARNING,
-    'loop_counter_reset': EV_LOOP_COUNTER_RESET,
-    'performance_report': EV_PERFORMANCE_REPORT,
-    'config_update': EV_CONFIG_UPDATE,
-    'system_starting': EV_SYSTEM_STARTING,
-    'system_stopped': EV_SYSTEM_STOPPED,
-    'system_shutting_down': EV_SYSTEM_SHUTTING_DOWN,
-    'system_shutdown_requested': EV_SYSTEM_SHUTDOWN_REQUESTED,
-    'system_error': EV_SYSTEM_ERROR,
-    'system_task_error': EV_SYSTEM_TASK_ERROR,
-    
+    ('main_loop_started', _EV_MAIN_LOOP_STARTED),
+    ('main_loop_stopped', _EV_MAIN_LOOP_STOPPED),
+    ('system_heartbeat', _EV_SYSTEM_HEARTBEAT),
+    ('system_status_check', _EV_SYSTEM_STATUS_CHECK),
+    ('memory_status', _EV_MEMORY_STATUS),
+    ('low_memory_warning', _EV_LOW_MEMORY_WARNING),
+    ('loop_counter_reset', _EV_LOOP_COUNTER_RESET),
+    ('performance_report', _EV_PERFORMANCE_REPORT),
+    ('config_update', _EV_CONFIG_UPDATE),
+    ('system_starting', _EV_SYSTEM_STARTING),
+    ('system_stopped', _EV_SYSTEM_STOPPED),
+    ('system_shutting_down', _EV_SYSTEM_SHUTTING_DOWN),
+    ('system_shutdown_requested', _EV_SYSTEM_SHUTDOWN_REQUESTED),
+    ('system_error', _EV_SYSTEM_ERROR),
+    ('system_task_error', _EV_SYSTEM_TASK_ERROR),
     # 守护进程相关事件
-    'daemon_started': EV_DAEMON_STARTED,
-    'daemon_start_failed': EV_DAEMON_START_FAILED,
-    'enter_safe_mode': EV_ENTER_SAFE_MODE,
-    'exit_safe_mode': EV_EXIT_SAFE_MODE,
-    'scheduler_interval_adjusted': EV_SCHEDULER_INTERVAL_ADJUSTED,
-    
+    ('daemon_started', _EV_DAEMON_STARTED),
+    ('daemon_start_failed', _EV_DAEMON_START_FAILED),
+    ('enter_safe_mode', _EV_ENTER_SAFE_MODE),
+    ('exit_safe_mode', _EV_EXIT_SAFE_MODE),
+    ('scheduler_interval_adjusted', _EV_SCHEDULER_INTERVAL_ADJUSTED),
     # LED相关事件
-    'led_set_effect': EV_LED_SET_EFFECT,
-    'led_set_brightness': EV_LED_SET_BRIGHTNESS,
-    'led_emergency_off': EV_LED_EMERGENCY_OFF,
-    'led_emergency_off_completed': EV_LED_EMERGENCY_OFF_COMPLETED,
-    'led_initialized': EV_LED_INITIALIZED,
-    'led_deinitialized': EV_LED_DEINITIALIZED,
-    'led_effect_changed': EV_LED_EFFECT_CHANGED,
-    
+    ('led_set_effect', _EV_LED_SET_EFFECT),
+    ('led_set_brightness', _EV_LED_SET_BRIGHTNESS),
+    ('led_emergency_off', _EV_LED_EMERGENCY_OFF),
+    ('led_emergency_off_completed', _EV_LED_EMERGENCY_OFF_COMPLETED),
+    ('led_initialized', _EV_LED_INITIALIZED),
+    ('led_deinitialized', _EV_LED_DEINITIALIZED),
+    ('led_effect_changed', _EV_LED_EFFECT_CHANGED),
     # 异步任务相关事件
-    'async_system_starting': EV_ASYNC_SYSTEM_STARTING,
-    'async_tasks_started': EV_ASYNC_TASKS_STARTED,
-    'async_tasks_cleanup_started': EV_ASYNC_TASKS_CLEANUP_STARTED,
-    'async_tasks_cleanup_completed': EV_ASYNC_TASKS_CLEANUP_COMPLETED,
-    
+    ('async_system_starting', _EV_ASYNC_SYSTEM_STARTING),
+    ('async_tasks_started', _EV_ASYNC_TASKS_STARTED),
+    ('async_tasks_cleanup_started', _EV_ASYNC_TASKS_CLEANUP_STARTED),
+    ('async_tasks_cleanup_completed', _EV_ASYNC_TASKS_CLEANUP_COMPLETED),
     # 日志相关事件
-    'logger_initialized': EV_LOGGER_INITIALIZED,
-}
+    ('logger_initialized', _EV_LOGGER_INITIALIZED),
+)
+
+# 延迟构建字典（仅在需要时创建）
+_event_map_cache = None
+
+def _get_event_map():
+    """获取事件映射字典（延迟初始化）"""
+    global _event_map_cache
+    if _event_map_cache is None:
+        _event_map_cache = dict(_EVENT_MAPPINGS)
+    return _event_map_cache
 
 # === 日志级别映射表 ===
-LOG_LEVEL_MAP = {
-    'log_critical': LOG_LEVEL_CRITICAL,
-    'log_warning': LOG_LEVEL_WARNING,
-    'log_info': LOG_LEVEL_INFO,
-    'log_error': LOG_LEVEL_ERROR,
-}
+_LOG_LEVEL_MAPPINGS = (
+    ('log_critical', _LOG_LEVEL_CRITICAL),
+    ('log_warning', _LOG_LEVEL_WARNING),
+    ('log_info', _LOG_LEVEL_INFO),
+    ('log_error', _LOG_LEVEL_ERROR),
+)
+
+_log_level_map_cache = None
+
+def _get_log_level_map():
+    """获取日志级别映射字典（延迟初始化）"""
+    global _log_level_map_cache
+    if _log_level_map_cache is None:
+        _log_level_map_cache = dict(_LOG_LEVEL_MAPPINGS)
+    return _log_level_map_cache
 
 # === 辅助函数 ===
 def get_event_id(event_name):
     """获取事件ID，支持字符串和整数输入"""
     if isinstance(event_name, int):
         return event_name
-    return EVENT_MAP.get(event_name, event_name)
+    return _get_event_map().get(event_name, event_name)
 
 def get_log_level_id(level_name):
     """获取日志级别ID，支持字符串和整数输入"""
     if isinstance(level_name, int):
         return level_name
-    return LOG_LEVEL_MAP.get(level_name, level_name)
+    return _get_log_level_map().get(level_name, level_name)
 
 # =============================================================================
 # JSON配置文件管理

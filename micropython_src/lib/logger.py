@@ -9,8 +9,8 @@
 - 动态日志级别调整
 """
 
-import time
 import gc
+from time import time
 from collections import deque
 
 class SimpleLogger:
@@ -71,7 +71,7 @@ class SimpleLogger:
             return
         
         try:
-            timestamp = time.time()
+            timestamp = time()
             level_name = self._level_names.get(level, "UNKNOWN")
             log_entry = f"[{level_name}] {timestamp}: {message}"
             self.log_queue.append(log_entry)

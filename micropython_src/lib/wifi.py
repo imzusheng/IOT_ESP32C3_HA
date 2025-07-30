@@ -27,6 +27,7 @@ try:
     import uasyncio as asyncio
 except ImportError:
     import asyncio
+import gc
 from .config import get_event_id, DEBUG
 
 # WiFi状态机枚举 - MicroPython兼容版本
@@ -87,19 +88,19 @@ class WifiManager:
         # 检查是否有WiFi相关的配置变更
         if 'wifi' in changed_sections or source == 'temp_optimizer':
             if DEBUG:
-                print(f"[WiFi] 收到配置更新，来源: {source}")
+                print("[WiFi] 收到配置更新，来源:", source)
             
             # 处理温度优化配置
             if source == 'temp_optimizer':
                 temp_level = kwargs.get('temp_level', 'normal')
                 if DEBUG:
-                    print(f"[WiFi] 温度优化级别: {temp_level}")
+                    print("[WiFi] 温度优化级别:", temp_level)
                 
                 # 更新WiFi检查间隔
                 if 'wifi_check_interval_s' in new_config:
                     self._wifi_check_interval_s = max(30, new_config['wifi_check_interval_s'])
                     if DEBUG:
-                        print(f"[WiFi] 更新连接检查间隔为: {self._wifi_check_interval_s}秒")
+                        print("[WiFi] 更新连接检查间隔为:", self._wifi_check_interval_s, "秒")
             
             # 处理WiFi配置变更
             elif 'wifi' in changed_sections:
@@ -108,6 +109,9 @@ class WifiManager:
                     self.wifi_configs = new_config['wifi'].get('configs', [])
                 if DEBUG:
                     print("[WiFi] WiFi配置已更新，将在下次连接时生效")
+            
+            # 配置更新后进行垃圾回收
+            gc.collect()
 
     async def scan_available_networks(self):
         """扫描可用的WiFi网络 - 异步版本"""
@@ -120,15 +124,23 @@ class WifiManager:
         try:
             networks = wlan.scan()
             if networks:
-                available_ssids = [net[0].decode('utf-8') for net in networks]
-                print(f"[WiFi] 发现 {len(available_ssids)} 个网络")
+                available_ssids = []
+                for net in networks:
+                    try:
+                        ssid = net[0].decode('utf-8')
+                        available_ssids.append(ssid)
+                    except:
+                        continue
+                print("[WiFi] 发现", len(available_ssids), "个网络")
                 return available_ssids
             else:
                 print("[WiFi] 扫描结果为空")
                 return []
         except Exception as e:
-            print(f"[WiFi] [ERROR] 扫描网络失败: {e}")
+            print("[WiFi] [ERROR] 扫描网络失败:", str(e))
             return []
+        finally:
+            gc.collect()
 
     async def scan_available_networks_for_config(self):
         """扫描并返回配置中可用的网络"""
@@ -259,7 +271,7 @@ class WifiManager:
             password = config["password"]
             
             if ssid in available_networks:
-                print(f"[WiFi] 尝试连接到: {ssid}")
+                print("[WiFi] 尝试连接到:", ssid)
                 self.event_bus.publish(get_event_id('wifi_trying'), ssid=ssid)
                 
                 # 开始连接过程
@@ -268,15 +280,16 @@ class WifiManager:
                 if await self._wait_for_connection(wlan, ssid):
                     ip_info = wlan.ifconfig()
                     ip = ip_info[0]
-                    print(f"\n[WiFi] [SUCCESS] 成功连接到: {ssid}")
-                    print(f"[WiFi] IP地址: {ip}")
+                    print("\n[WiFi] [SUCCESS] 成功连接到:", ssid)
+                    print("[WiFi] IP地址:", ip)
                     self._wifi_connected = True
                     self.event_bus.publish(get_event_id('wifi_connected'), ssid=ssid, ip=ip, reconnect=True)
-                    self.event_bus.publish(get_event_id('log_info'), message=f"WiFi连接成功: {ssid} ({ip})")
+                    log_msg = "WiFi连接成功: " + ssid + " (" + ip + ")"
+                    self.event_bus.publish(get_event_id('log_info'), message=log_msg)
                     return True
                 else:
-                    error_msg = f"连接 {ssid} 失败"
-                    print(f"[WiFi] [WARNING] {error_msg}")
+                    error_msg = "连接 " + ssid + " 失败"
+                    print("[WiFi] [WARNING]", error_msg)
                     self.event_bus.publish(get_event_id('wifi_error'), ssid=ssid, error=error_msg)
                     break
         
@@ -299,7 +312,7 @@ class WifiManager:
         while True:
             try:
                 if DEBUG:
-                    print(f"[WiFi] 当前状态: {WifiState.get_name(state)}")
+                    print("[WiFi] 当前状态:", WifiState.get_name(state))
                 
                 # 温度检查（所有状态都需要检查）
                 try:
@@ -370,8 +383,8 @@ class WifiManager:
                     
             except Exception as e:
                 error_count += 1
-                error_msg = f"WiFi任务错误 (第{error_count}次): {e}"
-                print(f"[WiFi] [ERROR] {error_msg}")
+                error_msg = "WiFi任务错误 (第" + str(error_count) + "次): " + str(e)
+                print("[WiFi] [ERROR]", error_msg)
                 self.event_bus.publish(get_event_id('log_warning'), message=error_msg)
                 
                 # 如果错误次数过多，延长等待时间
@@ -382,6 +395,7 @@ class WifiManager:
                     await asyncio.sleep(10)
                 
                 state = WifiState.RETRY_WAIT
+                gc.collect()
 
     def get_wifi_status(self):
         """获取WiFi状态"""

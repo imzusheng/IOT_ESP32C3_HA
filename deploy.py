@@ -1,311 +1,271 @@
-import os
+# deploy.py (v4.0 - 智能部署版)
 import sys
-import subprocess
 import time
 import serial
-from pathlib import Path
-import argparse
+import serial.tools.list_ports
+import os
 import shutil
-import fileinput
+import subprocess
+from base64 import b64encode
 
 # --- 配置区 ---
-SRC_DIR = 'micropython_src'
-DIST_DIR = 'dist'
-DEFAULT_BAUD_RATE = 115200
-MPY_CROSS_EXECUTABLE = 'mpy-cross'
+SOURCE_DIR = "micropython_src"
+BUILD_DIR = "dist"
+MPY_CROSS_CMD = "mpy-cross"  # 如果mpy-cross不在系统PATH中，请提供其完整路径
 
-# --- 工具函数 ---
+# --- 核心功能实现 ---
 
-def clean_local_dist():
-    """删除本地的 dist 文件夹。"""
-    dist_path = Path(DIST_DIR)
-    if dist_path.exists():
-        print(f"🗑️  正在清除旧的输出目录: {DIST_DIR}")
+class PyboardError(Exception):
+    """自定义异常，用于表示与开发板通信时发生的错误"""
+    pass
+
+class Pyboard:
+    """一个健壮的类，用于处理与MicroPython开发板的底层通信。"""
+    def __init__(self, port, baudrate=115200):
         try:
-            shutil.rmtree(dist_path)
-            print(f"✅  目录 '{DIST_DIR}' 已成功删除。")
-        except OSError as e:
-            print(f"❌ 错误: 删除目录 '{DIST_DIR}' 失败: {e}")
-            sys.exit(1)
-
-def compile_files(mode='dev'):
-    """
-    【最终安全版】递归编译源文件到 dist 目录。
-    此版本不再修改任何原始源文件，保证源码安全。
-    """
-    clean_local_dist()
-    print("="*50 + f"\n🚀 步骤 1: 开始交叉编译源文件 (模式: {mode.upper()})...\n" + "="*50)
-
-    src_path = Path(SRC_DIR)
-    dist_path = Path(DIST_DIR)
-    if not src_path.exists():
-        print(f"❌ 错误: 源文件目录 '{SRC_DIR}' 不存在！")
-        return False
-    dist_path.mkdir(parents=True, exist_ok=True)
-
-    source_files = list(src_path.rglob('*.py'))
-    if not source_files:
-        print("🟡 警告: 没有在源目录中找到任何 .py 文件。")
-        return True
-
-    for py_path in source_files:
-        relative_path = py_path.relative_to(src_path)
-        mpy_path = dist_path / relative_path.with_suffix('.mpy')
-        mpy_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        source_to_compile = py_path
-        temp_config_path = None
-
-        try:
-            # --- 安全地处理 config.py ---
-            if relative_path == Path('lib/config.py'):
-                print(f"  - 正在处理 {relative_path} (设置 DEBUG = {'True' if mode == 'dev' else 'False'})...")
-                temp_config_path = mpy_path.with_suffix('.py')
-                
-                with open(py_path, 'r', encoding='utf-8') as f_read:
-                    lines = f_read.readlines()
-
-                with open(temp_config_path, 'w', encoding='utf-8') as f_write:
-                    for line in lines:
-                        if line.strip().startswith('DEBUG ='):
-                            f_write.write(f"DEBUG = {'True' if mode == 'dev' else 'False'}\n")
-                        else:
-                            f_write.write(line)
-                
-                source_to_compile = temp_config_path
-
-            # --- 执行编译 ---
-            command = [MPY_CROSS_EXECUTABLE]
-            if mode == 'prod':
-                command.append('-O1')
-            command.extend([str(source_to_compile), '-o', str(mpy_path)])
-
-            print(f"  - 编译中: {relative_path}")
-            subprocess.run(command, check=True, capture_output=True, text=True, encoding='utf-8')
-
-        except (FileNotFoundError, subprocess.CalledProcessError) as e:
-            print(f"❌ 错误: 编译 {relative_path} 失败。")
-            print(f"  请确保 '{MPY_CROSS_EXECUTABLE}' 已安装并位于系统 PATH 中。")
-            if hasattr(e, 'stderr'): print(f"  错误信息: {e.stderr}")
-            return False
-        finally:
-            # --- 清理临时文件 ---
-            if temp_config_path and temp_config_path.exists():
-                temp_config_path.unlink()
-    
-    print("\n✅ 编译成功完成！\n")
-    return True
-
-
-def detect_serial_port():
-    """自动检测可用的串口号。"""
-    import serial.tools.list_ports
-    ports = serial.tools.list_ports.comports()
-    keywords = ['usb', 'serial', 'ch340', 'cp210', 'ftdi', 'micropython', 'uart']
-    return [p.device for p in ports if any(k in (p.description or '').lower() for k in keywords)]
-
-
-class MicroPythonFlasher:
-    """封装与 MicroPython 设备交互的核心逻辑"""
-    def __init__(self, port, baudrate):
-        self.port = port
-        self.baudrate = baudrate
-        self.ser = None
-
-    def connect(self):
-        try:
-            self.ser = serial.Serial(self.port, self.baudrate, timeout=1)
-            print(f"\n✅ 成功连接到设备: {self.port}")
-            return True
+            self.serial = serial.Serial(port, baudrate=baudrate, timeout=1)
         except serial.SerialException as e:
-            print(f"❌ 错误: 无法打开串口 {self.port}。请检查设备连接。错误: {e}")
-            return False
+            raise PyboardError(f"无法打开串口 {port}: {e}")
 
-    def disconnect(self):
-        if self.ser and self.ser.is_open:
-            self.ser.close()
+    def close(self):
+        if self.serial and self.serial.is_open:
+            self.serial.close()
 
-    def enter_raw_repl(self):
-        self.ser.write(b'\r\x03\x03'); time.sleep(0.2)
-        self.ser.write(b'\r\x01'); time.sleep(0.2)
-        self.ser.read_all()
-        
-    def exit_raw_repl(self):
-        self.ser.write(b'\r\x02'); time.sleep(0.2)
-        self.ser.read_all()
-
-    def remote_exec(self, command, timeout=10):
-        command_bytes = command.encode('utf-8')
-        self.ser.write(command_bytes)
-        self.ser.write(b'\x04')
-        response = b''
+    def read_until(self, min_len, ending, timeout=10):
+        data = self.serial.read(min_len)
         start_time = time.time()
         while time.time() - start_time < timeout:
-            if self.ser.in_waiting:
-                response += self.ser.read(self.ser.in_waiting)
-                if response.endswith(b'>'): break
-            time.sleep(0.01)
-        if not response.startswith(b'OK'):
-            raise IOError(f"远程命令执行失败: {response.decode('utf-8', 'ignore')}")
-        return response[2:response.find(b'\x04')].strip()
+            if data.endswith(ending):
+                break
+            new_data = self.serial.read(1)
+            if new_data:
+                data += new_data
+            else:
+                time.sleep(0.01)
+        return data
 
-    def wipe_filesystem(self):
-        print("\n" + "="*50 + "\n💣 步骤 2: 开始清空设备文件系统...\n" + "="*50)
-        self.enter_raw_repl()
-        try:
-            wipe_script = """
-import os
-def wipe(path='/'):
-    try: items = os.listdir(path)
-    except OSError: return
-    for item in items:
-        full_path = f"{path}/{item}" if path != '/' else f"/{item}"
-        try:
-            is_dir = (os.stat(full_path)[0] & 0x4000) != 0
-            if is_dir: wipe(full_path)
-            else: os.remove(full_path); print(f"Deleted file: {full_path}")
-        except: pass
-    if path != '/':
-        try: os.rmdir(path); print(f"Deleted dir: {path}")
-        except: pass
-wipe('/')
-print('Wipe finished.')
-"""
-            self.remote_exec(wipe_script)
-            print("\n✅ 设备文件系统已完全清空。")
-        except IOError as e:
-            print(f"❌ 清空设备时出错: {e}")
-        finally:
-            self.exit_raw_repl()
-
-    def upload(self, source_upload=False):
-        """根据模式上传文件 (.py 或 .mpy)"""
+    def exec_raw(self, command, timeout=10, quiet=False):
+        command_bytes = command.encode('utf-8')
+        self.serial.write(command_bytes)
+        self.serial.write(b'\x04') # Ctrl+D to execute
         
-        # 根据模式确定上传源和文件类型
-        if source_upload:
-            print("\n" + "="*50 + "\n🚀 步骤 3: 开始上传源代码 (.py)...\n" + "="*50)
-            base_path = Path(SRC_DIR)
-            files_to_upload = list(base_path.rglob('*.py'))
-        else: # 默认编译模式
-            print("\n" + "="*50 + "\n🚀 步骤 3: 开始上传编译文件 (.mpy)...\n" + "="*50)
-            base_path = Path(DIST_DIR)
-            files_to_upload = list(base_path.rglob('*.mpy'))
+        response = self.read_until(2, b'>', timeout)
+        if not response.endswith(b'>'):
+             raise PyboardError(f"执行命令失败，未收到 '>' 提示符。收到: {response}")
         
-        # 无论何种模式，都上传 config.json
-        config_json_path = Path(SRC_DIR) / 'config.json'
-        if config_json_path.exists(): files_to_upload.append(config_json_path)
+        if b'OK' not in response:
+            return response
 
-        # 1. 创建所有需要的目录
-        self.enter_raw_repl()
+        output, error = response.split(b'OK', 1)
+        if b"Traceback" in error:
+             raise PyboardError(f"远程执行出错:\n{error.decode('utf-8', 'ignore')}")
+        
+        return output
+
+    def enter_raw_repl(self):
+        print("[设备] 正在中断程序并进入裸 REPL 模式...")
+        self.serial.write(b'\r\x03\x03') # 发送Ctrl+C两次以确保中断任何脚本
+        time.sleep(0.2)
+        self.serial.write(b'\x01') # Ctrl+A: 进入裸 REPL
+        time.sleep(0.2)
+        response = self.serial.read_all()
+        if b'raw REPL' not in response:
+            print(f"[警告] 可能未能正确进入裸 REPL。响应: {response}")
+        print("[设备] 成功进入裸 REPL。")
+
+    def exit_raw_repl(self):
+        print("[设备] 正在退出裸 REPL 模式...")
+        self.serial.write(b'\x02') # Ctrl+B 退出
+        time.sleep(0.1)
+
+    def soft_reset(self):
+        print("[设备] 正在执行软复位...")
+        self.serial.write(b'import machine; machine.reset()\x04')
+        time.sleep(1.5) # 给设备重启留出时间
+        print("[设备] 软复位完成。")
+
+    def wipe_device(self):
+        print("[设备] 正在清空设备文件系统 (这可能需要一些时间)...")
+        self.exec_raw(
+            "import uos\n"
+            "def rm_all(path):\n"
+            "  try:\n"
+            "    for item in uos.ilistdir(path):\n"
+            "      full_path = path + '/' + item[0]\n"
+            "      if item[1] == 0x8000: uos.remove(full_path)\n" # 文件
+            "      else: rm_all(full_path); uos.rmdir(full_path)\n" # 文件夹
+            "  except OSError: pass\n"
+            "rm_all('/')"
+        , timeout=30)
+        print("[设备] 文件系统已清空。")
+
+    def put_file(self, local_path, remote_path):
         try:
-            print("  - 正在创建远程目录...")
-            remote_dirs = set()
-            for p in files_to_upload:
-                parent = p.relative_to(Path(SRC_DIR) if p.name == 'config.json' else base_path).parent
-                if str(parent) != '.': remote_dirs.add(str(parent).replace('\\', '/'))
-            for d in sorted(list(remote_dirs)):
-                 self.remote_exec(f"try: import os; os.mkdir('/{d}')\nexcept: pass")
-            print("  - 目录创建完成。")
-        finally:
-            self.exit_raw_repl()
+            with open(local_path, 'rb') as f:
+                content = f.read()
+        except FileNotFoundError:
+            raise PyboardError(f"本地文件未找到: {local_path}")
+        
+        print(f"  传输: {local_path} -> {remote_path} ({len(content)} bytes)")
+        
+        remote_dir = '/'.join(remote_path.split('/')[:-1])
+        if remote_dir:
+            self.exec_raw(f"try: uos.mkdir('{remote_dir}')\nexcept OSError: pass", quiet=True)
 
-        # 2. 上传文件
-        for file_path in files_to_upload:
-            is_config = file_path.name == 'config.json'
-            remote_path = ('/config.json' if is_config 
-                           else '/' + str(file_path.relative_to(base_path)).replace('\\', '/'))
-            print(f"  - 上传中: {file_path.name} -> {remote_path}")
-            with open(file_path, 'rb') as f: content = f.read()
-            self.enter_raw_repl()
-            try:
-                self.remote_exec(f"f = open('{remote_path}', 'wb')")
-                chunk_size = 256
-                for i in range(0, len(content), chunk_size):
-                    chunk = content[i:i+chunk_size]
-                    self.remote_exec(f"f.write({repr(chunk)})")
-                self.remote_exec("f.close()")
-            finally:
-                self.exit_raw_repl()
-        print("\n✅ 所有文件上传成功！")
+        encoded_content = b64encode(content)
+        self.exec_raw(f"f = open('{remote_path}', 'wb'); import ubinascii", quiet=True)
+        
+        chunk_size = 256
+        for i in range(0, len(encoded_content), chunk_size):
+            chunk = encoded_content[i:i+chunk_size]
+            self.exec_raw(f"f.write(ubinascii.a2b_base64(b'{chunk.decode('ascii')}'))", quiet=True)
+        
+        self.exec_raw("f.close()", quiet=True)
 
-    def soft_reboot(self):
-        print("\n🔄 正在软重启设备...")
+
+def build_project(compile_files=True):
+    title = "步骤 1: 构建和编译项目" if compile_files else "步骤 1: 构建项目 (跳过编译)"
+    print(f"--- {title} ---")
+
+    if os.path.exists(BUILD_DIR):
+        shutil.rmtree(BUILD_DIR)
+    os.makedirs(BUILD_DIR)
+
+    stats = []
+    total_before, total_after = 0, 0
+
+    for root, dirs, files in os.walk(SOURCE_DIR):
+        rel_path = os.path.relpath(root, SOURCE_DIR)
+        dist_path = os.path.join(BUILD_DIR, rel_path) if rel_path != '.' else BUILD_DIR
+
+        if not os.path.exists(dist_path):
+            os.makedirs(dist_path)
+
+        for file in files:
+            local_file_path = os.path.join(root, file)
+            
+            if compile_files and file.endswith('.py'):
+                mpy_file = file.replace('.py', '.mpy')
+                dist_file_path = os.path.join(dist_path, mpy_file)
+                try:
+                    result = subprocess.run(
+                        [MPY_CROSS_CMD, local_file_path, "-o", dist_file_path],
+                        check=True, capture_output=True, text=True, encoding='utf-8'
+                    )
+                    
+                    original_size = os.path.getsize(local_file_path)
+                    compiled_size = os.path.getsize(dist_file_path)
+                    reduction = (original_size - compiled_size) / original_size * 100 if original_size > 0 else 0
+                    total_before += original_size
+                    total_after += compiled_size
+                    stats.append((file, original_size, compiled_size, reduction))
+
+                except FileNotFoundError:
+                    print(f"\n[致命错误] 找不到 mpy-cross 命令。请确保它已正确安装并位于系统 PATH 环境变量中。")
+                    sys.exit(1)
+                except subprocess.CalledProcessError as e:
+                    print(f"\n[致命错误] 编译文件 '{local_file_path}' 失败。")
+                    print("="*15 + " mpy-cross 编译器错误信息 " + "="*15)
+                    print(e.stderr)
+                    print("="*58)
+                    print("错误原因可能是：\n  1. mpy-cross 版本与设备固件不兼容。\n  2. Python 代码中存在语法错误。")
+                    print("\n[建议] 您可以尝试使用 '--no-compile' 选项跳过编译，直接部署 .py 源文件。")
+                    sys.exit(1)
+            else:
+                shutil.copy(local_file_path, os.path.join(dist_path, file))
+
+    if compile_files and stats:
+        print("\n[编译报告]")
+        print("-" * 60)
+        print(f"{'文件名':<25} | {'原始大小':>10} | {'编译后大小':>12} | {'压缩率':>7}")
+        print("-" * 60)
+        for name, orig, comp, red in sorted(stats, key=lambda x: x[3], reverse=True):
+            print(f"{name:<25} | {orig:>8} B | {comp:>10} B | {red:>6.1f}%")
+        print("-" * 60)
+        total_reduction = (total_before - total_after) / total_before * 100 if total_before > 0 else 0
+        print(f"{'总计':<25} | {total_before:>8} B | {total_after:>10} B | {total_reduction:>6.1f}%")
+        print("-" * 60)
+    
+    print(f"构建产物已输出到 '{BUILD_DIR}/' 目录。\n")
+
+
+def find_serial_port():
+    print("--- 步骤 2: 查找设备 ---")
+    ports = serial.tools.list_ports.comports()
+    # 增加了更多关键字以提高检测成功率
+    keywords = ['ch340', 'cp210x', 'usb to serial', 'usb jtag/serial', 'uart']
+    esp_ports = [p for p in ports if any(k in p.description.lower() for k in keywords)]
+    
+    if not esp_ports:
+        raise PyboardError("未找到任何 ESP32/ESP8266 设备。请检查连接和驱动程序。")
+    
+    if len(esp_ports) > 1:
+        print("检测到多个设备，请选择一个:")
+        for i, p in enumerate(esp_ports):
+            print(f"  [{i+1}]: {p.device} - {p.description}")
         try:
-            self.ser.write(b'\x04')
-            time.sleep(1)
-            output = self.ser.read_all().decode('utf-8', errors='ignore')
-            print(output)
-            print("✨ 设备已重启。")
-        except serial.SerialException as e:
-            print(f"🟡 重启时串口断开 (这是正常现象): {e}")
+            choice = int(input("请输入端口编号: ")) - 1
+            if not (0 <= choice < len(esp_ports)):
+                raise ValueError
+            return esp_ports[choice].device
+        except (ValueError, IndexError, KeyboardInterrupt):
+            print("\n选择无效或操作取消，脚本退出。")
+            sys.exit(1)
 
+    port = esp_ports[0].device
+    print(f"自动选择设备: {port} - {esp_ports[0].description}")
+    return port
+
+def deploy(no_compile_flag):
+    port = find_serial_port()
+    
+    print("\n--- 步骤 3: 部署到设备 ---")
+    board = None
+    try:
+        board = Pyboard(port)
+        board.enter_raw_repl()
+        board.wipe_device()
+
+        print("[部署] 开始上传文件...")
+        # 上传 `dist` 目录的所有内容
+        for root, dirs, files in os.walk(BUILD_DIR):
+            for file in files:
+                local_path = os.path.join(root, file)
+                # 计算远程路径时，去掉 'dist/' 前缀
+                remote_path = "/" + os.path.relpath(local_path, BUILD_DIR).replace("\\", "/")
+                board.put_file(local_path, remote_path)
+        
+        print("[部署] 所有文件上传成功！")
+        
+        board.exit_raw_repl()
+        board.soft_reset()
+
+    except PyboardError as e:
+        print(f"\n[致命错误] 部署过程中发生错误: {e}")
+        sys.exit(1)
+    finally:
+        if board:
+            board.close()
 
 def main():
-    parser = argparse.ArgumentParser(
-        description='MicroPython 代码编译和部署工具 (v6 - 支持源码上传)',
-        formatter_class=argparse.RawTextHelpFormatter
-    )
-    parser.add_argument(
-        '--mode', type=str, choices=['dev', 'prod'], default='dev',
-        help="编译模式 (仅在上传编译文件时有效):\n"
-             "  dev  - 开发模式，保留日志打印 (默认)\n"
-             "  prod - 生产模式，移除日志并优化"
-    )
-    parser.add_argument(
-        '--source', action='store_true',
-        help="上传 .py 源代码而不是编译后的 .mpy 文件。\n"
-             "使用此标志将忽略 --mode 参数。"
-    )
-    parser.add_argument('-p', '--port', type=str, help='指定串口号 (例如: COM3, /dev/ttyUSB0)')
-    parser.add_argument('-b', '--baud', type=int, default=DEFAULT_BAUD_RATE, help=f'波特率 (默认: {DEFAULT_BAUD_RATE})')
-    parser.add_argument('--list-ports', action='store_true', help='列出所有可用串口')
-    parser.add_argument('--compile-only', action='store_true', help='仅编译，不上传')
-    args = parser.parse_args()
-
-    if args.list_ports:
-        ports = detect_serial_port()
-        if not ports: print("未找到任何兼容的串口设备。")
-        else: print("可用串口:"); [print(f"  - {p}") for p in ports]
-        return
-
-    # 如果不是源码上传模式，则执行编译
-    if not args.source:
-        if not compile_files(args.mode): sys.exit(1)
-        if args.compile_only: print("✅ 编译完成，跳过上传步骤。"); return
-    else:
-        print(" ஸ  源码上传模式，跳过编译步骤。")
-
-    if args.compile_only and args.source:
-        print("🟡 警告: --compile-only 和 --source 参数冲突，将不执行任何操作。")
-        return
-
-    # ... (选择串口的逻辑保持不变)
-    port = args.port
-    if not port:
-        ports = detect_serial_port()
-        if not ports: print("❌ 错误: 未检测到串口设备。"); sys.exit(1)
-        elif len(ports) == 1: port = ports[0]; print(f"🔍 自动检测到串口: {port}")
-        else:
-            print("🔍 检测到多个串口:"); [print(f"  {i+1}. {p}") for i, p in enumerate(ports)]
-            try:
-                choice = int(input("请选择串口 (输入数字): ")) - 1
-                if 0 <= choice < len(ports): port = ports[choice]
-                else: print("❌ 无效选择"); sys.exit(1)
-            except (ValueError, KeyboardInterrupt): print("\n❌ 操作取消"); sys.exit(1)
-
-    flasher = MicroPythonFlasher(port, args.baud)
-    if not flasher.connect(): sys.exit(1)
+    print("=================================================")
+    print("=      ESP32/MicroPython 智能部署工具 v4.0      =")
+    print("=================================================\n")
     
-    try:
-        flasher.wipe_filesystem()
-        flasher.upload(source_upload=args.source)
-        flasher.soft_reboot()
-    except Exception as e:
-        print(f"\n❌ 部署过程中发生严重错误: {e}")
-        import traceback
-        traceback.print_exc()
-    finally:
-        flasher.disconnect()
+    should_compile = '--no-compile' not in sys.argv
+    
+    build_project(compile_files=should_compile)
+    deploy(no_compile_flag=(not should_compile))
+    
+    print("\n🎉 部署成功完成！")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (KeyboardInterrupt, SystemExit) as e:
+        if isinstance(e, SystemExit) and e.code != 0:
+             print(f"\n脚本因错误退出 (代码: {e.code})")
+        else:
+             print("\n\n用户中断了操作。")
+    except Exception as e:
+        print(f"\n发生未知错误: {e}")

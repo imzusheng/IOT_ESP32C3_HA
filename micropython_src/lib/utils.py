@@ -17,6 +17,14 @@ from .config import DEBUG
 # 内存管理工具
 # =============================================================================
 
+# 预分配内存信息字典模板以减少内存分配
+_MEMORY_INFO_TEMPLATE = {
+    'free': 0,
+    'allocated': 0,
+    'total': 0,
+    'usage_percent': 0
+}
+
 def get_memory_info():
     """获取内存信息"""
     try:
@@ -24,48 +32,61 @@ def get_memory_info():
         free = gc.mem_free()
         allocated = gc.mem_alloc()
         total = free + allocated
-        return {
-            'free': free,
-            'allocated': allocated,
-            'total': total,
-            'percent_used': (allocated / total) * 100 if total > 0 else 0
-        }
-    except:
-        return {'free': 0, 'allocated': 0, 'total': 0, 'percent_used': 0}
+        
+        # 复用模板字典以减少内存分配
+        result = _MEMORY_INFO_TEMPLATE.copy()
+        result['free'] = free
+        result['allocated'] = allocated
+        result['total'] = total
+        result['usage_percent'] = round((allocated / total) * 100, 2) if total > 0 else 0
+        return result
+    except Exception as e:
+        result = _MEMORY_INFO_TEMPLATE.copy()
+        result['error'] = str(e)
+        return result
 
 # =============================================================================
 # 系统状态工具
 # =============================================================================
 
+# 预分配系统状态字典模板
+_SYSTEM_STATUS_TEMPLATE = {
+    'wifi_connected': False,
+    'memory': None,
+    'temperature': None,
+    'timestamp': 0
+}
+
 def get_system_status():
-    """获取系统状态"""
+    """获取系统状态信息"""
     try:
-        # 检查WiFi状态
         import network
         wlan = network.WLAN(network.STA_IF)
         wifi_connected = wlan.isconnected()
         
-        # 获取内存信息
-        mem_info = get_memory_info()
+        memory_info = get_memory_info()
         
-        # 获取温度（如果支持）
+        # 尝试获取温度信息
         temp = None
         try:
             import esp32
-            temp = esp32.mcu_temperature()
+            temp = esp32.raw_temperature()
         except:
             pass
         
-        return {
-            'wifi_connected': wifi_connected,
-            'memory': mem_info,
-            'temperature': temp,
-            'timestamp': time.time()
-        }
+        # 复用模板字典
+        result = _SYSTEM_STATUS_TEMPLATE.copy()
+        result['wifi_connected'] = wifi_connected
+        result['memory'] = memory_info
+        result['temperature'] = temp
+        result['timestamp'] = time.time()
+        return result
     except Exception as e:
-        if DEBUG:
-            print(f"[Utils] 获取系统状态失败: {e}")
-        return {}
+        result = _SYSTEM_STATUS_TEMPLATE.copy()
+        result['memory'] = get_memory_info()
+        result['timestamp'] = time.time()
+        result['error'] = str(e)
+        return result
 
 # =============================================================================
 # 时间工具
