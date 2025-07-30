@@ -218,16 +218,6 @@ _EVENT_MAPPINGS = (
     ('logger_initialized', _EV_LOGGER_INITIALIZED),
 )
 
-# 延迟构建字典（仅在需要时创建）
-_event_map_cache = None
-
-def _get_event_map():
-    """获取事件映射字典（延迟初始化）"""
-    global _event_map_cache
-    if _event_map_cache is None:
-        _event_map_cache = dict(_EVENT_MAPPINGS)
-    return _event_map_cache
-
 # === 日志级别映射表 ===
 _LOG_LEVEL_MAPPINGS = (
     ('log_critical', _LOG_LEVEL_CRITICAL),
@@ -236,27 +226,32 @@ _LOG_LEVEL_MAPPINGS = (
     ('log_error', _LOG_LEVEL_ERROR),
 )
 
-_log_level_map_cache = None
-
-def _get_log_level_map():
-    """获取日志级别映射字典（延迟初始化）"""
-    global _log_level_map_cache
-    if _log_level_map_cache is None:
-        _log_level_map_cache = dict(_LOG_LEVEL_MAPPINGS)
-    return _log_level_map_cache
-
 # === 辅助函数 ===
 def get_event_id(event_name):
     """获取事件ID，支持字符串和整数输入"""
     if isinstance(event_name, int):
         return event_name
-    return _get_event_map().get(event_name, event_name)
+    
+    # 直接遍历元组查找，避免创建大型字典
+    for name, event_id in _EVENT_MAPPINGS:
+        if name == event_name:
+            return event_id
+    
+    # 如果找不到，返回原始名称（保持向后兼容）
+    return event_name
 
 def get_log_level_id(level_name):
     """获取日志级别ID，支持字符串和整数输入"""
     if isinstance(level_name, int):
         return level_name
-    return _get_log_level_map().get(level_name, level_name)
+    
+    # 直接遍历元组查找，避免创建大型字典
+    for name, level_id in _LOG_LEVEL_MAPPINGS:
+        if name == level_name:
+            return level_id
+    
+    # 如果找不到，返回原始名称（保持向后兼容）
+    return level_name
 
 # =============================================================================
 # JSON配置文件管理
@@ -357,6 +352,26 @@ def reload_config():
     except Exception as e:
         print(f"[CONFIG] [ERROR] 配置重载失败: {e}")
         return False
+
+def get_config_value(section, key):
+    """
+    从配置中获取值，要求配置文件必须存在
+    
+    这是_get_config_value的公开版本，供其他模块使用
+    
+    Args:
+        section (str): 配置节名称
+        key (str): 配置键名称，如果为None则返回整个配置节
+    
+    Returns:
+        配置值或配置节
+    
+    Raises:
+        ConfigFileNotFoundError: 配置文件不存在
+        ConfigLoadError: 配置加载失败
+        KeyError: 配置项不存在
+    """
+    return _get_config_value(section, key)
 
 def _get_config_value(section, key):
     """
