@@ -1,43 +1,17 @@
-#### ⚠️ **与计划略有差异或可讨论的点**
+**`config.json` 与 `config.py` 的默认值同步**:
+    * **现状**: `config.py` 中定义了一套默认配置（例如 `_DEFAULT_WIFI_CONFIGS`），并在 `config.json` 文件不存在时使用它们。`config.json` 中也有一套完整的配置。
+    * **建议**: 可以考虑移除 `config.py` 中的默认配置字典，改为在 `_load_json_config` 函数中，如果文件加载失败，直接抛出异常。然后在 `main.py` 的启动流程中捕获这个异常，并提示用户必须先创建 `config.json` 文件。
+    * **理由**:
+        * **单一数据源**: 确保 `config.json` 是唯一、可信的配置来源，避免两边数据不一致导致混乱。
+        * **明确意图**: 强制要求用户创建配置文件，可以减少因忘记配置而导致的运行时问题。
+        * **简化代码**: `config.py` 不再需要维护一套完整的默认值，代码更简洁。
 
-1.  **项目结构**
-      * **现状**: 您创建了 `lib` 包，并将新分离出的功能模块（`wifi.py`, `ntp.py`, `led.py`, `temp_optimizer.py`）放入其中。但是，一些核心的基础模块如 `config.py`, `core.py`, `daemon.py`, `logger.py` 仍然保留在 `micropython_src` 的根目录下。
-      * **与计划对比**: `PLAN.md` 中建议将所有非入口文件都移入 `lib` 目录。
-      * **分析**: 这并非一个错误，而是一个设计选择。当前结构（如 `README.md` 中所画）将“功能库”和“核心服务”分开了，也很有道理。但 `lib/__init__.py` 中为了能导入 `core` 模块而手动修改 `sys.path` 的做法，通常被认为是一种需要避免的“code smell”。如果未来项目变得更复杂，这可能会导致一些潜在的路径问题。
+**日志系统 (`logger.py`)**:
+    * **现状**: `logger.py` 实现了一个简单的、基于内存队列的日志系统。
+    * **建议**: 目前 `_handle_critical_log` 是一个预留接口。如果设备需要长期稳定运行，可以考虑实现将 `CRITICAL` 级别的日志写入闪存文件的逻辑（例如写入 `error.log`）。
+    * **理由**: 将最严重的错误持久化，即使设备重启，也能保留错误现场，方便调试和问题追溯。可以参考 `config.json` 中的 `logging` 配置项来实现日志文件的轮转和大小限制。
 
-### 仍可优化的建议
-
-您的代码质量已经非常高，以下建议属于锦上添花，可供您在后续迭代中参考：
-
-1.  **统一项目结构，消除 `sys.path` 修改**
-
-      * **建议**: 考虑将 `core.py`, `config.py`, `daemon.py`, `logger.py` 也一并移入 `lib` 目录。
-      * **理由**:
-          * 可以移除 `lib/__init__.py` 中修改 `sys.path` 的代码，使项目结构更标准、更健壮。
-          * 所有模块的导入方式将变为一致的 `from lib import xxx`，心智负担更小。
-          * `main.py` 和 `boot.py` 作为入口文件留在根目录，其他所有模块皆为库，这是一种非常通用的 MicroPython 项目布局。
-
-2.  **`core.py` 的进一步精简**
-
-      * **现状**: `core.py` 中仍然包含了一些通用工具函数，如 `get_memory_info`, `get_system_status`, `format_time`。
-      * **建议**: 为了让 `core.py` 成为一个“纯粹”的事件总线，可以考虑将这些工具函数移到一个新的 `lib/utils.py` 或 `lib/system_utils.py` 文件中。
-      * **理由**: 这将是模块化重构的最后一步，实现极致的“单一职责原则”。
-
-3.  **配置更新事件的简化 (Plan Part 3 的建议)**
-
-      * **现状**: `config.py` 在重载配置时，会发布多个特定事件，如 `led_config_updated`, `wifi_config_updated` 等。
-      * **建议**: 正如 `PLAN.md` 中所建议的，可以简化为只发布一个通用的 `EV_CONFIG_UPDATE` 事件。
-      * **实现**:
-        ```python
-        # 在 reload_config 中
-        changed_sections = []
-        if old_config.get('led', {}) != new_config.get('led', {}):
-            changed_sections.append('led')
-        if old_config.get('wifi', {}) != new_config.get('wifi', {}):
-            changed_sections.append('wifi')
-
-        # 只发布一个通用事件，并携带发生变更的部分
-        publish(EV_CONFIG_UPDATE, new_config=new_config, changed=changed_sections)
-        ```
-        然后，各个模块（如 `led.py`）自己订阅 `EV_CONFIG_UPDATE`，并检查 `changed` 列表中是否包含 `'led'`，再决定是否更新自己的配置。
-      * **理由**: 这能让 `config.py` 与其他模块的实现进一步解耦，它不需要知道谁会关心配置变化，只负责通知“配置变了”这件事。
+**`daemon.py` 中 `_check_restart_loop_protection` 的健壮性**:
+    * **现状**: 通过读写 `/restart_count.txt` 文件来防止重启循环。
+    * **建议**: 在 `_save_restart_count` 中，可以考虑使用原子操作来写入文件，即先写入一个临时文件，再重命名为目标文件。
+    * **理由**: 在 MicroPython 中，如果写入文件（特别是闪存）的过程中设备意外断电，文件系统可能会损坏，导致文件内容不完整。使用“写入临时文件再重命名”的方式可以最大限度地保证文件写入的原子性，增加系统的可靠性。

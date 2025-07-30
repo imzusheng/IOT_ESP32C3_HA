@@ -202,25 +202,37 @@ CONFIG_FILE_PATH = 'config.json'
 _loaded_config = None
 _config_load_time = 0
 
+class ConfigFileNotFoundError(Exception):
+    """配置文件不存在异常"""
+    pass
+
+class ConfigLoadError(Exception):
+    """配置加载失败异常"""
+    pass
+
 def _load_json_config():
     """
     从JSON文件加载配置
     
     Returns:
-        dict: 配置字典，如果加载失败则返回None
+        dict: 配置字典
+    
+    Raises:
+        ConfigFileNotFoundError: 配置文件不存在
+        ConfigLoadError: 配置文件加载失败
     """
     try:
-        if CONFIG_FILE_PATH in os.listdir():
-            with open(CONFIG_FILE_PATH, 'r') as f:
-                config_data = json.load(f)
-            print(f"[CONFIG] 成功从 {CONFIG_FILE_PATH} 加载配置")
-            return config_data
-        else:
-            print(f"[CONFIG] 配置文件 {CONFIG_FILE_PATH} 不存在，使用默认配置")
-            return None
+        if CONFIG_FILE_PATH not in os.listdir():
+            raise ConfigFileNotFoundError(f"配置文件 {CONFIG_FILE_PATH} 不存在，请先创建配置文件")
+        
+        with open(CONFIG_FILE_PATH, 'r') as f:
+            config_data = json.load(f)
+        print(f"[CONFIG] 成功从 {CONFIG_FILE_PATH} 加载配置")
+        return config_data
+    except ConfigFileNotFoundError:
+        raise  # 重新抛出配置文件不存在异常
     except Exception as e:
-        print(f"[CONFIG] [ERROR] 加载JSON配置失败: {e}")
-        return None
+        raise ConfigLoadError(f"加载JSON配置失败: {e}")
 
 def _save_json_config(config_data):
     """
@@ -291,17 +303,21 @@ def reload_config():
         print(f"[CONFIG] [ERROR] 配置重载失败: {e}")
         return False
 
-def _get_config_value(section, key, default_value):
+def _get_config_value(section, key):
     """
-    从配置中获取值，支持JSON配置和默认值回退
+    从配置中获取值，要求配置文件必须存在
     
     Args:
         section (str): 配置节名称
-        key (str): 配置键名称
-        default_value: 默认值
+        key (str): 配置键名称，如果为None则返回整个配置节
     
     Returns:
-        配置值或默认值
+        配置值或配置节
+    
+    Raises:
+        ConfigFileNotFoundError: 配置文件不存在
+        ConfigLoadError: 配置加载失败
+        KeyError: 配置项不存在
     """
     global _loaded_config
     
@@ -309,44 +325,35 @@ def _get_config_value(section, key, default_value):
     if _loaded_config is None:
         _loaded_config = _load_json_config()
     
-    # 如果有JSON配置，优先使用
-    if _loaded_config and section in _loaded_config and key in _loaded_config[section]:
-        return _loaded_config[section][key]
+    # 检查配置节是否存在
+    if section not in _loaded_config:
+        raise KeyError(f"配置节 '{section}' 不存在")
     
-    # 否则使用默认值
-    return default_value
+    # 如果key为None，返回整个配置节
+    if key is None:
+        return _loaded_config[section]
+    
+    # 检查配置项是否存在
+    if key not in _loaded_config[section]:
+        raise KeyError(f"配置项 '{section}.{key}' 不存在")
+    
+    return _loaded_config[section][key]
 
 # =============================================================================
 # WiFi 网络配置
 # =============================================================================
 
-# WiFi网络配置列表（默认值）
-# 系统会按顺序尝试连接这些网络，连接到第一个可用的网络后停止尝试
-_DEFAULT_WIFI_CONFIGS = [
-    {"ssid": "Lejurobot", "password": "Leju2022"},
-    {"ssid": "CMCC-pdRG", "password": "7k77ed5p"},
-    # 可以继续添加更多网络配置
-    # {"ssid": "你的网络名称", "password": "你的密码"},
-]
-
-# WiFi连接超时时间（秒）- 默认值
-_DEFAULT_WIFI_CONNECT_TIMEOUT_S = 15
-
-# WiFi重连间隔时间（秒）- 默认值
-_DEFAULT_WIFI_RETRY_INTERVAL_S = 60
-
-# 动态配置获取函数
 def get_wifi_configs():
-    """获取WiFi配置列表（支持JSON配置）"""
-    return _get_config_value('wifi', 'configs', _DEFAULT_WIFI_CONFIGS)
+    """获取WiFi配置列表"""
+    return _get_config_value('wifi', 'configs')
 
 def get_wifi_connect_timeout():
-    """获取WiFi连接超时时间（支持JSON配置）"""
-    return _get_config_value('wifi', 'connect_timeout_s', _DEFAULT_WIFI_CONNECT_TIMEOUT_S)
+    """获取WiFi连接超时时间"""
+    return _get_config_value('wifi', 'connect_timeout_s')
 
 def get_wifi_retry_interval():
-    """获取WiFi重连间隔时间（支持JSON配置）"""
-    return _get_config_value('wifi', 'retry_interval_s', _DEFAULT_WIFI_RETRY_INTERVAL_S)
+    """获取WiFi重连间隔时间"""
+    return _get_config_value('wifi', 'retry_interval_s')
 
 
 
@@ -354,20 +361,13 @@ def get_wifi_retry_interval():
 # NTP 时间同步配置
 # =============================================================================
 
-# NTP重试间隔（秒）- 默认值
-_DEFAULT_NTP_RETRY_DELAY_S = 60
-
-# 时区偏移（小时）- 默认值
-_DEFAULT_TIMEZONE_OFFSET_HOURS = 8
-
-# 动态配置获取函数
 def get_ntp_retry_delay():
-    """获取NTP重试间隔（支持JSON配置）"""
-    return _get_config_value('ntp', 'retry_delay_s', _DEFAULT_NTP_RETRY_DELAY_S)
+    """获取NTP重试间隔"""
+    return _get_config_value('ntp', 'retry_delay_s')
 
 def get_timezone_offset():
-    """获取时区偏移（支持JSON配置）"""
-    return _get_config_value('ntp', 'timezone_offset_hours', _DEFAULT_TIMEZONE_OFFSET_HOURS)
+    """获取时区偏移"""
+    return _get_config_value('ntp', 'timezone_offset_hours')
 
 
 
@@ -375,131 +375,68 @@ def get_timezone_offset():
 # LED 硬件配置
 # =============================================================================
 
-# LED引脚配置 - 默认值
-_DEFAULT_LED_PIN_1 = 12  # LED 1 的主控引脚
-_DEFAULT_LED_PIN_2 = 13  # LED 2 的主控引脚
-
-# PWM频率配置（Hz）- 默认值
-_DEFAULT_PWM_FREQ = 60
-
-# LED最大亮度配置 - 默认值
-_DEFAULT_MAX_BRIGHTNESS = 20000
-
-# 呼吸灯渐变步长配置 - 默认值
-_DEFAULT_FADE_STEP = 256
-
-# 动态配置获取函数
 def get_led_pin_1():
-    """获取LED1引脚（支持JSON配置）"""
-    return _get_config_value('led', 'pin_1', _DEFAULT_LED_PIN_1)
+    """获取LED1引脚"""
+    return _get_config_value('led', 'pin_1')
 
 def get_led_pin_2():
-    """获取LED2引脚（支持JSON配置）"""
-    return _get_config_value('led', 'pin_2', _DEFAULT_LED_PIN_2)
+    """获取LED2引脚"""
+    return _get_config_value('led', 'pin_2')
 
 def get_pwm_freq():
-    """获取PWM频率（支持JSON配置）"""
-    return _get_config_value('led', 'pwm_freq', _DEFAULT_PWM_FREQ)
+    """获取PWM频率"""
+    return _get_config_value('led', 'pwm_freq')
 
 def get_max_brightness():
-    """获取最大亮度（支持JSON配置）"""
-    return _get_config_value('led', 'max_brightness', _DEFAULT_MAX_BRIGHTNESS)
+    """获取最大亮度"""
+    return _get_config_value('led', 'max_brightness')
 
 def get_fade_step():
-    """获取渐变步长（支持JSON配置）"""
-    return _get_config_value('led', 'fade_step', _DEFAULT_FADE_STEP)
+    """获取渐变步长"""
+    return _get_config_value('led', 'fade_step')
 
-# 向后兼容的常量
-LED_PIN_1 = get_led_pin_1()
-LED_PIN_2 = get_led_pin_2()
-PWM_FREQ = get_pwm_freq()
-MAX_BRIGHTNESS = get_max_brightness()
-FADE_STEP = get_fade_step()
+# 向后兼容的常量（延迟加载）
+def _get_led_constants():
+    """获取LED常量，用于向后兼容"""
+    try:
+        return {
+            'LED_PIN_1': get_led_pin_1(),
+            'LED_PIN_2': get_led_pin_2(),
+            'PWM_FREQ': get_pwm_freq(),
+            'MAX_BRIGHTNESS': get_max_brightness(),
+            'FADE_STEP': get_fade_step()
+        }
+    except (ConfigFileNotFoundError, ConfigLoadError, KeyError):
+        # 如果配置文件不存在，返回None，让调用者处理
+        return None
 
 # =============================================================================
 # 守护进程配置
 # =============================================================================
 
-# 定时器与任务间隔配置（毫秒）- 默认值
-_DEFAULT_DAEMON_CONFIG = {
-    # 主循环更新间隔
-    'main_interval_ms': 5000,
-    
-    # 看门狗喂养与监控任务的统一检查间隔 - 减少到3秒确保及时喂养
-    'watchdog_interval_ms': 3000,
-    
-    # 系统状态监控的实际执行间隔
-    'monitor_interval_ms': 30000,
-    
-    # 内部性能报告的打印间隔（秒）
-    'perf_report_interval_s': 30,
-    
-    # 统一调度器间隔（优化后新增）
-    'scheduler_interval_ms': 100,
-}
+def get_daemon_config():
+    """获取守护进程配置"""
+    return _get_config_value('daemon', None)  # 返回整个daemon配置节
 
-# 动态配置获取函数
-# 向后兼容的常量
-DAEMON_CONFIG = _DEFAULT_DAEMON_CONFIG.copy()
-
-# 安全与保护机制配置
-SAFETY_CONFIG = {
-    # 触发"紧急安全模式"的MCU内部温度阈值（°C）
-    'temperature_threshold': 45.0,
-    
-    # 看门狗超时时间（毫秒）- 增加到30秒以提供更大安全边际
-    'wdt_timeout_ms': 30000,
-    
-    # "紧急安全模式"下，LED交替闪烁的间隔时间（毫秒）
-    'blink_interval_ms': 200,
-    
-    # 从"紧急安全模式"自动恢复所需的冷却时间（毫秒）
-    'safe_mode_cooldown_ms': 5000,
-    
-    # 在错误计数重置周期内，允许的最大错误次数
-    'max_error_count': 10,
-    
-    # 错误计数器自动清零的时间周期（毫秒）
-    'error_reset_interval_ms': 60000,
-    
-    # 尝试恢复硬件失败的最大次数
-    'max_recovery_attempts': 5,
-}
+def get_safety_config():
+    """获取安全配置"""
+    return _get_config_value('safety', None)  # 返回整个safety配置节
 
 # =============================================================================
 # 日志配置
 # =============================================================================
 
-# 日志文件配置
-LOG_CONFIG = {
-    # 日志文件名
-    'log_file': 'error.log',
-    
-    # 日志文件最大大小（字节）
-    'max_log_size': 10 * 1024,  # 10 KB
-    
-    # 日志队列最大大小
-    'max_log_queue_size': 20,
-}
+def get_log_config():
+    """获取日志配置"""
+    return _get_config_value('logging', None)
 
 # =============================================================================
 # 系统配置
 # =============================================================================
 
-# 通用系统配置
-GENERAL_CONFIG = {
-    # 主业务循环间隔（秒）
-    'main_loop_interval': 5,
-    
-    # 垃圾回收间隔（循环次数）
-    'gc_interval_loops': 20,
-    
-    # 状态检查间隔（循环次数）
-    'status_check_interval_loops': 12,
-    
-    # 低内存警告阈值（字节）
-    'low_memory_threshold': 10000,
-}
+def get_general_config():
+    """获取通用系统配置"""
+    return _get_config_value('general', None)
 
 # =============================================================================
 # 配置验证和获取函数
@@ -514,22 +451,26 @@ def validate_config():
     """
     try:
         # 验证WiFi配置
-        if not WIFI_CONFIGS or not isinstance(WIFI_CONFIGS, list):
+        wifi_configs = get_wifi_configs()
+        if not wifi_configs or not isinstance(wifi_configs, list):
             print("[CONFIG] [ERROR] WiFi配置无效")
             return False
         
-        for wifi_config in WIFI_CONFIGS:
+        for wifi_config in wifi_configs:
             if not isinstance(wifi_config, dict) or 'ssid' not in wifi_config or 'password' not in wifi_config:
                 print("[CONFIG] [ERROR] WiFi配置格式无效")
                 return False
         
         # 验证引脚配置
-        if not isinstance(LED_PIN_1, int) or not isinstance(LED_PIN_2, int):
+        led_pin_1 = get_led_pin_1()
+        led_pin_2 = get_led_pin_2()
+        if not isinstance(led_pin_1, int) or not isinstance(led_pin_2, int):
             print("[CONFIG] [ERROR] LED引脚配置无效")
             return False
         
         # 验证温度阈值
-        if not isinstance(SAFETY_CONFIG['temperature_threshold'], (int, float)):
+        safety_config = get_safety_config()
+        if not isinstance(safety_config.get('temperature_threshold'), (int, float)):
             print("[CONFIG] [ERROR] 温度阈值配置无效")
             return False
         
@@ -540,15 +481,6 @@ def validate_config():
         print(f"[CONFIG] [ERROR] 配置验证失败: {e}")
         return False
 
-def get_wifi_configs():
-    """
-    获取WiFi配置列表
-    
-    Returns:
-        list: WiFi配置列表
-    """
-    return WIFI_CONFIGS.copy()
-
 def get_led_config():
     """
     获取LED配置
@@ -557,48 +489,12 @@ def get_led_config():
         dict: LED配置字典
     """
     return {
-        'pin_1': LED_PIN_1,
-        'pin_2': LED_PIN_2,
-        'pwm_freq': PWM_FREQ,
-        'max_brightness': MAX_BRIGHTNESS,
-        'fade_step': FADE_STEP,
+        'pin_1': get_led_pin_1(),
+        'pin_2': get_led_pin_2(),
+        'pwm_freq': get_pwm_freq(),
+        'max_brightness': get_max_brightness(),
+        'fade_step': get_fade_step(),
     }
-
-def get_daemon_config():
-    """
-    获取守护进程配置
-    
-    Returns:
-        dict: 守护进程配置字典
-    """
-    return DAEMON_CONFIG.copy()
-
-def get_safety_config():
-    """
-    获取安全配置
-    
-    Returns:
-        dict: 安全配置字典
-    """
-    return SAFETY_CONFIG.copy()
-
-def get_log_config():
-    """
-    获取日志配置
-    
-    Returns:
-        dict: 日志配置字典
-    """
-    return LOG_CONFIG.copy()
-
-def get_general_config():
-    """
-    获取通用系统配置
-    
-    Returns:
-        dict: 通用系统配置字典
-    """
-    return GENERAL_CONFIG.copy()
 
 def get_network_config():
     """
@@ -608,10 +504,10 @@ def get_network_config():
         dict: 网络配置字典
     """
     return {
-        'wifi_connect_timeout_s': WIFI_CONNECT_TIMEOUT_S,
-        'wifi_retry_interval_s': WIFI_RETRY_INTERVAL_S,
-        'ntp_retry_delay_s': NTP_RETRY_DELAY_S,
-        'timezone_offset_hours': TIMEZONE_OFFSET_HOURS,
+        'wifi_connect_timeout_s': get_wifi_connect_timeout(),
+        'wifi_retry_interval_s': get_wifi_retry_interval(),
+        'ntp_retry_delay_s': get_ntp_retry_delay(),
+        'timezone_offset_hours': get_timezone_offset(),
     }
 
 def load_all_configs():
@@ -620,21 +516,24 @@ def load_all_configs():
     
     Returns:
         bool: 配置加载是否成功
+    
+    Raises:
+        ConfigFileNotFoundError: 配置文件不存在
+        ConfigLoadError: 配置加载失败
+        KeyError: 配置项不存在
     """
-    try:
-        print("[CONFIG] 正在加载系统配置...")
-        
-        # 验证配置有效性
-        if not validate_config():
-            print("[CONFIG] [ERROR] 配置验证失败")
-            return False
-        
-        print("[CONFIG] 系统配置加载完成")
-        return True
-        
-    except Exception as e:
-        print(f"[CONFIG] [ERROR] 配置加载失败: {e}")
-        return False
+    print("[CONFIG] 正在加载系统配置...")
+    
+    # 强制加载配置文件，如果失败会抛出异常
+    global _loaded_config
+    _loaded_config = _load_json_config()
+    
+    # 验证配置有效性
+    if not validate_config():
+        raise ConfigLoadError("配置验证失败")
+    
+    print("[CONFIG] 系统配置加载完成")
+    return True
 
 # 在模块加载时验证配置
 if __name__ == "__main__":

@@ -159,7 +159,17 @@ def start_critical_daemon():
         
         if DEBUG:
             print("[MAIN] 加载系统配置...")
-        config.load_all_configs()
+        try:
+            config.load_all_configs()
+        except config.ConfigFileNotFoundError as e:
+            print(f"[MAIN] [CRITICAL] {e}")
+            print("[MAIN] [CRITICAL] 请确保 config.json 文件存在并包含所有必要的配置项")
+            print("[MAIN] [CRITICAL] 参考现有的 config.json 文件格式创建配置")
+            return False
+        except (config.ConfigLoadError, KeyError) as e:
+            print(f"[MAIN] [CRITICAL] 配置加载失败: {e}")
+            print("[MAIN] [CRITICAL] 请检查 config.json 文件格式是否正确")
+            return False
         
         if DEBUG:
             print("[MAIN] 启动守护进程...")

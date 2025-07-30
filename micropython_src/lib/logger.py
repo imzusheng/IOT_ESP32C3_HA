@@ -62,9 +62,36 @@ class SimpleLogger:
                 print(f"[Logger] 日志记录失败: {e}")
     
     def _handle_critical_log(self, log_entry):
-        """处理关键日志，可以在这里添加写入闪存的逻辑"""
-        # 预留接口，可以在这里添加将关键日志写入闪存的逻辑
-        pass
+        """处理关键日志，原子性地写入到文件"""
+        try:
+            # 使用临时文件确保原子性写入
+            temp_file = '/critical_log.tmp'
+            log_file = '/critical_log.txt'
+            
+            # 先写入临时文件
+            with open(temp_file, 'w') as f:
+                f.write(log_entry + '\n')
+                f.flush()  # 确保数据写入存储
+            
+            # 原子性地重命名文件
+            try:
+                import os
+                os.rename(temp_file, log_file)
+            except (ImportError, OSError):
+                # 如果重命名失败，直接写入目标文件
+                with open(log_file, 'a') as f:
+                    f.write(log_entry + '\n')
+                    f.flush()
+                # 清理临时文件
+                try:
+                    import os
+                    os.remove(temp_file)
+                except:
+                    pass
+                    
+        except Exception as e:
+            if DEBUG:
+                print(f"[Logger] 关键日志写入失败: {e}")
     
     def log_critical(self, message):
         """记录关键日志"""

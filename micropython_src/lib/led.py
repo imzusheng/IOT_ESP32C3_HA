@@ -26,16 +26,16 @@ except ImportError:
 from . import core
 from .config import (
     get_event_id, DEBUG, 
-    EV_LED_SET_EFFECT, EV_LED_SET_BRIGHTNESS, EV_LED_EMERGENCY_OFF,
-    LED_PIN_1, LED_PIN_2, PWM_FREQ, MAX_BRIGHTNESS, FADE_STEP
+    EV_LED_SET_EFFECT, EV_LED_SET_BRIGHTNESS, EV_LED_EMERGENCY_OFF
 )
+from . import config
 
 class LEDManager:
     """增强的LED管理器 - 支持异步灯效和事件驱动"""
     
     def __init__(self):
-        self.pin1 = LED_PIN_1
-        self.pin2 = LED_PIN_2
+        self.pin1 = config.get_led_pin_1()
+        self.pin2 = config.get_led_pin_2()
         self.pwm1 = None
         self.pwm2 = None
         self.initialized = False
@@ -53,8 +53,8 @@ class LEDManager:
         
         # 动态配置变量（用于温度优化）
         self.led_update_interval_ms = 50
-        self.current_pwm_freq = PWM_FREQ
-        self.current_max_brightness = MAX_BRIGHTNESS
+        self.current_pwm_freq = config.get_pwm_freq()
+        self.current_max_brightness = config.get_max_brightness()
         
         # 任务控制
         self.task_running = False
