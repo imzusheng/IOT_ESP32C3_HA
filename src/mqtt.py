@@ -5,6 +5,7 @@
 #
 from umqtt.simple import MQTTClient
 import time
+import gc
 
 class MqttServer:
     def __init__(self, client_id, server, port=1883, user=None, password=None, topic='micropython/logs', keepalive=60):
@@ -44,7 +45,12 @@ class MqttServer:
             self.client.publish(self.topic, log_ba)
         except Exception as e:
             print(f"\033[1;31m[MQTT] Error Sending Log: {e}\033[0m")
+            # 连接失败时，正确清理连接状态
             self.is_connected = False
+            try:
+                self.client.disconnect()
+            except:
+                pass
             gc.collect()
 
     def disconnect(self):

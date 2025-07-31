@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import time
 import machine
+import gc
 import wifi_manager
 import mqtt
 import daemon

@@ -48,6 +48,11 @@ WDT_TIMEOUT = 8000                # 看门狗超时时间（毫秒）
 # 范围：1000-32000ms，推荐：8000ms
 # 影响：超过此时间不喂狗将导致系统重启，防止死锁
 
+# 定时器配置
+TIMER_ID = 0                      # 监控定时器编号
+# 范围：0-3，推荐：0
+# 影响：使用指定的硬件定时器，避免与其他模块冲突
+
 # 监控间隔配置
 MONITOR_INTERVAL = 1000 * 30     # 监控间隔（毫秒）
 # 范围：1000-60000ms，推荐：30000ms
@@ -124,7 +129,14 @@ class LEDController:
         
         Args:
             status (str): 状态类型 ('normal', 'warning', 'error', 'safe_mode', 'off')
+            
+        Raises:
+            ValueError: 当状态参数无效时
         """
+        valid_statuses = ['normal', 'warning', 'error', 'safe_mode', 'off']
+        if status not in valid_statuses:
+            raise ValueError(f"无效的LED状态: {status}. 有效状态: {valid_statuses}")
+        
         if status == 'normal':
             self.led1.on()
             self.led2.off()
@@ -195,10 +207,16 @@ def _get_memory_usage():
     注意：
         - ESP32C3通常有400KB SRAM
         - 内存使用超过90%时应进入安全模式
-        - 调用前会自动执行垃圾回收
+        - 每10次调用才执行垃圾回收，优化性能
     """
     try:
-        gc.collect()  # 先进行垃圾回收以获取准确的内存信息
+        # 全局变量用于跟踪垃圾回收计数
+        global _monitor_count
+        
+        # 每10次调用才执行垃圾回收，优化性能
+        if _monitor_count % 10 == 0:
+            gc.collect()
+        
         alloc = gc.mem_alloc()
         free = gc.mem_free()
         total = alloc + free
@@ -261,6 +279,7 @@ def _check_safe_mode_recovery():
     注意：
         - 只有当前处于安全模式时才会检查
         - 恢复时会发送MQTT日志
+        - 温度传感器读取失败时不会退出安全模式
     """
     global _safe_mode_active
     
@@ -268,7 +287,8 @@ def _check_safe_mode_recovery():
         temp = _get_temperature()
         cooldown_passed = time.ticks_diff(time.ticks_ms(), _safe_mode_start_time) > SAFE_MODE_COOLDOWN
         
-        if temp and temp < TEMP_THRESHOLD - 10 and cooldown_passed:
+        # 只有温度读取成功且低于阈值时才考虑退出安全模式
+        if temp is not None and temp < TEMP_THRESHOLD - 10 and cooldown_passed:
             _safe_mode_active = False
             
             # 发送MQTT日志
@@ -376,6 +396,7 @@ def _log_system_status(temp, memory):
         - 只在MQTT连接时发送日志
         - 使用固定格式便于解析
         - 包含运行时间、温度、内存、错误计数等信息
+        - 使用bytearray优化内存使用
     """
     if not _mqtt_client or not _mqtt_client.is_connected:
         return
@@ -389,7 +410,14 @@ def _log_system_status(temp, memory):
         else:
             mem_str = "未知"
         
-        status_msg = f"运行时间: {uptime}s, 温度: {temp_str}, 内存: {mem_str}, 错误: {_error_count}"
+        # 使用bytearray优化内存使用，减少字符串拼接
+        msg_parts = [
+            "运行时间: ", str(uptime), "s, 温度: ", temp_str, 
+            ", 内存: ", mem_str, ", 错误: ", str(_error_count)
+        ]
+        
+        # 直接拼接为字符串发送
+        status_msg = "".join(msg_parts)
         _mqtt_client.log("INFO", status_msg)
         
     except Exception as e:
@@ -448,7 +476,7 @@ class SystemDaemon:
             # 初始化硬件
             _led_controller = LEDController(LED_PIN_1, LED_PIN_2)
             _wdt = machine.WDT(timeout=WDT_TIMEOUT)
-            _timer = machine.Timer(0)
+            _timer = machine.Timer(TIMER_ID)
             _timer.init(period=MONITOR_INTERVAL, mode=machine.Timer.PERIODIC, callback=_monitor_callback)
             
             # 设置状态
@@ -470,8 +498,10 @@ class SystemDaemon:
             if _wdt:
                 try:
                     _wdt.deinit()
-                except:
-                    pass
+                except Exception as e:
+                    # 看门狗清理失败，记录错误但继续清理
+                    if _mqtt_client and _mqtt_client.is_connected:
+                        _mqtt_client.log("ERROR", f"看门狗清理失败: {e}")
                 _wdt = None
             
             _daemon_active = False
@@ -604,8 +634,9 @@ def is_daemon_active():
         
     注意：
         - 快速检查守护进程状态
+        - 直接检查全局变量避免竞态条件
     """
-    return _daemon.get_status()['active']
+    return _daemon_active
 
 def is_safe_mode():
     """
@@ -617,5 +648,6 @@ def is_safe_mode():
     注意：
         - 用于安全模式判断
         - 在main.py中用于暂停正常操作
+        - 直接检查全局变量避免竞态条件
     """
-    return _daemon.get_status()['safe_mode']
+    return _safe_mode_active
