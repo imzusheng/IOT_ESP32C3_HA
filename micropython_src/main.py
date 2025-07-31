@@ -215,7 +215,7 @@ def start_critical_daemon():
             print("[MAIN] 初始化守护进程依赖注入...")
         # 初始化守护进程的依赖注入
         daemon.init_daemon_dependencies(
-            config_getter_func=lambda section: config.get_config_value(section, None),
+            config_getter_func=config.get_config_value,
             get_event_id_func=config.get_event_id,
             debug_flag=DEBUG
         )

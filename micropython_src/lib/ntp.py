@@ -29,29 +29,19 @@ from .config import (
 )
 
 class NTPManager:
-    """NTP时间同步管理器 - 支持依赖注入"""
+    """精简的NTP时间同步管理器 - 减少依赖注入复杂性"""
 
-    def __init__(self, event_bus=None, config_getter=None):
-        # 依赖注入
+    def __init__(self, event_bus=None, retry_delay=60, timezone_offset=8):
+        # 简化依赖注入，事件总线可选
         self.event_bus = event_bus
-        self.config_getter = config_getter
-
+        self.get_event_id = lambda x: x
+        
+        # 直接使用配置参数
+        self.retry_delay = retry_delay
+        self.timezone_offset = timezone_offset
+        
         # NTP同步状态
         self.ntp_synced = False
-
-        # 获取配置
-        if config_getter:
-            self.retry_delay = config_getter.get_ntp_retry_delay()
-            self.timezone_offset = config_getter.get_timezone_offset()
-        else:
-            # 如果没有提供config_getter，使用默认值
-            try:
-                self.retry_delay = get_ntp_retry_delay()
-                self.timezone_offset = get_timezone_offset()
-            except Exception:
-                # 如果配置文件不存在，使用硬编码默认值
-                self.retry_delay = 60  # 默认60秒
-                self.timezone_offset = 8  # 默认UTC+8
 
     def get_local_time(self):
         """获取本地时间（考虑时区偏移）"""
@@ -80,15 +70,17 @@ class NTPManager:
         if not wlan.isconnected():
             error_msg = "未连接到WiFi，无法同步时间"
             print(f"[NTP] [ERROR] {error_msg}。")
+            # 简化事件发布
             if self.event_bus:
-                self.event_bus.publish(get_event_id('ntp_no_wifi'))
-                self.event_bus.publish(get_event_id('log_warning'), message=error_msg)
+                self.event_bus.publish(self.get_event_id('ntp_no_wifi'))
+                self.event_bus.publish(self.get_event_id('log_warning'), message=error_msg)
             return False
 
         try:
             print("[NTP] 正在尝试同步网络时间...")
+            # 简化事件发布
             if self.event_bus:
-                self.event_bus.publish(get_event_id('ntp_syncing'))
+                self.event_bus.publish(self.get_event_id('ntp_syncing'))
             ntptime.settime()
 
             if time.localtime()[0] > 2023:
@@ -99,19 +91,21 @@ class NTPManager:
                 print(f"[NTP] UTC时间: {self.format_time(utc_time)}")
                 print(f"[NTP] 本地时间: {self.format_time(local_time)} (UTC+{self.timezone_offset})")
                 self.ntp_synced = True
+                # 简化事件发布
                 if self.event_bus:
-                    self.event_bus.publish(get_event_id('ntp_synced'),
+                    self.event_bus.publish(self.get_event_id('ntp_synced'),
                                 utc_time=self.format_time(utc_time),
                                 local_time=self.format_time(local_time),
                                 timezone_offset=self.timezone_offset)
-                    self.event_bus.publish(get_event_id('log_info'), message=f"时间同步成功: {self.format_time(local_time)}")
+                    self.event_bus.publish(self.get_event_id('log_info'), message=f"时间同步成功: {self.format_time(local_time)}")
                 return True
         except Exception as e:
             error_msg = f"时间同步失败: {e}"
             print(f"[NTP] [WARNING] {error_msg}")
+            # 简化事件发布
             if self.event_bus:
-                self.event_bus.publish(get_event_id('ntp_failed'), error=str(e))
-                self.event_bus.publish(get_event_id('log_warning'), message=error_msg)
+                self.event_bus.publish(self.get_event_id('ntp_failed'), error=str(e))
+                self.event_bus.publish(self.get_event_id('log_warning'), message=error_msg)
             return False
 
     def _on_wifi_connected(self, **kwargs):
@@ -126,15 +120,18 @@ class NTPManager:
         except:
             # 如果无法创建异步任务，记录错误
             if self.event_bus:
-                self.event_bus.publish(get_event_id('log_warning'), message="无法创建NTP同步任务")
+                self.event_bus.publish(self.get_event_id('log_warning'), message="无法创建NTP同步任务")
 
     async def ntp_task(self):
         """NTP时间同步异步任务：负责定期同步时间"""
         print("[NTP] 启动NTP同步任务...")
 
-        # 订阅WiFi连接事件
+        # 简化事件订阅
         if self.event_bus:
-            self.event_bus.subscribe(EV_WIFI_CONNECTED, self._on_wifi_connected)
+            try:
+                self.event_bus.subscribe(self.get_event_id('wifi_connected'), self._on_wifi_connected)
+            except:
+                pass
 
         error_count = 0
 
@@ -164,8 +161,9 @@ class NTPManager:
                 error_count += 1
                 error_msg = f"NTP任务错误 (第{error_count}次): {e}"
                 print(f"[NTP] [ERROR] {error_msg}")
+                # 简化事件发布
                 if self.event_bus:
-                    self.event_bus.publish(get_event_id('log_warning'), message=error_msg)
+                    self.event_bus.publish(self.get_event_id('log_warning'), message=error_msg)
 
                 # 如果错误次数过多，延长等待时间
                 if error_count > 3:
@@ -244,7 +242,30 @@ def is_ntp_synced():
     manager = _ensure_global_ntp_manager()
     return manager.is_ntp_synced()
 
-# 依赖注入接口
-def create_ntp_manager(event_bus, config_getter):
-    """创建NTP管理器实例（依赖注入）"""
-    return NTPManager(event_bus=event_bus, config_getter=config_getter)
+# 简化的工厂函数
+def create_ntp_manager(event_bus=None, config_getter=None, **kwargs):
+    """创建NTP管理器实例 - 简化版本"""
+    # 直接从配置获取参数，减少依赖
+    if config_getter:
+        try:
+            retry_delay = config_getter.get_ntp_retry_delay()
+            timezone_offset = config_getter.get_timezone_offset()
+        except:
+            # 如果配置获取失败，使用默认值
+            retry_delay = kwargs.get('retry_delay', 60)
+            timezone_offset = kwargs.get('timezone_offset', 8)
+    else:
+        # 使用传入的参数或默认值
+        retry_delay = kwargs.get('retry_delay', 60)
+        timezone_offset = kwargs.get('timezone_offset', 8)
+    
+    manager = NTPManager(event_bus=event_bus, retry_delay=retry_delay, timezone_offset=timezone_offset)
+    
+    # 设置事件总线（可选）
+    if event_bus:
+        try:
+            manager.get_event_id = config_getter.get_event_id if config_getter else lambda x: x
+        except:
+            manager.get_event_id = lambda x: x
+    
+    return manager

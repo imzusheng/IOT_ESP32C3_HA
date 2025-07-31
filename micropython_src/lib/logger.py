@@ -10,8 +10,16 @@
 """
 
 import gc
-from time import time
+import time
 from collections import deque
+
+# 兼容性处理：为标准Python环境提供time函数
+try:
+    from time import time
+except ImportError:
+    # 如果没有time函数，使用ticks_ms转换
+    def time():
+        return time.ticks_ms() / 1000.0
 
 class SimpleLogger:
     """简化的日志系统"""

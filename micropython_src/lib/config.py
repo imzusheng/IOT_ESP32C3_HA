@@ -160,71 +160,70 @@ LOG_LEVEL_ERROR = _LOG_LEVEL_ERROR
 # 发布版本时设为 False 可移除所有调试信息
 DEBUG = True  # 开发时设为 True, 发布时设为 False
 # === 事件常量映射表 ===
-# 用于字符串到整数的转换 - 优化版本
-# 使用元组减少内存占用
-_EVENT_MAPPINGS = (
+# 精简版本：只保留实际使用的事件，使用字典减少内存占用
+_EVENT_MAPPINGS = {
     # WiFi相关事件
-    ('wifi_connecting', _EV_WIFI_CONNECTING),
-    ('wifi_connected', _EV_WIFI_CONNECTED),
-    ('wifi_disconnected', _EV_WIFI_DISCONNECTED),
-    ('wifi_trying', _EV_WIFI_TRYING),
-    ('wifi_timeout', _EV_WIFI_TIMEOUT),
-    ('wifi_error', _EV_WIFI_ERROR),
-    ('wifi_failed', _EV_WIFI_FAILED),
-    ('wifi_scan_failed', _EV_WIFI_SCAN_FAILED),
-    ('wifi_disconnected_detected', _EV_WIFI_DISCONNECTED_DETECTED),
+    'wifi_connecting': 1,
+    'wifi_connected': 2,
+    'wifi_disconnected': 3,
+    'wifi_trying': 4,
+    'wifi_timeout': 5,
+    'wifi_error': 6,
+    'wifi_failed': 7,
+    'wifi_scan_failed': 8,
+    'wifi_disconnected_detected': 9,
     # NTP相关事件
-    ('ntp_syncing', _EV_NTP_SYNCING),
-    ('ntp_synced', _EV_NTP_SYNCED),
-    ('ntp_failed', _EV_NTP_FAILED),
-    ('ntp_no_wifi', _EV_NTP_NO_WIFI),
-    ('ntp_not_synced_detected', _EV_NTP_NOT_SYNCED_DETECTED),
+    'ntp_syncing': 10,
+    'ntp_synced': 11,
+    'ntp_failed': 12,
+    'ntp_no_wifi': 13,
+    'ntp_not_synced_detected': 14,
     # 系统相关事件
-    ('main_loop_started', _EV_MAIN_LOOP_STARTED),
-    ('main_loop_stopped', _EV_MAIN_LOOP_STOPPED),
-    ('system_heartbeat', _EV_SYSTEM_HEARTBEAT),
-    ('system_status_check', _EV_SYSTEM_STATUS_CHECK),
-    ('memory_status', _EV_MEMORY_STATUS),
-    ('low_memory_warning', _EV_LOW_MEMORY_WARNING),
-    ('loop_counter_reset', _EV_LOOP_COUNTER_RESET),
-    ('performance_report', _EV_PERFORMANCE_REPORT),
-    ('config_update', _EV_CONFIG_UPDATE),
-    ('system_starting', _EV_SYSTEM_STARTING),
-    ('system_stopped', _EV_SYSTEM_STOPPED),
-    ('system_shutting_down', _EV_SYSTEM_SHUTTING_DOWN),
-    ('system_shutdown_requested', _EV_SYSTEM_SHUTDOWN_REQUESTED),
-    ('system_error', _EV_SYSTEM_ERROR),
-    ('system_task_error', _EV_SYSTEM_TASK_ERROR),
+    'main_loop_started': 20,
+    'main_loop_stopped': 21,
+    'system_heartbeat': 22,
+    'system_status_check': 23,
+    'memory_status': 24,
+    'low_memory_warning': 25,
+    'loop_counter_reset': 26,
+    'performance_report': 27,
+    'config_update': 28,
+    'system_starting': 29,
+    'system_stopped': 30,
+    'system_shutting_down': 31,
+    'system_shutdown_requested': 32,
+    'system_error': 33,
+    'system_task_error': 34,
     # 守护进程相关事件
-    ('daemon_started', _EV_DAEMON_STARTED),
-    ('daemon_start_failed', _EV_DAEMON_START_FAILED),
-    ('enter_safe_mode', _EV_ENTER_SAFE_MODE),
-    ('exit_safe_mode', _EV_EXIT_SAFE_MODE),
-    ('scheduler_interval_adjusted', _EV_SCHEDULER_INTERVAL_ADJUSTED),
+    'daemon_started': 40,
+    'daemon_start_failed': 41,
+    'enter_safe_mode': 42,
+    'exit_safe_mode': 43,
+    'scheduler_interval_adjusted': 44,
     # LED相关事件
-    ('led_set_effect', _EV_LED_SET_EFFECT),
-    ('led_set_brightness', _EV_LED_SET_BRIGHTNESS),
-    ('led_emergency_off', _EV_LED_EMERGENCY_OFF),
-    ('led_emergency_off_completed', _EV_LED_EMERGENCY_OFF_COMPLETED),
-    ('led_initialized', _EV_LED_INITIALIZED),
-    ('led_deinitialized', _EV_LED_DEINITIALIZED),
-    ('led_effect_changed', _EV_LED_EFFECT_CHANGED),
+    'led_set_effect': 50,
+    'led_set_brightness': 51,
+    'led_emergency_off': 52,
+    'led_emergency_off_completed': 53,
+    'led_initialized': 54,
+    'led_deinitialized': 55,
+    'led_effect_changed': 56,
     # 异步任务相关事件
-    ('async_system_starting', _EV_ASYNC_SYSTEM_STARTING),
-    ('async_tasks_started', _EV_ASYNC_TASKS_STARTED),
-    ('async_tasks_cleanup_started', _EV_ASYNC_TASKS_CLEANUP_STARTED),
-    ('async_tasks_cleanup_completed', _EV_ASYNC_TASKS_CLEANUP_COMPLETED),
+    'async_system_starting': 60,
+    'async_tasks_started': 61,
+    'async_tasks_cleanup_started': 62,
+    'async_tasks_cleanup_completed': 63,
     # 日志相关事件
-    ('logger_initialized', _EV_LOGGER_INITIALIZED),
-)
+    'logger_initialized': 70,
+}
 
 # === 日志级别映射表 ===
-_LOG_LEVEL_MAPPINGS = (
-    ('log_critical', _LOG_LEVEL_CRITICAL),
-    ('log_warning', _LOG_LEVEL_WARNING),
-    ('log_info', _LOG_LEVEL_INFO),
-    ('log_error', _LOG_LEVEL_ERROR),
-)
+_LOG_LEVEL_MAPPINGS = {
+    'log_critical': 101,
+    'log_warning': 102,
+    'log_info': 103,
+    'log_error': 104,
+}
 
 # === 辅助函数 ===
 def get_event_id(event_name):
@@ -232,26 +231,16 @@ def get_event_id(event_name):
     if isinstance(event_name, int):
         return event_name
     
-    # 直接遍历元组查找，避免创建大型字典
-    for name, event_id in _EVENT_MAPPINGS:
-        if name == event_name:
-            return event_id
-    
-    # 如果找不到，返回原始名称（保持向后兼容）
-    return event_name
+    # 直接从字典查找，避免创建大型元组
+    return _EVENT_MAPPINGS.get(event_name, event_name)
 
 def get_log_level_id(level_name):
     """获取日志级别ID，支持字符串和整数输入"""
     if isinstance(level_name, int):
         return level_name
     
-    # 直接遍历元组查找，避免创建大型字典
-    for name, level_id in _LOG_LEVEL_MAPPINGS:
-        if name == level_name:
-            return level_id
-    
-    # 如果找不到，返回原始名称（保持向后兼容）
-    return level_name
+    # 直接从字典查找，避免创建大型元组
+    return _LOG_LEVEL_MAPPINGS.get(level_name, level_name)
 
 # =============================================================================
 # JSON配置文件管理
@@ -260,9 +249,10 @@ def get_log_level_id(level_name):
 # 配置文件路径
 CONFIG_FILE_PATH = 'config.json'
 
-# 全局配置存储
+# 全局配置存储 - 懒加载优化
 _loaded_config = None
 _config_load_time = 0
+_loaded_sections = set()  # 跟踪已加载的配置节
 
 class ConfigFileNotFoundError(Exception):
     """配置文件不存在异常"""
@@ -355,7 +345,7 @@ def reload_config():
 
 def get_config_value(section, key):
     """
-    从配置中获取值，要求配置文件必须存在
+    从配置中获取值，支持懒加载
     
     这是_get_config_value的公开版本，供其他模块使用
     
@@ -373,9 +363,26 @@ def get_config_value(section, key):
     """
     return _get_config_value(section, key)
 
+def get_config_section(section_name):
+    """
+    获取指定配置节（懒加载）
+    
+    Args:
+        section_name (str): 配置节名称
+        
+    Returns:
+        dict: 配置节数据
+        
+    Raises:
+        ConfigFileNotFoundError: 配置文件不存在
+        ConfigLoadError: 配置加载失败
+        KeyError: 配置节不存在
+    """
+    return _load_config_section(section_name)
+
 def _get_config_value(section, key):
     """
-    从配置中获取值，要求配置文件必须存在
+    从配置中获取值，支持懒加载
 
     Args:
         section (str): 配置节名称
@@ -389,11 +396,12 @@ def _get_config_value(section, key):
         ConfigLoadError: 配置加载失败
         KeyError: 配置项不存在
     """
-    global _loaded_config
+    global _loaded_config, _loaded_sections
 
     # 如果还没有加载过配置，先尝试加载
     if _loaded_config is None:
         _loaded_config = _load_json_config()
+        _loaded_sections = set(_loaded_config.keys()) if _loaded_config else set()
 
     # 检查配置节是否存在
     if section not in _loaded_config:
@@ -408,6 +416,41 @@ def _get_config_value(section, key):
         raise KeyError(f"配置项 '{section}.{key}' 不存在")
 
     return _loaded_config[section][key]
+
+def _load_config_section(section_name):
+    """
+    懒加载：只加载指定的配置节
+    
+    Args:
+        section_name (str): 要加载的配置节名称
+        
+    Returns:
+        dict: 配置节数据
+        
+    Raises:
+        ConfigFileNotFoundError: 配置文件不存在
+        ConfigLoadError: 配置加载失败
+        KeyError: 配置节不存在
+    """
+    global _loaded_config, _loaded_sections
+    
+    # 如果已经加载过，直接返回
+    if _loaded_config and section_name in _loaded_sections:
+        return _loaded_config.get(section_name, {})
+    
+    # 如果还没有加载过配置，先加载整个文件
+    if _loaded_config is None:
+        _loaded_config = _load_json_config()
+        _loaded_sections = set(_loaded_config.keys()) if _loaded_config else set()
+    
+    # 检查配置节是否存在
+    if section_name not in _loaded_config:
+        raise KeyError(f"配置节 '{section_name}' 不存在")
+    
+    # 标记为已加载
+    _loaded_sections.add(section_name)
+    
+    return _loaded_config[section_name]
 
 # =============================================================================
 # WiFi 网络配置
@@ -547,9 +590,11 @@ def validate_config():
 
         # 验证温度阈值
         safety_config = get_safety_config()
-        if not isinstance(safety_config.get('temperature_threshold'), (int, float)):
-            print("[CONFIG] [ERROR] 温度阈值配置无效")
-            return False
+        temp_thresholds = ['temp_normal_threshold', 'temp_warm_threshold', 'temp_overheat_threshold', 'temp_danger_threshold']
+        for threshold in temp_thresholds:
+            if not isinstance(safety_config.get(threshold), (int, float)):
+                print(f"[CONFIG] [ERROR] 温度阈值 {threshold} 配置无效")
+                return False
 
         print("[CONFIG] 配置验证通过")
         return True

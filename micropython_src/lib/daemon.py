@@ -315,9 +315,10 @@ def _safe_mode_emergency_blink():
     try:
         # 使用配置中的LED引脚
         if _config_getter:
-            led_pin_1 = _config_getter('led')['pin_1']
-            led_pin_2 = _config_getter('led')['pin_2']
-            safety_config = _config_getter('safety')
+            led_config = _config_getter('led', None)
+            led_pin_1 = led_config['pin_1']
+            led_pin_2 = led_config['pin_2']
+            safety_config = _config_getter('safety', None)
         else:
             # 使用默认引脚
             led_pin_1 = 2
@@ -384,13 +385,16 @@ def _adjust_scheduler_interval_by_temperature():
                         print("[DAEMON] [TEMP_OPT] 温度: {:.1f}°C, 级别: {}".format(current_temp, temp_level))
                         print("[DAEMON] [TEMP_OPT] 调度器间隔调整: {}ms -> {}ms".format(old_interval, _current_scheduler_interval_ms))
                         
-                        # 通过事件总线发布调度器间隔调整事件
-                        if _EV_SCHEDULER_INTERVAL_ADJUSTED is not None:
-                            core.publish(_EV_SCHEDULER_INTERVAL_ADJUSTED, 
-                                            old_interval=old_interval,
-                                            new_interval=_current_scheduler_interval_ms,
-                                            temperature=current_temp,
-                                            temp_level=temp_level)
+                        # 简化事件发布
+                        try:
+                            if _EV_SCHEDULER_INTERVAL_ADJUSTED is not None:
+                                core.publish(_EV_SCHEDULER_INTERVAL_ADJUSTED, 
+                                                old_interval=old_interval,
+                                                new_interval=_current_scheduler_interval_ms,
+                                                temperature=current_temp,
+                                                temp_level=temp_level)
+                        except:
+                            pass
                         
                     except Exception as e:
                         _log_critical_error("调度器间隔调整失败: " + str(e))
@@ -428,8 +432,8 @@ def _scheduler_interrupt(timer):
         _adjust_scheduler_interval_by_temperature()
         
         # 任务1：看门狗喂养（最高优先级，按配置间隔执行）
-        daemon_config = _config_getter('daemon') if _config_getter else {'watchdog_interval_ms': 5000}
-        if time.ticks_diff(current_time, _last_watchdog_feed_ms) >= daemon_config['watchdog_interval_ms']:
+        daemon_config = _config_getter('daemon') if _config_getter else {'watchdog_timeout_ms': 5000}
+        if time.ticks_diff(current_time, _last_watchdog_feed_ms) >= daemon_config['watchdog_timeout_ms']:
             _last_watchdog_feed_ms = current_time
             try:
                 if _wdt:
@@ -444,15 +448,15 @@ def _scheduler_interrupt(timer):
                 return
         
         # 任务2：系统监控（按配置间隔执行）
-        daemon_config = _config_getter('daemon') if _config_getter else {'monitor_interval_ms': 10000}
-        safety_config = _config_getter('safety') if _config_getter else {'temperature_threshold': 80.0, 'error_reset_interval_ms': 300000}
+        daemon_config = _config_getter('daemon') if _config_getter else {'scheduler_interval_ms': 1000}
+        safety_config = _config_getter('safety') if _config_getter else {'temp_overheat_threshold': 50.0, 'error_reset_interval_ms': 300000}
         
-        if time.ticks_diff(current_time, _last_monitor_check_ms) >= daemon_config['monitor_interval_ms']:
+        if time.ticks_diff(current_time, _last_monitor_check_ms) >= daemon_config['scheduler_interval_ms']:
             _last_monitor_check_ms = current_time
             
             # 温度监控
             temp = _get_internal_temperature()
-            if temp and temp >= safety_config['temperature_threshold']:
+            if temp and temp >= safety_config['temp_overheat_threshold']:
                 _enter_safe_mode("温度超限: {:.1f}°C".format(temp))
                 return
             
@@ -463,7 +467,7 @@ def _scheduler_interrupt(timer):
                     _error_count = 0
         
         # 任务3：性能报告（按配置间隔执行）
-        if time.ticks_diff(current_time, _last_perf_check_ms) >= daemon_config['perf_report_interval_s'] * 1000:
+        if time.ticks_diff(current_time, _last_perf_check_ms) >= daemon_config['perf_check_interval_ms']:
             _last_perf_check_ms = current_time
             _print_performance_report()
         
@@ -474,7 +478,7 @@ def _scheduler_interrupt(timer):
             
     except Exception as e:
         _log_critical_error("统一调度器中断处理失败: " + str(e))
-        safety_config = _config_getter('safety') if _config_getter else {'max_error_count': 10}
+        safety_config = _config_getter('safety', None) if _config_getter else {'max_error_count': 10}
         if _error_count > safety_config['max_error_count']:
             _emergency_hardware_reset()
 
@@ -494,9 +498,12 @@ def _enter_safe_mode(reason):
             if _debug:
                 print("\n" + "!"*60 + "\n!!! 关键警告：系统进入紧急安全模式 (原因: " + reason + ")\n" + "!"*60 + "\n")
             
-            # 通过事件总线通知其他模块进入安全模式
-            if _EV_ENTER_SAFE_MODE is not None:
-                core.publish(_EV_ENTER_SAFE_MODE, reason=reason)
+            # 简化事件发布
+            try:
+                if _EV_ENTER_SAFE_MODE is not None:
+                    core.publish(_EV_ENTER_SAFE_MODE, reason=reason)
+            except:
+                pass
             
             _safe_mode_active = True
             _safe_mode_start_time = time.ticks_ms()
@@ -521,23 +528,26 @@ def _check_safe_mode_recovery():
     try:
         temp = _get_internal_temperature()
         if _config_getter:
-            safety_config = _config_getter('safety')
+            safety_config = _config_getter('safety', None)
         else:
             safety_config = {
-                'temperature_threshold': 80.0,
+                'temp_overheat_threshold': 50.0,
                 'safe_mode_cooldown_ms': 30000
             }
         
         # 检查恢复条件：温度降低且冷却时间足够
-        if (temp and temp < safety_config['temperature_threshold'] - 5.0 and
+        if (temp and temp < safety_config['temp_overheat_threshold'] - 5.0 and
             time.ticks_diff(time.ticks_ms(), _safe_mode_start_time) > safety_config['safe_mode_cooldown_ms']):
             
             if _debug:
                 print("[RECOVERY] 系统条件恢复，尝试退出安全模式...")
             
-            # 通过事件总线通知其他模块退出安全模式
-            if _EV_EXIT_SAFE_MODE is not None:
-                core.publish(_EV_EXIT_SAFE_MODE, temperature=temp)
+            # 简化事件发布
+            try:
+                if _EV_EXIT_SAFE_MODE is not None:
+                    core.publish(_EV_EXIT_SAFE_MODE, temperature=temp)
+            except:
+                pass
             
             _safe_mode_active = False
             
@@ -594,7 +604,7 @@ def _print_performance_report():
         # **[FIX]** 改为直接调用 logger
         logger.log_info("系统状态报告 - 温度:{:.1f}°C 内存:{:.1f}% 错误:{}".format(temp, mem_percent, _error_count))
         
-        # 发布性能报告事件，供温度优化器使用
+        # 简化事件发布
         try:
             if _EV_PERFORMANCE_REPORT is not None:
                 core.publish(_EV_PERFORMANCE_REPORT, 
@@ -644,7 +654,7 @@ class CriticalSystemDaemon:
                 
                 # 创建新的看门狗实例
                 if _config_getter:
-                    safety_config = _config_getter('safety')
+                    safety_config = _config_getter('safety', None)
                 else:
                     safety_config = {'wdt_timeout_ms': 8000}  # 默认8秒超时
                 _wdt = machine.WDT(timeout=safety_config['wdt_timeout_ms'])
@@ -808,27 +818,42 @@ _global_daemon = CriticalSystemDaemon()
 
 # === 依赖注入初始化 ===
 
-def init_daemon_dependencies(config_getter_func, get_event_id_func, debug_flag=False):
+def init_daemon_dependencies(config_getter_func=None, get_event_id_func=None, debug_flag=False):
     """
-    初始化守护进程的依赖注入
+    初始化守护进程的依赖注入 - 精简版本
     
     Args:
-        config_getter_func: 配置获取函数
-        get_event_id_func: 事件ID获取函数
+        config_getter_func: 配置获取函数（可选）
+        get_event_id_func: 事件ID获取函数（可选）
         debug_flag: 调试标志
     """
     global _config_getter, _get_event_id, _debug
     global _EV_ENTER_SAFE_MODE, _EV_EXIT_SAFE_MODE, _EV_PERFORMANCE_REPORT, _EV_SCHEDULER_INTERVAL_ADJUSTED
     
+    # 简化依赖注入，使用默认值
     _config_getter = config_getter_func
-    _get_event_id = get_event_id_func
+    _get_event_id = get_event_id_func or (lambda x: x)
     _debug = debug_flag
     
     # 设置事件常量
-    _EV_ENTER_SAFE_MODE = get_event_id_func('enter_safe_mode')
-    _EV_EXIT_SAFE_MODE = get_event_id_func('exit_safe_mode')
-    _EV_PERFORMANCE_REPORT = get_event_id_func('performance_report')
-    _EV_SCHEDULER_INTERVAL_ADJUSTED = get_event_id_func('scheduler_interval_adjusted')
+    try:
+        if get_event_id_func:
+            _EV_ENTER_SAFE_MODE = get_event_id_func('enter_safe_mode')
+            _EV_EXIT_SAFE_MODE = get_event_id_func('exit_safe_mode')
+            _EV_PERFORMANCE_REPORT = get_event_id_func('performance_report')
+            _EV_SCHEDULER_INTERVAL_ADJUSTED = get_event_id_func('scheduler_interval_adjusted')
+        else:
+            # 使用默认值
+            _EV_ENTER_SAFE_MODE = 'enter_safe_mode'
+            _EV_EXIT_SAFE_MODE = 'exit_safe_mode'
+            _EV_PERFORMANCE_REPORT = 'performance_report'
+            _EV_SCHEDULER_INTERVAL_ADJUSTED = 'scheduler_interval_adjusted'
+    except:
+        # 使用默认值
+        _EV_ENTER_SAFE_MODE = 'enter_safe_mode'
+        _EV_EXIT_SAFE_MODE = 'exit_safe_mode'
+        _EV_PERFORMANCE_REPORT = 'performance_report'
+        _EV_SCHEDULER_INTERVAL_ADJUSTED = 'scheduler_interval_adjusted'
     
     if debug_flag:
         print("[DAEMON] 依赖注入初始化完成")

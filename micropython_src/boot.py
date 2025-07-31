@@ -1,7 +1,7 @@
 import gc
-import webrepl
-
-webrepl.start()
 
 gc.enable()
-gc.collect()
+gc.threshold(4096)
+
+for _ in range(3):
+    gc.collect()

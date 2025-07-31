@@ -54,65 +54,50 @@ class WifiState:
         return cls._STATE_NAMES.get(state_value, f'UNKNOWN({state_value})')
 
 class WifiManager:
-    """WiFi管理器类 - 采用依赖注入模式"""
+    """精简的WiFi管理器 - 减少依赖注入复杂性"""
 
-    def __init__(self, event_bus, wifi_configs, connect_timeout_s, 
-                 wifi_check_interval_s, retry_interval_s):
+    def __init__(self, event_bus=None, wifi_configs=None, connect_timeout_s=30, 
+                 wifi_check_interval_s=60, retry_interval_s=60):
         """
         初始化WiFi管理器
-
-        Args:
-            event_bus: 事件总线实例，用于发布事件
-            wifi_configs: WiFi配置列表
-            connect_timeout_s: 连接超时时间（秒）
-            wifi_check_interval_s: WiFi状态检查间隔（秒）
-            retry_interval_s: 重试间隔时间（秒）
         """
+        # 简化依赖注入，事件总线可选
         self.event_bus = event_bus
-        self.wifi_configs = wifi_configs
+        self.get_event_id = lambda x: x
+        
+        # 直接使用配置参数
+        self.wifi_configs = wifi_configs or []
         self.connect_timeout_s = connect_timeout_s
+        self.wifi_check_interval_s = wifi_check_interval_s
         self.retry_interval_s = retry_interval_s
 
-        # 订阅配置更新事件
-        self.event_bus.subscribe(get_event_id('config_update'), self._on_config_update)
+        # 简化事件订阅
+        if self.event_bus:
+            try:
+                self.event_bus.subscribe(self.get_event_id('config_update'), self._on_config_update)
+            except:
+                pass
 
         # 实例状态变量
         self._wifi_connected = False
-        self._wifi_check_interval_s = wifi_check_interval_s
 
     def _on_config_update(self, **kwargs):
-        """处理配置更新事件"""
-        changed_sections = kwargs.get('changed', [])
+        """处理配置更新事件 - 精简版本"""
+        if not self.event_bus:
+            return
+            
         new_config = kwargs.get('new_config', {})
         source = kwargs.get('source', 'config_reload')
 
-        # 检查是否有WiFi相关的配置变更
-        if 'wifi' in changed_sections or source == 'temp_optimizer':
-            if DEBUG:
-                print("[WiFi] 收到配置更新，来源:", source)
-
-            # 处理温度优化配置
-            if source == 'temp_optimizer':
-                temp_level = kwargs.get('temp_level', 'normal')
+        # 简化配置更新处理
+        if source == 'temp_optimizer':
+            if 'wifi_check_interval_s' in new_config:
+                self._wifi_check_interval_s = max(30, new_config['wifi_check_interval_s'])
                 if DEBUG:
-                    print("[WiFi] 温度优化级别:", temp_level)
+                    print("[WiFi] 更新连接检查间隔为:", self._wifi_check_interval_s, "秒")
 
-                # 更新WiFi检查间隔
-                if 'wifi_check_interval_s' in new_config:
-                    self._wifi_check_interval_s = max(30, new_config['wifi_check_interval_s'])
-                    if DEBUG:
-                        print("[WiFi] 更新连接检查间隔为:", self._wifi_check_interval_s, "秒")
-
-            # 处理WiFi配置变更
-            elif 'wifi' in changed_sections:
-                # 更新WiFi配置
-                if 'wifi' in new_config:
-                    self.wifi_configs = new_config['wifi'].get('configs', [])
-                if DEBUG:
-                    print("[WiFi] WiFi配置已更新，将在下次连接时生效")
-
-            # 配置更新后进行垃圾回收
-            gc.collect()
+        # 简化垃圾回收
+        gc.collect()
 
     async def scan_available_networks(self):
         """扫描可用的WiFi网络 - 异步版本"""
@@ -166,7 +151,9 @@ class WifiManager:
             if time.time() - start_time > self.connect_timeout_s:
                 error_msg = f"连接 {ssid} 超时"
                 print(f"\n[WiFi] [ERROR] {error_msg}！")
-                self.event_bus.publish(get_event_id('wifi_timeout'), ssid=ssid)
+                # 简化事件发布
+                if self.event_bus:
+                    self.event_bus.publish(self.get_event_id('wifi_timeout'), ssid=ssid)
                 return False
 
             # 每2秒发布连接中事件（用于LED闪烁）
@@ -214,27 +201,35 @@ class WifiManager:
                     print(f"\n[WiFi] [SUCCESS] 成功连接到: {ssid}")
                     print(f"[WiFi] IP地址: {ip}")
                     self._wifi_connected = True
-                    self.event_bus.publish(get_event_id('wifi_connected'), ssid=ssid, ip=ip, reconnect=True)
-                    self.event_bus.publish(get_event_id('log_info'), message=f"WiFi连接成功: {ssid} ({ip})")
+                    # 简化事件发布
+                    if self.event_bus:
+                        self.event_bus.publish(self.get_event_id('wifi_connected'), ssid=ssid, ip=ip, reconnect=True)
+                        self.event_bus.publish(self.get_event_id('log_info'), message=f"WiFi连接成功: {ssid} ({ip})")
                     return True
                 else:
                     error_msg = f"连接 {ssid} 超时"
                     print(f"[WiFi] [WARNING] {error_msg}")
-                    self.event_bus.publish(get_event_id('wifi_error'), ssid=ssid, error=error_msg)
+                    # 简化事件发布
+                    if self.event_bus:
+                        self.event_bus.publish(self.get_event_id('wifi_error'), ssid=ssid, error=error_msg)
                     continue
 
             except Exception as e:
                 error_msg = f"连接 {ssid} 异常: {e}"
                 print(f"[WiFi] [WARNING] {error_msg}")
-                self.event_bus.publish(get_event_id('wifi_error'), ssid=ssid, error=error_msg)
+                # 简化事件发布
+                if self.event_bus:
+                    self.event_bus.publish(self.get_event_id('wifi_error'), ssid=ssid, error=error_msg)
                 continue
 
         # 所有网络都尝试失败
         error_msg = "所有WiFi网络连接失败"
         print(f"[WiFi] [ERROR] {error_msg}")
         self._wifi_connected = False
-        self.event_bus.publish(get_event_id('wifi_failed'))
-        self.event_bus.publish(get_event_id('log_warning'), message=error_msg)
+        # 简化事件发布
+        if self.event_bus:
+            self.event_bus.publish(self.get_event_id('wifi_failed'))
+            self.event_bus.publish(self.get_event_id('log_warning'), message=error_msg)
         return False
 
     async def connect_wifi(self):
@@ -254,7 +249,9 @@ class WifiManager:
             print(f"[WiFi] IP地址: {ip}")
             if not self._wifi_connected:
                 self._wifi_connected = True
-                self.event_bus.publish(get_event_id('wifi_connected'), ssid=ssid, ip=ip, reconnect=False)
+                # 简化事件发布
+                if self.event_bus:
+                    self.event_bus.publish(self.get_event_id('wifi_connected'), ssid=ssid, ip=ip, reconnect=False)
             return True
 
         # 扫描可用网络
@@ -262,8 +259,10 @@ class WifiManager:
         if not available_networks:
             error_msg = "未发现任何可用网络"
             print(f"[WiFi] [ERROR] {error_msg}")
-            self.event_bus.publish(get_event_id('wifi_scan_failed'))
-            self.event_bus.publish(get_event_id('log_warning'), message=error_msg)
+            # 简化事件发布
+            if self.event_bus:
+                self.event_bus.publish(self.get_event_id('wifi_scan_failed'))
+                self.event_bus.publish(self.get_event_id('log_warning'), message=error_msg)
             return False
 
         # 尝试连接配置中的第一个可用网络
@@ -273,7 +272,9 @@ class WifiManager:
 
             if ssid in available_networks:
                 print("[WiFi] 尝试连接到:", ssid)
-                self.event_bus.publish(get_event_id('wifi_trying'), ssid=ssid)
+                # 简化事件发布
+                if self.event_bus:
+                    self.event_bus.publish(self.get_event_id('wifi_trying'), ssid=ssid)
 
                 # 开始连接过程
                 wlan.connect(ssid, password)
@@ -284,21 +285,27 @@ class WifiManager:
                     print("\n[WiFi] [SUCCESS] 成功连接到:", ssid)
                     print("[WiFi] IP地址:", ip)
                     self._wifi_connected = True
-                    self.event_bus.publish(get_event_id('wifi_connected'), ssid=ssid, ip=ip, reconnect=True)
-                    log_msg = "WiFi连接成功: " + ssid + " (" + ip + ")"
-                    self.event_bus.publish(get_event_id('log_info'), message=log_msg)
+                    # 简化事件发布
+                    if self.event_bus:
+                        self.event_bus.publish(self.get_event_id('wifi_connected'), ssid=ssid, ip=ip, reconnect=True)
+                        log_msg = "WiFi连接成功: " + ssid + " (" + ip + ")"
+                        self.event_bus.publish(self.get_event_id('log_info'), message=log_msg)
                     return True
                 else:
                     error_msg = "连接 " + ssid + " 失败"
                     print("[WiFi] [WARNING]", error_msg)
-                    self.event_bus.publish(get_event_id('wifi_error'), ssid=ssid, error=error_msg)
+                    # 简化事件发布
+                    if self.event_bus:
+                        self.event_bus.publish(self.get_event_id('wifi_error'), ssid=ssid, error=error_msg)
                     break
 
         error_msg = "WiFi连接失败"
         print(f"[WiFi] [ERROR] {error_msg}")
         self._wifi_connected = False
-        self.event_bus.publish(get_event_id('wifi_failed'))
-        self.event_bus.publish(get_event_id('log_warning'), message=error_msg)
+        # 简化事件发布
+        if self.event_bus:
+            self.event_bus.publish(self.get_event_id('wifi_failed'))
+            self.event_bus.publish(self.get_event_id('log_warning'), message=error_msg)
         return False
 
     async def wifi_task(self):
@@ -336,7 +343,9 @@ class WifiManager:
                         state = WifiState.CONNECTED
                     else:
                         self._wifi_connected = False
-                        self.event_bus.publish(get_event_id('led_set_effect'), mode='slow_blink')
+                        # 简化事件发布
+                        if self.event_bus:
+                            self.event_bus.publish(self.get_event_id('led_set_effect'), mode='slow_blink')
                         state = WifiState.SCANNING
 
                 elif state == WifiState.SCANNING:
@@ -362,7 +371,9 @@ class WifiManager:
                     if not self._wifi_connected:
                         self._wifi_connected = True
                         print("[WiFi] WiFi连接状态已确认")
-                        self.event_bus.publish(get_event_id('led_set_effect'), mode='single_on', led_num=1)
+                        # 简化事件发布
+                        if self.event_bus:
+                            self.event_bus.publish(self.get_event_id('led_set_effect'), mode='single_on', led_num=1)
 
                     # 使用动态WiFi检查间隔（支持温度优化）
                     await asyncio.sleep(self._wifi_check_interval_s)
@@ -386,7 +397,9 @@ class WifiManager:
                 error_count += 1
                 error_msg = "WiFi任务错误 (第" + str(error_count) + "次): " + str(e)
                 print("[WiFi] [ERROR]", error_msg)
-                self.event_bus.publish(get_event_id('log_warning'), message=error_msg)
+                # 简化事件发布
+                if self.event_bus:
+                    self.event_bus.publish(self.get_event_id('log_warning'), message=error_msg)
 
                 # 如果错误次数过多，延长等待时间
                 if error_count > 5:
@@ -427,8 +440,8 @@ class WifiManager:
 # 全局WiFi管理器实例（向后兼容）
 _wifi_manager = None
 
-def init_wifi_manager(event_bus, wifi_configs, connect_timeout_s, wifi_check_interval_s, retry_interval_s):
-    """初始化全局WiFi管理器实例"""
+def init_wifi_manager(event_bus=None, wifi_configs=None, connect_timeout_s=30, wifi_check_interval_s=60, retry_interval_s=60):
+    """初始化全局WiFi管理器实例 - 精简版本"""
     global _wifi_manager
     _wifi_manager = WifiManager(event_bus, wifi_configs, connect_timeout_s, wifi_check_interval_s, retry_interval_s)
     return _wifi_manager

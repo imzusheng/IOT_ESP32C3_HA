@@ -17,34 +17,16 @@ except ImportError:
 # 内存优化：预分配常用的小对象
 _EMPTY_DICT = {}
 _EMPTY_LIST = []
-
-try:
-    from collections import defaultdict
-except ImportError:
-    # MicroPython fallback
-    class defaultdict:
-        def __init__(self, default_factory):
-            self.default_factory = default_factory
-            self.data = {}
-        def __getitem__(self, key):
-            if key not in self.data:
-                self.data[key] = self.default_factory()
-            return self.data[key]
-        def __setitem__(self, key, value):
-            self.data[key] = value
-        def get(self, key, default=None):
-            return self.data.get(key, default)
-        def clear(self):
-            self.data.clear()
 # =============================================================================
 # 轻量级事件总线
 # =============================================================================
 
 class EventBus:
-    """轻量级事件总线 - 优化版本"""
+    """轻量级事件总线 - 精简版本"""
     
     def __init__(self, config_getter=None, debug=False):
-        self._subscribers = defaultdict(list)
+        # 使用简单字典替代defaultdict，减少内存占用
+        self._subscribers = {}
         self.config_getter = config_getter
         self.debug = debug
         
@@ -68,13 +50,18 @@ class EventBus:
             raise ValueError("Callback must be callable")
         
         event_id = self.get_event_id(event_type)
+        
+        # 如果事件ID不存在，创建订阅者列表
+        if event_id not in self._subscribers:
+            self._subscribers[event_id] = []
+        
         self._subscribers[event_id].append(callback)
         
         if self.debug:
             print(f"[EventBus] 订阅事件: {event_type} (ID:{event_id})")
         
         def unsubscribe():
-            if callback in self._subscribers[event_id]:
+            if event_id in self._subscribers and callback in self._subscribers[event_id]:
                 self._subscribers[event_id].remove(callback)
                 if self.debug:
                     print(f"[EventBus] 取消订阅: {event_type} (ID:{event_id})")
@@ -82,7 +69,7 @@ class EventBus:
         return unsubscribe
     
     def publish(self, event_type, **kwargs):
-        """发布事件"""
+        """发布事件 - 精简版本，减少异步任务创建"""
         event_id = self.get_event_id(event_type)
         
         if event_id not in self._subscribers:
@@ -91,54 +78,24 @@ class EventBus:
         if self.debug:
             print(f"[EventBus] 发布事件: {event_type} (ID:{event_id})")
         
-        try:
-            loop = asyncio.get_running_loop()
-            asyncio.create_task(self._notify_async(event_id, **kwargs))
-        except RuntimeError:
-            self._notify_sync(event_id, **kwargs)
-    
-    async def _notify_async(self, event_id, **kwargs):
-        """异步通知订阅者"""
-        subscribers = self._subscribers[event_id]
-        if not subscribers:
-            return
-            
-        # 创建订阅者副本以避免迭代时修改
-        callback_list = subscribers[:]
-        failed_callbacks = []
-        
-        for callback in callback_list:
-            try:
-                if asyncio.iscoroutinefunction(callback):
-                    await callback(**kwargs)
-                else:
-                    callback(**kwargs)
-            except Exception as e:
-                if self.debug:
-                    print(f"[EventBus] 回调错误: {e}")
-                failed_callbacks.append(callback)
-        
-        # 批量移除失败的回调
-        if failed_callbacks:
-            for callback in failed_callbacks:
-                if callback in subscribers:
-                    subscribers.remove(callback)
-        
-        # 定期垃圾回收
-        gc.collect()
+        # 简化为同步调用，减少异步任务开销
+        self._notify_sync(event_id, **kwargs)
     
     def _notify_sync(self, event_id, **kwargs):
-        """同步通知订阅者"""
+        """同步通知订阅者 - 精简版本"""
+        if event_id not in self._subscribers:
+            return
+            
         subscribers = self._subscribers[event_id]
         if not subscribers:
             return
             
-        # 创建订阅者副本以避免迭代时修改
-        callback_list = subscribers[:]
+        # 直接遍历，减少副本创建
         failed_callbacks = []
         
-        for callback in callback_list:
+        for callback in subscribers:
             try:
+                # 只处理同步回调，避免异步检查开销
                 if not asyncio.iscoroutinefunction(callback):
                     callback(**kwargs)
             except Exception as e:
@@ -159,6 +116,21 @@ class EventBus:
         """获取订阅者数量"""
         event_id = self.get_event_id(event_type)
         return len(self._subscribers.get(event_id, []))
+    
+    def clear_event_subscribers(self, event_type):
+        """清除特定事件的订阅者"""
+        event_id = self.get_event_id(event_type)
+        if event_id in self._subscribers:
+            del self._subscribers[event_id]
+            if self.debug:
+                print(f"[EventBus] 清除事件订阅者: {event_type} (ID:{event_id})")
+    
+    def get_memory_usage(self):
+        """获取事件总线内存使用情况"""
+        return {
+            'total_events': len(self._subscribers),
+            'total_subscribers': sum(len(subs) for subs in self._subscribers.values())
+        }
 
 # 全局事件总线实例（延迟初始化）
 _global_event_bus = None

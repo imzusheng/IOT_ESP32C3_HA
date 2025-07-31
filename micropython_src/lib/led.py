@@ -41,83 +41,81 @@ ERROR_RECOVERY_INTERVAL = 2000
 MAX_PWM_DUTY = 65535
 
 class LEDManager:
-    """增强的LED管理器 - 支持异步灯效和事件驱动"""
+    """精简的LED管理器 - 减少依赖注入复杂性"""
 
-    def __init__(self, event_bus=None, config_getter=None):
-        # 依赖注入
-        self.event_bus = event_bus
-        self.config_getter = config_getter
-
-        # 获取LED配置
-        self.pin1 = config_getter.get_led_pin_1() if config_getter else DEFAULT_LED_PIN_1
-        self.pin2 = config_getter.get_led_pin_2() if config_getter else DEFAULT_LED_PIN_2
+    def __init__(self, pin1=None, pin2=None, pwm_freq=None, max_brightness=None):
+        # 简化依赖注入，直接接受配置参数
+        self.pin1 = pin1 or DEFAULT_LED_PIN_1
+        self.pin2 = pin2 or DEFAULT_LED_PIN_2
+        self.pwm_freq = pwm_freq or DEFAULT_PWM_FREQ
+        self.max_brightness = max_brightness or DEFAULT_MAX_BRIGHTNESS
+        
         self.pwm1 = None
         self.pwm2 = None
         self.initialized = False
-
+        
+        # 简化事件总线，可选参数
+        self.event_bus = None
+        self.get_event_id = lambda x: x
+        
         # 灯效状态
         self.current_effect = 'off'
         self.effect_params = {}
         self.led1_brightness = 0
         self.led2_brightness = 0
-
+        
         # 动画状态
         self.blink_state = False
         self.blink_counter = 0
-        self.safe_mode_active = False
-
-        # 动态配置变量（用于温度优化）
+        
+        # 动态配置变量
         self.led_update_interval_ms = MIN_LED_UPDATE_INTERVAL
-        self.current_pwm_freq = (
-            config_getter.get_pwm_freq() if config_getter else DEFAULT_PWM_FREQ
-        )
-        self.current_max_brightness = (
-            config_getter.get_max_brightness() if config_getter else DEFAULT_MAX_BRIGHTNESS
-        )
-
+        self.current_pwm_freq = self.pwm_freq
+        self.current_max_brightness = self.max_brightness
+        
         # 任务控制
         self.task_running = False
         self.led_task = None
 
     def init(self):
-        """初始化LED硬件"""
+        """初始化LED硬件 - 精简版本"""
         try:
             # 如果已经初始化，先清理
             if self.pwm1:
                 self.pwm1.deinit()
             if self.pwm2:
                 self.pwm2.deinit()
-
+            
             # 创建PWM对象
             pin1 = machine.Pin(self.pin1, machine.Pin.OUT)
             pin2 = machine.Pin(self.pin2, machine.Pin.OUT)
             self.pwm1 = machine.PWM(pin1, freq=self.current_pwm_freq, duty_u16=0)
             self.pwm2 = machine.PWM(pin2, freq=self.current_pwm_freq, duty_u16=0)
-
+            
             self.initialized = True
-
+            
             if DEBUG:
                 print(f"[LED] 初始化成功 - 引脚: {self.pin1}, {self.pin2}, "
                       f"频率: {self.current_pwm_freq}Hz")
-
-            # 发布初始化成功事件
+            
+            # 简化事件发布
             if self.event_bus:
-                self.event_bus.publish(get_event_id('led_initialized'), success=True)
-
+                self.event_bus.publish(self.get_event_id('led_initialized'), success=True)
+            
             # 订阅LED控制事件
             self._subscribe_to_events()
-
+            
             return True
-
+            
         except (OSError, ValueError, AttributeError) as e:
             error_msg = "LED初始化失败: " + str(e)
             if DEBUG:
                 print("[LED] [ERROR]", error_msg)
-
+            
+            # 简化错误处理
             if self.event_bus:
-                self.event_bus.publish(get_event_id('led_initialized'), success=False, error=error_msg)
-                self.event_bus.publish(get_event_id('log_critical'), message=error_msg)
-
+                self.event_bus.publish(self.get_event_id('led_initialized'), success=False, error=error_msg)
+            
             self.pwm1 = None
             self.pwm2 = None
             return False
@@ -150,47 +148,39 @@ class LEDManager:
                 self.event_bus.publish(get_event_id('log_error'), message=error_msg)
 
     def _subscribe_to_events(self):
-        """订阅LED相关的事件"""
+        """订阅LED相关的事件 - 精简版本"""
         if self.event_bus:
-            self.event_bus.subscribe(EV_LED_SET_EFFECT, self._on_led_set_effect)
-            self.event_bus.subscribe(EV_LED_SET_BRIGHTNESS, self._on_led_set_brightness)
-            self.event_bus.subscribe(EV_LED_EMERGENCY_OFF, self._on_led_emergency_off)
-            self.event_bus.subscribe(get_event_id('config_update'), self._on_config_update)
-            self.event_bus.subscribe(get_event_id('wifi_connecting_blink'), self._on_wifi_connecting_blink)
-
+            # 只订阅核心事件，减少事件处理开销
+            self.event_bus.subscribe(self.get_event_id('led_set_effect'), self._on_led_set_effect)
+            self.event_bus.subscribe(self.get_event_id('led_set_brightness'), self._on_led_set_brightness)
+            self.event_bus.subscribe(self.get_event_id('led_emergency_off'), self._on_led_emergency_off)
+            
             if DEBUG:
-                print("[LED] 已订阅LED控制事件")
+                print("[LED] 已订阅核心LED控制事件")
 
     def _on_config_update(self, **kwargs):
-        """处理配置更新事件"""
-        changed_sections = kwargs.get('changed', [])
+        """处理配置更新事件 - 精简版本"""
+        # 简化配置更新处理，只处理关键配置
         new_config = kwargs.get('new_config', {})
         source = kwargs.get('source', 'config_reload')
-
-        # 检查是否有LED相关的配置变更
-        if not ('led' in changed_sections or source == 'temp_optimizer'):
-            return
-
+        
+        if source == 'temp_optimizer':
+            self._handle_temp_optimizer_config(kwargs, new_config)
+        
         if DEBUG:
             print("[LED] 收到配置更新，来源:", source)
 
-        # 处理温度优化配置
-        if source == 'temp_optimizer':
-            self._handle_temp_optimizer_config(kwargs, new_config)
-        # 处理LED配置变更
-        elif 'led' in changed_sections:
-            if DEBUG:
-                print("[LED] LED配置已更新，将在下次初始化时生效")
-
     def _handle_temp_optimizer_config(self, kwargs, new_config):
-        """处理温度优化配置"""
+        """处理温度优化配置 - 精简版本"""
         temp_level = kwargs.get('temp_level', 'normal')
         if DEBUG:
             print("[LED] 温度优化级别:", temp_level)
-
-        self._update_led_interval(new_config)
-        self._update_pwm_frequency(new_config)
-        self._update_max_brightness(new_config)
+        
+        # 只处理关键优化参数
+        if 'pwm_freq' in new_config:
+            self._update_pwm_frequency(new_config)
+        if 'max_brightness' in new_config:
+            self._update_max_brightness(new_config)
 
     def _update_led_interval(self, new_config):
         """更新LED更新间隔"""
@@ -202,17 +192,18 @@ class LEDManager:
                 print(f"[LED] LED更新间隔已调整为: {self.led_update_interval_ms}ms")
 
     def _update_pwm_frequency(self, new_config):
-        """更新PWM频率"""
+        """更新PWM频率 - 精简版本"""
         if 'pwm_freq' not in new_config or not (self.pwm1 and self.pwm2):
             return
-
+        
         try:
             new_freq = new_config['pwm_freq']
-            self.pwm1.freq(new_freq)
-            self.pwm2.freq(new_freq)
-            self.current_pwm_freq = new_freq
-            if DEBUG:
-                print(f"[LED] 更新PWM频率为: {new_freq}Hz")
+            if new_freq != self.current_pwm_freq:
+                self.pwm1.freq(new_freq)
+                self.pwm2.freq(new_freq)
+                self.current_pwm_freq = new_freq
+                if DEBUG:
+                    print(f"[LED] 更新PWM频率为: {new_freq}Hz")
         except (OSError, ValueError) as e:
             if DEBUG:
                 print("[LED] [ERROR] PWM频率更新失败:", str(e))
@@ -531,11 +522,21 @@ def _ensure_global_led_manager():
     if GLOBAL_LED_MANAGER is None:
         # 导入core和config以保持向后兼容
         try:
-            from . import core
             from . import config
-            GLOBAL_LED_MANAGER = LEDManager(event_bus=core, config_getter=config)
+            led_config = config.get_config_value('led', None)
+            GLOBAL_LED_MANAGER = LEDManager(
+                pin1=led_config.get('pin_1', 12),
+                pin2=led_config.get('pin_2', 13),
+                pwm_freq=led_config.get('pwm_freq', 1000),
+                max_brightness=led_config.get('max_brightness', 255)
+            )
         except ImportError:
-            GLOBAL_LED_MANAGER = LEDManager()
+            GLOBAL_LED_MANAGER = LEDManager(
+                pin1=12,
+                pin2=13,
+                pwm_freq=1000,
+                max_brightness=255
+            )
     return GLOBAL_LED_MANAGER
 
 # 外部接口函数
@@ -587,7 +588,37 @@ def update_led_config(new_config):
     # pylint: disable=protected-access
     manager._on_config_update(config=new_config, source='manual')
 
-# 依赖注入接口
-def create_led_manager(event_bus, config_getter):
-    """创建LED管理器实例（依赖注入）"""
-    return LEDManager(event_bus=event_bus, config_getter=config_getter)
+# 简化的工厂函数
+def create_led_manager(event_bus=None, config_getter=None, **kwargs):
+    """创建LED管理器实例 - 简化版本"""
+    # 直接从配置获取参数，减少依赖
+    if config_getter:
+        try:
+            pin1 = config_getter.get_led_pin_1()
+            pin2 = config_getter.get_led_pin_2()
+            pwm_freq = config_getter.get_pwm_freq()
+            max_brightness = config_getter.get_max_brightness()
+        except:
+            # 如果配置获取失败，使用默认值
+            pin1 = kwargs.get('pin1', DEFAULT_LED_PIN_1)
+            pin2 = kwargs.get('pin2', DEFAULT_LED_PIN_2)
+            pwm_freq = kwargs.get('pwm_freq', DEFAULT_PWM_FREQ)
+            max_brightness = kwargs.get('max_brightness', DEFAULT_MAX_BRIGHTNESS)
+    else:
+        # 使用传入的参数或默认值
+        pin1 = kwargs.get('pin1', DEFAULT_LED_PIN_1)
+        pin2 = kwargs.get('pin2', DEFAULT_LED_PIN_2)
+        pwm_freq = kwargs.get('pwm_freq', DEFAULT_PWM_FREQ)
+        max_brightness = kwargs.get('max_brightness', DEFAULT_MAX_BRIGHTNESS)
+    
+    manager = LEDManager(pin1=pin1, pin2=pin2, pwm_freq=pwm_freq, max_brightness=max_brightness)
+    
+    # 设置事件总线（可选）
+    if event_bus:
+        manager.event_bus = event_bus
+        try:
+            manager.get_event_id = config_getter.get_event_id if config_getter else lambda x: x
+        except:
+            manager.get_event_id = lambda x: x
+    
+    return manager

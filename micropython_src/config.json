@@ -1,51 +1,59 @@
 {
   "wifi": {
     "configs": [
-      {"ssid": "Lejurobot", "password": "Leju2022"},
-      {"ssid": "CMCC-pdRG", "password": "7k77ed5p"}
+      {
+        "ssid": "TestNetwork",
+        "password": "testpassword"
+      }
     ],
-    "connect_timeout_s": 15,
-    "retry_interval_s": 60,
-    "check_interval_s": 30
-  },
-  "ntp": {
-    "retry_delay_s": 60,
-    "timezone_offset_hours": 8
+    "check_interval_s": 60,
+    "connect_timeout_s": 30,
+    "retry_interval_s": 60
   },
   "led": {
     "pin_1": 12,
     "pin_2": 13,
-    "pwm_freq": 60,
-    "max_brightness": 20000,
-    "fade_step": 256
+    "pwm_freq": 1000,
+    "max_brightness": 255,
+    "update_interval_ms": 50
   },
   "daemon": {
-    "main_interval_ms": 5000,
-    "watchdog_interval_ms": 3000,
-    "monitor_interval_ms": 30000,
-    "perf_report_interval_s": 30,
-    "scheduler_interval_ms": 200
+    "watchdog_timeout_ms": 5000,
+    "scheduler_interval_ms": 1000,
+    "temp_check_interval_ms": 30000,
+    "perf_check_interval_ms": 60000,
+    "max_error_count": 10,
+    "error_reset_interval_ms": 300000,
+    "max_restart_count": 3,
+    "safe_mode_cooldown_ms": 300000
+  },
+  "ntp": {
+    "retry_delay": 60,
+    "timezone_offset": 8
   },
   "safety": {
-    "temperature_threshold": 45.0,
-    "wdt_timeout_ms": 30000,
-    "blink_interval_ms": 200,
-    "safe_mode_cooldown_ms": 5000,
-    "max_error_count": 10,
-    "error_reset_interval_ms": 60000,
-    "max_recovery_attempts": 5
+    "temp_normal_threshold": 40.0,
+    "temp_warm_threshold": 45.0,
+    "temp_overheat_threshold": 50.0,
+    "temp_danger_threshold": 55.0,
+    "mem_critical_threshold": 0.8,
+    "wdt_timeout_ms": 8000,
+    "safe_mode_pwm_freq": 500,
+    "safe_mode_max_brightness": 128,
+    "safe_mode_led_interval_ms": 200,
+    "safe_mode_wifi_interval_ms": 120,
+    "safe_mode_temp_check_interval_ms": 10000
   },
   "logging": {
-    "log_file": "error.log",
-    "max_log_size": 10240,
-    "max_log_queue_size": 20,
-    "batch_size": 10,
-    "write_interval_ms": 5000
+    "enabled": true,
+    "level": "INFO",
+    "max_queue_size": 100,
+    "flush_interval_ms": 5000,
+    "persist_critical": true
   },
   "general": {
-    "main_loop_interval": 5,
-    "gc_interval_loops": 20,
-    "status_check_interval_loops": 12,
-    "low_memory_threshold": 10000
+    "system_name": "ESP32-C3-IoT",
+    "version": "2.1.0",
+    "debug": true
   }
 }
