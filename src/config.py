@@ -2,118 +2,189 @@
 """
 统一配置管理模块
 
-为ESP32C3设备提供集中式配置管理：
-- MQTT配置
-- WiFi配置  
-- 守护进程配置
-- 系统配置
-- 配置验证和运行时管理
+为ESP32C3设备提供集中式配置管理，所有配置参数都在此文件中定义。
+每个配置项都有详细说明，包括作用、推荐取值和内存影响。
+
+内存优化说明：
+- 使用类常量而非全局变量，减少内存占用
+- 避免使用JSON文件，减少I/O操作和内存使用
+- 配置验证器在启动时运行，运行时不再验证
+- 移除运行时配置管理，减少复杂度和内存使用
 """
 
-import json
-import time
 import gc
 
 # =============================================================================
-# 核心配置常量
+# MQTT配置类
 # =============================================================================
 
 class MQTTConfig:
-    """MQTT相关配置"""
-    BROKER = "192.168.1.2"
-    PORT = 1883
-    TOPIC = "lzs/esp32c3"
-    KEEPALIVE = 60
-    CONNECT_TIMEOUT = 10
-    RECONNECT_DELAY = 5
-    MAX_RETRIES = 3
+    """
+    MQTT通信配置
+    
+    作用：配置MQTT服务器的连接参数和通信行为
+    内存影响：低（约200字节）
+    推荐配置：
+    - BROKER: MQTT服务器IP地址
+    - PORT: 标准MQTT端口1883，如需安全连接使用8883
+    - TOPIC: 设备唯一标识符，建议格式：location/device_type
+    - KEEPALIVE: 保持连接的心跳间隔，建议30-120秒
+    """
+    
+    # 服务器配置
+    BROKER = "192.168.1.2"         # MQTT服务器地址，必须为有效IP或域名
+    PORT = 1883                     # MQTT端口，标准端口1883，安全端口8883
+    TOPIC = "lzs/esp32c3"          # 设备主题，用于MQTT消息路由
+    
+    # 连接配置
+    KEEPALIVE = 60                 # 心跳间隔（秒），建议30-120秒
+    CONNECT_TIMEOUT = 10            # 连接超时（秒），建议5-30秒
+    RECONNECT_DELAY = 5            # 重连延迟（秒），建议3-10秒
+    MAX_RETRIES = 3                # 最大重试次数，建议3-5次
+
+# =============================================================================
+# WiFi配置类
+# =============================================================================
 
 class WiFiConfig:
-    """WiFi相关配置"""
-    TIMEOUT_S = 15
-    SCAN_INTERVAL = 30
-    CONNECTION_RETRY_DELAY = 2
-    MAX_CONNECTION_ATTEMPTS = 3
+    """
+    WiFi网络配置
     
-    # WiFi网络配置列表
+    作用：配置WiFi连接参数和网络选择策略
+    内存影响：中等（约500字节，取决于网络数量）
+    推荐配置：
+    - TIMEOUT_S: 连接超时时间，建议10-30秒
+    - SCAN_INTERVAL: 网络扫描间隔，建议30-60秒
+    - NETWORKS: 按优先级排序的WiFi网络列表
+    """
+    
+    # 连接参数
+    TIMEOUT_S = 15                 # 连接超时（秒），建议10-30秒
+    SCAN_INTERVAL = 30             # 网络扫描间隔（秒），建议30-60秒
+    CONNECTION_RETRY_DELAY = 2      # 连接重试延迟（秒），建议2-5秒
+    MAX_CONNECTION_ATTEMPTS = 3     # 最大连接尝试次数，建议3-5次
+    
+    # WiFi网络列表（按优先级排序）
     NETWORKS = [
         {"ssid": "zsm60p", "password": "25845600"},
         {"ssid": "CMCC-pdRG", "password": "7k77ed5p"},
         {"ssid": "leju_software", "password": "leju123456"}
     ]
 
+# =============================================================================
+# 守护进程配置类
+# =============================================================================
+
 class DaemonConfig:
-    """守护进程配置"""
+    """
+    守护进程配置
+    
+    作用：配置系统监控、LED控制、温度监控等守护进程参数
+    内存影响：低（约300字节）
+    推荐配置：
+    - LED_PINS: ESP32C3可用GPIO引脚（0-19, 21-23, 26-33）
+    - TEMP_THRESHOLD: 温度报警阈值，ESP32C3正常工作温度<85°C
+    - MEMORY_THRESHOLD: 内存报警阈值，建议85-95%
+    - MONITOR_INTERVAL: 监控间隔，建议30-60秒
+    """
+    
     # LED配置
-    LED_PINS = [12, 13]
+    LED_PINS = [12, 13]            # LED引脚列表，必须是ESP32C3有效GPIO
     
     # 温度监控配置
-    TEMP_THRESHOLD = 60.0  # 温度阈值（摄氏度）
-    TEMP_HYSTERESIS = 10.0  # 温度滞回（摄氏度）
+    TEMP_THRESHOLD = 60.0          # 温度报警阈值（°C），ESP32C3最高85°C
+    TEMP_HYSTERESIS = 10.0         # 温度滞回（°C），避免频繁报警
     
     # 内存监控配置
-    MEMORY_THRESHOLD = 90  # 内存使用阈值（百分比）
-    MEMORY_HYSTERESIS = 10  # 内存滞回（百分比）
+    MEMORY_THRESHOLD = 90          # 内存使用报警阈值（%），建议85-95%
+    MEMORY_HYSTERESIS = 10         # 内存滞回（%），避免频繁报警
     
     # 看门狗配置
-    WDT_TIMEOUT = 8000  # 看门狗超时时间（毫秒）
-    WDT_FEED_INTERVAL = 4000  # 看门狗喂狗间隔（毫秒）
+    WDT_TIMEOUT = 8000             # 看门狗超时（毫秒），必须大于喂狗间隔
+    WDT_FEED_INTERVAL = 4000       # 看门狗喂狗间隔（毫秒），必须小于超时时间
     
     # 定时器配置
-    TIMER_ID = 0  # 监控定时器编号
-    MONITOR_INTERVAL = 30000  # 监控间隔（毫秒）
+    TIMER_ID = 0                   # 监控定时器编号（0-3）
+    MONITOR_INTERVAL = 30000       # 监控间隔（毫秒），建议30-60秒
     
     # 安全模式配置
-    SAFE_MODE_COOLDOWN = 30000  # 安全模式冷却时间（毫秒）
+    SAFE_MODE_COOLDOWN = 30000     # 安全模式冷却时间（毫秒），建议30秒
     
     # 错误处理配置
-    MAX_ERROR_COUNT = 5
-    ERROR_RESET_INTERVAL = 60000
-    ERROR_CLASSIFY_ENABLED = True
+    MAX_ERROR_COUNT = 5            # 最大错误计数，超过后进入安全模式
+    ERROR_RESET_INTERVAL = 60000   # 错误重置间隔（毫秒），建议60秒
+    ERROR_CLASSIFY_ENABLED = True  # 启用错误分类，增强错误处理
     
     # 垃圾回收配置
-    GC_INTERVAL_NORMAL = 10000  # 正常情况垃圾回收间隔（毫秒）
-    GC_INTERVAL_SAFE = 5000  # 安全模式垃圾回收间隔（毫秒）
-    GC_FORCE_THRESHOLD = 95  # 强制垃圾回收阈值（百分比）
+    GC_INTERVAL_NORMAL = 10000     # 正常模式垃圾回收间隔（毫秒），建议10秒
+    GC_INTERVAL_SAFE = 5000        # 安全模式垃圾回收间隔（毫秒），建议5秒
+    GC_FORCE_THRESHOLD = 95         # 强制垃圾回收阈值（%），建议95%
+
+# =============================================================================
+# 系统配置类
+# =============================================================================
 
 class SystemConfig:
-    """系统配置"""
+    """
+    系统配置
+    
+    作用：配置系统级参数，包括调试、性能、错误恢复等
+    内存影响：低（约200字节）
+    推荐配置：
+    - DEBUG_MODE: 生产环境设为False，调试时设为True
+    - LOG_LEVEL: 生产环境建议INFO，调试时DEBUG
+    - MAIN_LOOP_DELAY: 主循环延迟，建议100-500毫秒
+    - AUTO_RESTART_ENABLED: 生产环境建议启用
+    """
+    
     # NTP配置
-    NTP_HOST = 'ntp.aliyun.com'
-    TIMEZONE_OFFSET_H = 8
+    NTP_HOST = 'ntp.aliyun.com'     # NTP服务器地址
+    TIMEZONE_OFFSET_H = 8          # 时区偏移（小时），中国为+8
     
     # 调试配置
-    DEBUG_MODE = False
-    LOG_LEVEL = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+    DEBUG_MODE = False             # 调试模式，生产环境建议False
+    LOG_LEVEL = "INFO"             # 日志级别：DEBUG/INFO/WARNING/ERROR/CRITICAL
     
     # 性能配置
-    MAIN_LOOP_DELAY = 300  # 主循环延迟（毫秒）
-    STATUS_REPORT_INTERVAL = 30  # 状态报告间隔（循环次数）
+    MAIN_LOOP_DELAY = 300          # 主循环延迟（毫秒），建议100-500毫秒
+    STATUS_REPORT_INTERVAL = 30    # 状态报告间隔（循环次数），建议30次
+    
+    # 错误恢复配置
+    ERROR_RECOVERY_ENABLED = True  # 启用错误恢复，建议True
+    AUTO_RESTART_ENABLED = True    # 启用自动重启，生产环境建议True
+    HEALTH_CHECK_INTERVAL = 60000  # 健康检查间隔（毫秒），建议60秒
+    MAX_RECOVERY_ATTEMPTS = 3      # 最大恢复尝试次数，建议3次
+    RECOVERY_COOLDOWN = 30000      # 恢复冷却时间（毫秒），建议30秒
+    CRITICAL_ERROR_THRESHOLD = 5   # 严重错误阈值，超过后重启，建议3-5次
+    
+    # 状态监控配置
+    STATUS_MONITOR_INTERVAL = 30000  # 状态监控间隔（毫秒），建议30秒
+    LOG_BUFFER_SIZE = 50           # 日志缓冲区大小，建议50-100条
+    METRICS_HISTORY_SIZE = 100      # 指标历史大小，建议100-200条
+    REMOTE_MONITORING_ENABLED = True  # 启用远程监控，根据需求设置
+    DIAGNOSTIC_ENABLED = True      # 启用诊断功能，建议True
 
 # =============================================================================
 # 配置验证器
 # =============================================================================
 
 class ConfigValidator:
-    """配置验证器"""
+    """
+    配置验证器
+    
+    作用：在系统启动时验证所有配置参数的有效性
+    内存影响：低（验证完成后释放内存）
+    使用方式：系统启动时自动调用，验证失败会输出错误信息
+    """
     
     @staticmethod
     def validate_all():
-        """验证所有配置"""
+        """验证所有配置，返回错误列表"""
         errors = []
-        
-        # 验证MQTT配置
         errors.extend(ConfigValidator._validate_mqtt())
-        
-        # 验证WiFi配置
         errors.extend(ConfigValidator._validate_wifi())
-        
-        # 验证守护进程配置
         errors.extend(ConfigValidator._validate_daemon())
-        
-        # 验证系统配置
         errors.extend(ConfigValidator._validate_system())
-        
         return errors
     
     @staticmethod
@@ -121,16 +192,16 @@ class ConfigValidator:
         """验证MQTT配置"""
         errors = []
         
-        if not MQTTConfig.BROKER:
-            errors.append("MQTT broker地址不能为空")
+        if not MQTTConfig.BROKER or not isinstance(MQTTConfig.BROKER, str):
+            errors.append("MQTT broker地址必须是非空字符串")
         
-        if not (1 <= MQTTConfig.PORT <= 65535):
-            errors.append("MQTT端口必须在1-65535之间")
+        if not isinstance(MQTTConfig.PORT, int) or not (1 <= MQTTConfig.PORT <= 65535):
+            errors.append("MQTT端口必须是1-65535之间的整数")
         
-        if not MQTTConfig.TOPIC:
-            errors.append("MQTT主题不能为空")
+        if not MQTTConfig.TOPIC or not isinstance(MQTTConfig.TOPIC, str):
+            errors.append("MQTT主题必须是非空字符串")
         
-        if MQTTConfig.KEEPALIVE < 10:
+        if not isinstance(MQTTConfig.KEEPALIVE, int) or MQTTConfig.KEEPALIVE < 10:
             errors.append("MQTT keepalive必须大于等于10秒")
         
         return errors
@@ -140,16 +211,21 @@ class ConfigValidator:
         """验证WiFi配置"""
         errors = []
         
-        if not WiFiConfig.NETWORKS:
-            errors.append("WiFi网络配置不能为空")
+        if not isinstance(WiFiConfig.NETWORKS, list) or not WiFiConfig.NETWORKS:
+            errors.append("WiFi网络配置必须是非空列表")
         
         for i, network in enumerate(WiFiConfig.NETWORKS):
-            if not network.get('ssid'):
-                errors.append(f"WiFi网络{i+1}的SSID不能为空")
-            if 'password' not in network:
-                errors.append(f"WiFi网络{i+1}的密码不能为空")
+            if not isinstance(network, dict):
+                errors.append(f"WiFi网络{i+1}必须是字典")
+                continue
+            
+            if not network.get('ssid') or not isinstance(network['ssid'], str):
+                errors.append(f"WiFi网络{i+1}的SSID必须是非空字符串")
+            
+            if 'password' not in network or not isinstance(network['password'], str):
+                errors.append(f"WiFi网络{i+1}必须有密码字段")
         
-        if WiFiConfig.TIMEOUT_S < 5:
+        if not isinstance(WiFiConfig.TIMEOUT_S, int) or WiFiConfig.TIMEOUT_S < 5:
             errors.append("WiFi超时时间必须大于等于5秒")
         
         return errors
@@ -160,58 +236,40 @@ class ConfigValidator:
         errors = []
         
         # 验证LED引脚
-        if len(DaemonConfig.LED_PINS) != 2:
+        if not isinstance(DaemonConfig.LED_PINS, list) or len(DaemonConfig.LED_PINS) != 2:
             errors.append("必须配置2个LED引脚")
         
         for pin in DaemonConfig.LED_PINS:
-            if not (0 <= pin <= 39):  # ESP32C3引脚范围
-                errors.append(f"LED引脚{pin}超出有效范围")
+            if not isinstance(pin, int) or not (0 <= pin <= 39):
+                errors.append(f"LED引脚{pin}必须是0-39之间的整数")
         
         # 验证温度配置
-        if not (0 < DaemonConfig.TEMP_THRESHOLD < 100):
+        if not isinstance(DaemonConfig.TEMP_THRESHOLD, (int, float)) or not (0 < DaemonConfig.TEMP_THRESHOLD < 100):
             errors.append("温度阈值必须在0-100之间")
         
-        if DaemonConfig.TEMP_HYSTERESIS < 0:
+        if not isinstance(DaemonConfig.TEMP_HYSTERESIS, (int, float)) or DaemonConfig.TEMP_HYSTERESIS < 0:
             errors.append("温度滞回必须大于等于0")
         
         # 验证内存配置
-        if not (50 <= DaemonConfig.MEMORY_THRESHOLD <= 98):
+        if not isinstance(DaemonConfig.MEMORY_THRESHOLD, int) or not (50 <= DaemonConfig.MEMORY_THRESHOLD <= 98):
             errors.append("内存阈值必须在50-98之间")
         
-        if DaemonConfig.MEMORY_HYSTERESIS < 0:
+        if not isinstance(DaemonConfig.MEMORY_HYSTERESIS, int) or DaemonConfig.MEMORY_HYSTERESIS < 0:
             errors.append("内存滞回必须大于等于0")
         
         # 验证看门狗配置
-        if not (1000 <= DaemonConfig.WDT_TIMEOUT <= 32000):
+        if not isinstance(DaemonConfig.WDT_TIMEOUT, int) or not (1000 <= DaemonConfig.WDT_TIMEOUT <= 32000):
             errors.append("看门狗超时必须在1000-32000毫秒之间")
         
-        if DaemonConfig.WDT_FEED_INTERVAL >= DaemonConfig.WDT_TIMEOUT:
+        if not isinstance(DaemonConfig.WDT_FEED_INTERVAL, int) or DaemonConfig.WDT_FEED_INTERVAL >= DaemonConfig.WDT_TIMEOUT:
             errors.append("看门狗喂狗间隔必须小于超时时间")
         
         # 验证定时器配置
-        if not (0 <= DaemonConfig.TIMER_ID <= 3):
+        if not isinstance(DaemonConfig.TIMER_ID, int) or not (0 <= DaemonConfig.TIMER_ID <= 3):
             errors.append("定时器ID必须在0-3之间")
         
-        if DaemonConfig.MONITOR_INTERVAL < 1000:
+        if not isinstance(DaemonConfig.MONITOR_INTERVAL, int) or DaemonConfig.MONITOR_INTERVAL < 1000:
             errors.append("监控间隔必须大于等于1000毫秒")
-        
-        # 验证安全模式配置
-        if DaemonConfig.SAFE_MODE_COOLDOWN < 10000:
-            errors.append("安全模式冷却时间必须大于等于10秒")
-        
-        # 验证错误处理配置
-        if DaemonConfig.MAX_ERROR_COUNT < 1:
-            errors.append("最大错误计数必须大于等于1")
-        
-        if DaemonConfig.ERROR_RESET_INTERVAL < 10000:
-            errors.append("错误重置间隔必须大于等于10秒")
-        
-        # 验证垃圾回收配置
-        if DaemonConfig.GC_INTERVAL_NORMAL < 1000:
-            errors.append("正常垃圾回收间隔必须大于等于1秒")
-        
-        if DaemonConfig.GC_FORCE_THRESHOLD < 80:
-            errors.append("强制垃圾回收阈值必须大于等于80%")
         
         return errors
     
@@ -220,206 +278,118 @@ class ConfigValidator:
         """验证系统配置"""
         errors = []
         
-        if SystemConfig.TIMEZONE_OFFSET_H < -12 or SystemConfig.TIMEZONE_OFFSET_H > 14:
+        if not isinstance(SystemConfig.TIMEZONE_OFFSET_H, int) or not (-12 <= SystemConfig.TIMEZONE_OFFSET_H <= 14):
             errors.append("时区偏移必须在-12到14之间")
         
-        if SystemConfig.MAIN_LOOP_DELAY < 10:
+        if not isinstance(SystemConfig.MAIN_LOOP_DELAY, int) or SystemConfig.MAIN_LOOP_DELAY < 10:
             errors.append("主循环延迟必须大于等于10毫秒")
         
-        if SystemConfig.STATUS_REPORT_INTERVAL < 1:
+        if not isinstance(SystemConfig.STATUS_REPORT_INTERVAL, int) or SystemConfig.STATUS_REPORT_INTERVAL < 1:
             errors.append("状态报告间隔必须大于等于1")
         
         return errors
 
 # =============================================================================
-# 运行时配置管理器
-# =============================================================================
-
-class RuntimeConfig:
-    """运行时配置管理器"""
-    
-    def __init__(self):
-        self._config = {}
-        self._last_modified = 0
-        self._load_config()
-    
-    def _load_config(self):
-        """从文件加载配置"""
-        try:
-            with open('config.json', 'r') as f:
-                self._config = json.load(f)
-            self._last_modified = time.time()
-        except:
-            # 如果文件不存在或读取失败，使用默认配置
-            self._config = self._get_default_config()
-    
-    def _get_default_config(self):
-        """获取默认配置"""
-        return {
-            'mqtt': {
-                'broker': MQTTConfig.BROKER,
-                'port': MQTTConfig.PORT,
-                'topic': MQTTConfig.TOPIC,
-                'keepalive': MQTTConfig.KEEPALIVE
-            },
-            'daemon': {
-                'temp_threshold': DaemonConfig.TEMP_THRESHOLD,
-                'memory_threshold': DaemonConfig.MEMORY_THRESHOLD,
-                'monitor_interval': DaemonConfig.MONITOR_INTERVAL
-            },
-            'system': {
-                'debug_mode': SystemConfig.DEBUG_MODE,
-                'log_level': SystemConfig.LOG_LEVEL
-            }
-        }
-    
-    def get(self, key: str, default=None):
-        """获取配置值"""
-        keys = key.split('.')
-        value = self._config
-        
-        for k in keys:
-            if isinstance(value, dict) and k in value:
-                value = value[k]
-            else:
-                return default
-        
-        return value
-    
-    def set(self, key: str, value):
-        """设置配置值"""
-        keys = key.split('.')
-        config = self._config
-        
-        # 导航到目标位置
-        for k in keys[:-1]:
-            if k not in config:
-                config[k] = {}
-            config = config[k]
-        
-        # 设置值
-        config[keys[-1]] = value
-        self._last_modified = time.time()
-        
-        # 保存到文件
-        self._save_config()
-    
-    def _save_config(self):
-        """保存配置到文件"""
-        try:
-            with open('config.json', 'w') as f:
-                json.dump(self._config, f, indent=2)
-        except Exception as e:
-            print(f"保存配置失败: {e}")
-    
-    def get_modified_time(self):
-        """获取最后修改时间"""
-        return self._last_modified
-    
-    def reload(self):
-        """重新加载配置"""
-        self._load_config()
-
-# =============================================================================
-# 配置管理器主类
+# 配置管理器
 # =============================================================================
 
 class ConfigManager:
-    """配置管理器主类"""
+    """
+    配置管理器
+    
+    作用：提供配置验证和打印功能
+    内存影响：低（约100字节）
+    """
     
     def __init__(self):
-        self.runtime_config = RuntimeConfig()
-        self._validated = False
         self._validation_errors = []
+        self._validated = False
     
     def validate(self):
-        """验证所有配置"""
+        """验证配置，返回是否有效"""
         self._validation_errors = ConfigValidator.validate_all()
         self._validated = len(self._validation_errors) == 0
         return self._validated
     
     def get_validation_errors(self):
-        """获取验证错误"""
+        """获取验证错误列表"""
         return self._validation_errors
     
     def is_valid(self):
         """检查配置是否有效"""
         return self._validated
     
-    def get_runtime_config(self):
-        """获取运行时配置管理器"""
-        return self.runtime_config
-    
     def print_config(self):
-        """打印当前配置"""
-        print("=== 当前配置 ===")
+        """打印当前配置信息"""
+        print("=== ESP32C3 配置信息 ===")
         
         print("\n--- MQTT配置 ---")
-        print(f"Broker: {MQTTConfig.BROKER}")
-        print(f"Port: {MQTTConfig.PORT}")
-        print(f"Topic: {MQTTConfig.TOPIC}")
-        print(f"Keepalive: {MQTTConfig.KEEPALIVE}")
+        print(f"服务器: {MQTTConfig.BROKER}:{MQTTConfig.PORT}")
+        print(f"主题: {MQTTConfig.TOPIC}")
+        print(f"心跳: {MQTTConfig.KEEPALIVE}秒")
         
         print("\n--- WiFi配置 ---")
-        print(f"Timeout: {WiFiConfig.TIMEOUT_S}s")
-        print(f"Networks: {len(WiFiConfig.NETWORKS)}个")
+        print(f"网络数量: {len(WiFiConfig.NETWORKS)}")
+        print(f"连接超时: {WiFiConfig.TIMEOUT_S}秒")
+        for i, net in enumerate(WiFiConfig.NETWORKS):
+            print(f"  网络{i+1}: {net['ssid']}")
         
         print("\n--- 守护进程配置 ---")
-        print(f"LED Pins: {DaemonConfig.LED_PINS}")
-        print(f"Temp Threshold: {DaemonConfig.TEMP_THRESHOLD}°C")
-        print(f"Memory Threshold: {DaemonConfig.MEMORY_THRESHOLD}%")
-        print(f"WDT Timeout: {DaemonConfig.WDT_TIMEOUT}ms")
-        print(f"Monitor Interval: {DaemonConfig.MONITOR_INTERVAL}ms")
+        print(f"LED引脚: {DaemonConfig.LED_PINS}")
+        print(f"温度阈值: {DaemonConfig.TEMP_THRESHOLD}°C")
+        print(f"内存阈值: {DaemonConfig.MEMORY_THRESHOLD}%")
+        print(f"监控间隔: {DaemonConfig.MONITOR_INTERVAL//1000}秒")
         
         print("\n--- 系统配置 ---")
-        print(f"Debug Mode: {SystemConfig.DEBUG_MODE}")
-        print(f"Log Level: {SystemConfig.LOG_LEVEL}")
-        print(f"Main Loop Delay: {SystemConfig.MAIN_LOOP_DELAY}ms")
+        print(f"调试模式: {SystemConfig.DEBUG_MODE}")
+        print(f"日志级别: {SystemConfig.LOG_LEVEL}")
+        print(f"主循环延迟: {SystemConfig.MAIN_LOOP_DELAY}ms")
         
         if self._validation_errors:
-            print(f"\n--- 配置验证错误 ---")
-            for error in self._validation_errors:
-                print(f"❌ {error}")
+            print(f"\n--- 配置错误 ({len(self._validation_errors)}个) ---")
+            for error in self._validation_errors[:5]:  # 只显示前5个错误
+                print(f"  ✗ {error}")
+            if len(self._validation_errors) > 5:
+                print(f"  ... 还有{len(self._validation_errors)-5}个错误")
         else:
-            print(f"\n✅ 配置验证通过")
+            print("\n[✓] 配置验证通过")
 
 # =============================================================================
 # 全局配置管理器实例
 # =============================================================================
 
-# 创建全局配置管理器实例
+# 创建全局配置管理器
 _config_manager = ConfigManager()
 
-def get_config_manager():
-    """获取全局配置管理器实例"""
-    return _config_manager
+# 模块加载时自动验证配置
+_is_valid_config = _config_manager.validate()
 
 def validate_config():
-    """验证配置"""
+    """验证配置，返回是否有效"""
     return _config_manager.validate()
 
-def get_config(key: str, default=None):
-    """获取配置值"""
-    return _config_manager.runtime_config.get(key, default)
+def get_config_errors():
+    """获取配置验证错误"""
+    return _config_manager.get_validation_errors()
 
-def set_config(key: str, value):
-    """设置配置值"""
-    _config_manager.runtime_config.set(key, value)
+def is_config_valid():
+    """检查配置是否有效"""
+    return _config_manager.is_valid()
 
-def print_current_config():
-    """打印当前配置"""
+def print_config():
+    """打印配置信息"""
     _config_manager.print_config()
 
 # =============================================================================
-# 初始化验证
+# 配置初始化输出
 # =============================================================================
 
-# 模块加载时自动验证配置
-if not validate_config():
-    print("⚠️  配置验证失败，请检查配置")
-    print_current_config()
+if _is_valid_config:
+    print("[✓] 配置加载成功")
 else:
-    print("✅ 配置验证通过")
+    print(f"[✗] 配置验证失败 ({len(get_config_errors())}个错误)")
+    if SystemConfig.DEBUG_MODE:
+        print_config()
 
-# 执行垃圾回收
+# 执行垃圾回收，释放配置验证使用的内存
 gc.collect()
