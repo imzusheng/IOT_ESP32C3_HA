@@ -32,7 +32,7 @@ class MQTTConfig:
     """
     
     # 服务器配置
-    BROKER = "192.168.1.2"         # MQTT服务器地址，必须为有效IP或域名
+    BROKER = "192.168.3.15"         # MQTT服务器地址，必须为有效IP或域名
     PORT = 1883                     # MQTT端口，标准端口1883，安全端口8883
     TOPIC = "lzs/esp32c3"          # 设备主题，用于MQTT消息路由
     
@@ -100,8 +100,8 @@ class DaemonConfig:
     MEMORY_HYSTERESIS = 10         # 内存滞回（%），避免频繁报警
     
     # 看门狗配置
-    WDT_TIMEOUT = 8000             # 看门狗超时（毫秒），必须大于喂狗间隔
-    WDT_FEED_INTERVAL = 4000       # 看门狗喂狗间隔（毫秒），必须小于超时时间
+    WDT_TIMEOUT = 10000            # 看门狗超时（毫秒），增加到10秒提供更多安全裕度
+    # WDT_FEED_INTERVAL 已移除，因为喂狗操作现在在主循环中执行
     
     # 定时器配置
     TIMER_ID = 0                   # 监控定时器编号（0-3）
@@ -260,9 +260,6 @@ class ConfigValidator:
         # 验证看门狗配置
         if not isinstance(DaemonConfig.WDT_TIMEOUT, int) or not (1000 <= DaemonConfig.WDT_TIMEOUT <= 32000):
             errors.append("看门狗超时必须在1000-32000毫秒之间")
-        
-        if not isinstance(DaemonConfig.WDT_FEED_INTERVAL, int) or DaemonConfig.WDT_FEED_INTERVAL >= DaemonConfig.WDT_TIMEOUT:
-            errors.append("看门狗喂狗间隔必须小于超时时间")
         
         # 验证定时器配置
         if not isinstance(DaemonConfig.TIMER_ID, int) or not (0 <= DaemonConfig.TIMER_ID <= 3):

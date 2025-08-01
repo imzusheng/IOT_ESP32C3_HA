@@ -6,10 +6,14 @@ MQTT客户端模块
 使用集中配置管理，确保与系统其他模块的一致性。
 """
 import sys
-import os
 
 # 添加路径到系统路径，以便导入config模块和umqtt库
-sys.path.append(os.path.join(os.path.dirname(__file__), 'lib'))
+# MicroPython兼容的路径处理
+current_dir = __file__.rpartition('/')[0] if '/' in __file__ else ''
+if current_dir:
+    sys.path.append(current_dir + '/lib')
+else:
+    sys.path.append('./lib')
 
 from umqtt.simple import MQTTClient
 import time

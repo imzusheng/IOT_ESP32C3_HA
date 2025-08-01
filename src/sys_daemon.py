@@ -51,10 +51,10 @@ _error_count = 0
 _last_error_time = 0
 
 # 硬件对象实例
-_wdt = None
 _timer = None
 _led_controller = None
 _mqtt_client = None
+# 看门狗已移至主循环管理，此处不再需要_wdt变量
 
 # =============================================================================
 # LED控制器类
@@ -268,11 +268,7 @@ def _monitor_callback(timer):
         _monitor_count += 1
         current_time = time.ticks_ms()
         
-        # 任务1：喂狗（最高优先级）
-        if _wdt:
-            _wdt.feed()
-        
-        # 任务2：系统健康检查
+        # 任务1：系统健康检查（看门狗喂狗已移至主循环）
         health = _perform_health_check()
         
         # 任务3：根据健康状态决定是否进入安全模式
@@ -354,7 +350,7 @@ class SystemDaemon:
     
     def start(self) -> bool:
         """启动守护进程"""
-        global _daemon_active, _start_time, _wdt, _timer, _led_controller
+        global _daemon_active, _start_time, _timer, _led_controller
         
         if self._initialized:
             return True
@@ -366,8 +362,7 @@ class SystemDaemon:
                 config.DaemonConfig.LED_PINS[1]
             )
             
-            # 初始化看门狗
-            _wdt = machine.WDT(timeout=config.DaemonConfig.WDT_TIMEOUT)
+            # 看门狗已移至主循环管理，守护进程不再负责看门狗
             
             # 初始化定时器
             _timer = machine.Timer(config.DaemonConfig.TIMER_ID)
@@ -398,12 +393,7 @@ class SystemDaemon:
                 _timer.deinit()
                 _timer = None
             
-            if _wdt:
-                try:
-                    _wdt.deinit()
-                except Exception:
-                    pass
-                _wdt = None
+            # 看门狗已移至主循环管理，守护进程不再负责看门狗清理
             
             _daemon_active = False
             self._initialized = False

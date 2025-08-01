@@ -29,6 +29,9 @@ if not config.is_config_valid():
 
 loop_count = 0
 
+# 初始化看门狗 - 在主循环中喂狗，确保系统稳定运行
+_wdt = machine.WDT(timeout=config.DaemonConfig.WDT_TIMEOUT)
+
 connection_successful = net_wifi.connect_wifi()
 
 if connection_successful:
@@ -47,6 +50,9 @@ if connection_successful:
         print("[Main] 守护进程启动失败")
 
     while True:
+        # 在主循环中喂狗（最高优先级），确保系统稳定运行
+        _wdt.feed()
+        
         if loop_count % STATUS_REPORT_INTERVAL == 0:
             # 内存管理和报告
             free_memory = gc.mem_free()
