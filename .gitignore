@@ -1,1 +1,6 @@
 __pycache__
+.idea
+.claude
+.vscode
+.cline*
+dist

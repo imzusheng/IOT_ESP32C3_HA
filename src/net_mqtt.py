@@ -5,6 +5,12 @@ MQTT客户端模块
 提供高效的MQTT通信功能，支持自动重连、内存优化和错误恢复。
 使用集中配置管理，确保与系统其他模块的一致性。
 """
+import sys
+import os
+
+# 添加路径到系统路径，以便导入config模块和umqtt库
+sys.path.append(os.path.join(os.path.dirname(__file__), 'lib'))
+
 from umqtt.simple import MQTTClient
 import time
 import gc

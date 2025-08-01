@@ -33,6 +33,8 @@ except ImportError:
             return 45.0
     esp32 = MockESP32()
 
+import config
+
 # =============================================================================
 # 全局状态变量（内存优化：使用全局变量而非类实例）
 # =============================================================================
@@ -107,14 +109,14 @@ class LEDController:
 # 系统监控函数
 # =============================================================================
 
-def _get_temperature() -> Optional[float]:
+def _get_temperature():
     """获取MCU内部温度"""
     try:
         return esp32.mcu_temperature()
     except Exception:
         return None
 
-def _get_memory_usage() -> Optional[Dict[str, Any]]:
+def _get_memory_usage():
     """获取内存使用情况"""
     try:
         # 每10次监控才执行垃圾回收，优化性能
@@ -135,7 +137,7 @@ def _get_memory_usage() -> Optional[Dict[str, Any]]:
     except Exception:
         return None
 
-def _perform_health_check() -> Dict[str, Any]:
+def _perform_health_check():
     """执行系统健康检查"""
     health_status = {
         'overall': True,
@@ -216,8 +218,6 @@ def _check_safe_mode_recovery():
         return
     
     try:
-        import config
-        
         # 检查冷却时间
         cooldown_passed = time.ticks_diff(time.ticks_ms(), _safe_mode_start_time) > config.DaemonConfig.SAFE_MODE_COOLDOWN
         
@@ -360,8 +360,6 @@ class SystemDaemon:
             return True
         
         try:
-            import config
-            
             # 初始化硬件
             _led_controller = LEDController(
                 config.DaemonConfig.LED_PINS[0], 
@@ -444,7 +442,7 @@ class SystemDaemon:
         
         gc.collect()
     
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self):
         """获取守护进程状态信息"""
         return {
             'active': _daemon_active,
@@ -483,7 +481,7 @@ def stop_daemon():
     """停止守护进程的公共接口"""
     _daemon.stop()
 
-def get_daemon_status() -> Dict[str, Any]:
+def get_daemon_status():
     """获取守护进程状态的公共接口"""
     return _daemon.get_status()
 
@@ -495,7 +493,7 @@ def is_safe_mode() -> bool:
     """检查是否处于安全模式"""
     return _safe_mode_active
 
-def get_system_health() -> Dict[str, Any]:
+def get_system_health():
     """获取系统健康状态"""
     return _perform_health_check()
 

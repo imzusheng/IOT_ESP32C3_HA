@@ -8,9 +8,9 @@ ESP32C3主程序
 import time
 import machine
 import gc
-import wifi_manager
-import mqtt
-import daemon
+import net_wifi
+import net_mqtt
+import sys_daemon
 import config
 
 # 从配置中获取参数
@@ -29,20 +29,20 @@ if not config.is_config_valid():
 
 loop_count = 0
 
-connection_successful = wifi_manager.connect_wifi()
+connection_successful = net_wifi.connect_wifi()
 
 if connection_successful:
     print("\n[Main] WiFi Connected")
 
     # 创建MQTT客户端
-    mqtt_server = mqtt.MqttServer(CLIENT_ID, MQTT_BROKER, port=MQTT_PORT, topic=MQTT_TOPIC, keepalive=MQTT_KEEPALIVE)
+    mqtt_server = net_mqtt.MqttServer(CLIENT_ID, MQTT_BROKER, port=MQTT_PORT, topic=MQTT_TOPIC, keepalive=MQTT_KEEPALIVE)
     mqtt_server.connect()
     
     # 设置MQTT客户端给守护进程
-    daemon.set_mqtt_client(mqtt_server)
+    sys_daemon.set_mqtt_client(mqtt_server)
     
     # 启动守护进程
-    daemon_started = daemon.start_daemon()
+    daemon_started = sys_daemon.start_daemon()
     if not daemon_started:
         print("[Main] 守护进程启动失败")
 
@@ -67,8 +67,8 @@ if connection_successful:
                 print(f"[Main] 内存回收后: {gc.mem_free()} 字节")
 
             # 检查守护进程状态
-            daemon_status = daemon.get_daemon_status()
-            if daemon.is_safe_mode():
+            daemon_status = sys_daemon.get_daemon_status()
+            if sys_daemon.is_safe_mode():
                 print("[Main] 系统处于安全模式，暂停正常操作")
                 time.sleep(1)
                 continue

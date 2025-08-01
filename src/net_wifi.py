@@ -11,6 +11,7 @@ import network
 import gc
 import machine
 import ntptime
+
 import config
 
 
@@ -82,18 +83,6 @@ def sync_and_set_time():
     return False
 
 
-# def _start_webrepl_safe():
-#     """安全地启动WebREPL。"""
-#     try:
-#         webrepl.start(password=WEBREPL_PASSWORD)
-#         print(f"[WebREPL] Service started successfully.")
-#     except Exception as e:
-#         if "EADDRINUSE" in str(e):
-#              print("\033[1;33m[WebREPL] Service is already running.\033[0m")
-#         else:
-#             print(f"\033[1;31m[WebREPL] Failed to start service! Error: {e}\033[0m")
-
-
 def connect_wifi():
     """
     连接WiFi并同步时间
@@ -141,8 +130,8 @@ def connect_wifi():
     connectable_configs.sort(key=lambda c: rssi_map[c['ssid']], reverse=True)
     
     print("[WiFi] 可用网络（按信号强度排序）:")
-    for config in connectable_configs:
-        print(f"  - {config['ssid']} (RSSI: {rssi_map[config['ssid']]} dBm)")
+    for network_config in connectable_configs:
+        print(f"  - {network_config['ssid']} (RSSI: {rssi_map[network_config['ssid']]} dBm)")
 
     # 尝试连接每个网络
     for network_config in connectable_configs:
@@ -223,4 +212,3 @@ if __name__ == "__main__":
         print("\n=== 网络设置和时间同步完成 ===")
     else:
         print("\n=== 网络连接失败，设备将进入低功耗模式 ===")
-

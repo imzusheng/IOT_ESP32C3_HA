@@ -19,8 +19,9 @@
 
 import time
 import gc
-import sys
 from enum import Enum
+
+import config
 
 # =============================================================================
 # 错误类型和严重程度定义
@@ -576,12 +577,8 @@ class ErrorHandler:
         
         # 对于致命错误，执行系统重启
         if error_type == ErrorType.FATAL:
-            try:
-                import config
-                if config.SystemConfig.AUTO_RESTART_ENABLED:
-                    SystemRestartAction().execute(error_type, "致命错误恢复", "ErrorHandler")
-            except Exception:
-                pass
+            if config.SystemConfig.AUTO_RESTART_ENABLED:
+                SystemRestartAction().execute(error_type, "致命错误恢复", "ErrorHandler")
     
     def _deep_memory_cleanup(self):
         """深度内存清理"""
