@@ -13,6 +13,7 @@ import net_wifi
 import net_mqtt
 import sys_daemon
 import net_bt
+import sys_error
 
 # 配置管理
 class ConfigManager:
@@ -65,6 +66,34 @@ class ConfigManager:
 
 # 初始化配置管理器
 config_manager = ConfigManager()
+
+# 全局错误处理函数
+def handle_critical_error(error_msg, error_type=None):
+    """处理严重错误，进入安全模式"""
+    print(f"[Main] 严重错误: {error_msg}")
+    
+    # 记录错误到错误处理系统
+    if error_type:
+        try:
+            sys_error.handle_error(error_type, Exception(error_msg), "Main", sys_error.ErrorSeverity.CRITICAL)
+        except Exception as e:
+            print(f"[Main] 错误处理失败: {e}")
+    
+    # 强制进入安全模式
+    try:
+        sys_daemon.force_safe_mode(error_msg)
+        print("[Main] 已进入安全模式，LED闪烁提示，请按RST重启")
+    except Exception as e:
+        print(f"[Main] 安全模式激活失败: {e}")
+    
+    # 进入无限循环，等待手动重启
+    while True:
+        try:
+            # 尝试喂狗，防止看门狗重启
+            _wdt.feed()
+        except:
+            pass
+        time.sleep_ms(1000)
 
 # 从配置中获取参数
 CLIENT_ID = f"esp32c3-client-{machine.unique_id().hex()}"
@@ -126,16 +155,12 @@ if has_wifi_config:
             bt_initialized = net_bt.initialize_bluetooth()
             if not bt_initialized:
                 print("[Main] 蓝牙功能初始化失败")
-                print("[Main] 无法进入蓝牙配置模式，设备将重启...")
-                time.sleep(5)
-                machine.reset()
+                handle_critical_error("蓝牙初始化失败", sys_error.ErrorType.HARDWARE)
             else:
                 print("[Main] 蓝牙功能初始化成功，等待通过蓝牙配置WiFi...")
         else:
             print("[Main] 蓝牙功能已禁用")
-            print("[Main] 无法进入蓝牙配置模式，设备将重启...")
-            time.sleep(5)
-            machine.reset()
+            handle_critical_error("蓝牙功能已禁用，无法进入配置模式", sys_error.ErrorType.CONFIG)
         
         # 进入蓝牙配置模式循环
         print("[Main] 进入蓝牙配置模式...")
@@ -147,8 +172,8 @@ if has_wifi_config:
             current_networks = config_manager.get('wifi', 'networks', [])
             if len(current_networks) > 0:
                 print("[Main] 检测到新的WiFi配置，准备重启设备...")
-                time.sleep(2)
-                machine.reset()
+                print("[Main] 请手动重启设备以应用新配置")
+                handle_critical_error("检测到新WiFi配置，需要手动重启", sys_error.ErrorType.CONFIG)
             
             # 内存管理
             if loop_count % 100 == 0:
@@ -170,16 +195,12 @@ else:
         bt_initialized = net_bt.initialize_bluetooth()
         if not bt_initialized:
             print("[Main] 蓝牙功能初始化失败")
-            print("[Main] 无法进入蓝牙配置模式，设备将重启...")
-            time.sleep(5)
-            machine.reset()
+            handle_critical_error("蓝牙初始化失败", sys_error.ErrorType.HARDWARE)
         else:
             print("[Main] 蓝牙功能初始化成功，等待通过蓝牙配置WiFi...")
     else:
         print("[Main] 蓝牙功能已禁用")
-        print("[Main] 无法进入蓝牙配置模式，设备将重启...")
-        time.sleep(5)
-        machine.reset()
+        handle_critical_error("蓝牙功能已禁用，无法进入配置模式", sys_error.ErrorType.CONFIG)
     
     # 进入蓝牙配置模式循环
     print("[Main] 进入蓝牙配置模式...")
@@ -191,8 +212,8 @@ else:
         current_networks = config_manager.get('wifi', 'networks', [])
         if len(current_networks) > 0:
             print("[Main] 检测到新的WiFi配置，准备重启设备...")
-            time.sleep(2)
-            machine.reset()
+            print("[Main] 请手动重启设备以应用新配置")
+            handle_critical_error("检测到新WiFi配置，需要手动重启", sys_error.ErrorType.CONFIG)
         
         # 内存管理
         if loop_count % 100 == 0:
@@ -273,8 +294,8 @@ else:
     auto_restart_enabled = config_manager.get('system', 'auto_restart_enabled', False)
     if auto_restart_enabled:
         print("[Main] 5秒后重启设备...")
-        time.sleep(5)
-        machine.reset()
+        print("[Main] 进入安全模式，请手动重启设备")
+        handle_critical_error("WiFi连接失败，需要手动重启", sys_error.ErrorType.NETWORK)
     else:
         # 进入深度睡眠节省电量
         machine.deepsleep(60000)

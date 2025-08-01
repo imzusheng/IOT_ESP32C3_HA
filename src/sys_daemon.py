@@ -375,7 +375,10 @@ class SystemDaemon:
             return True
         
         try:
+            print("[Daemon] 开始启动守护进程...")
+            
             # 初始化硬件
+            print(f"[Daemon] 初始化LED控制器，引脚: {_daemon_config['led_pins']}")
             _led_controller = LEDController(
                 _daemon_config['led_pins'][0], 
                 _daemon_config['led_pins'][1]
@@ -384,6 +387,7 @@ class SystemDaemon:
             # 看门狗已移至主循环管理，守护进程不再负责看门狗
             
             # 初始化定时器
+            print(f"[Daemon] 初始化定时器，间隔: {_daemon_config['monitor_interval']}ms")
             _timer = machine.Timer(_daemon_config['timer_id'])
             _timer.init(
                 period=_daemon_config['monitor_interval'],
@@ -395,6 +399,8 @@ class SystemDaemon:
             _daemon_active = True
             _start_time = time.ticks_ms()
             self._initialized = True
+            
+            print("[Daemon] 守护进程启动成功")
             
             # 记录启动日志
             if _mqtt_client and hasattr(_mqtt_client, 'is_connected') and _mqtt_client.is_connected:
@@ -516,6 +522,35 @@ def reset_error_count():
     """重置错误计数"""
     global _error_count
     _error_count = 0
+
+def force_safe_mode(reason: str = "未知错误"):
+    """强制进入安全模式"""
+    global _safe_mode_active, _safe_mode_start_time
+    
+    print(f"[Daemon] 强制进入安全模式: {reason}")
+    
+    if not _safe_mode_active:
+        _safe_mode_active = True
+        _safe_mode_start_time = time.ticks_ms()
+        
+        # 记录日志
+        if _mqtt_client and hasattr(_mqtt_client, 'is_connected') and _mqtt_client.is_connected:
+            try:
+                if hasattr(_mqtt_client, 'log'):
+                    _mqtt_client.log("CRITICAL", f"强制进入安全模式: {reason}")
+            except Exception:
+                pass
+        
+        # 设置LED为错误闪烁模式
+        if _led_controller:
+            _led_controller.set_status('error')
+        
+        # 执行深度垃圾回收
+        for _ in range(2):
+            gc.collect()
+            time.sleep_ms(50)
+    
+    return True
 
 # =============================================================================
 # 初始化

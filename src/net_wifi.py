@@ -80,12 +80,14 @@ def sync_and_set_time():
     """
     print("\n[NTP] 开始时间同步...")
     ntptime.host = 'ntp.aliyun.com'  # 默认NTP服务器
+    print(f"[NTP] 使用NTP服务器: {ntptime.host}")
     
     # 初始化看门狗引用
     _wdt = None
     try:
         import machine
-        _wdt = machine.WDT(timeout=10000)  # 10秒看门狗
+        _wdt = machine.WDT(timeout=300000)  # 5分钟看门狗（调试用）
+        print("[NTP] 看门狗已初始化（5分钟超时）")
     except Exception as e:
         print(f"[NTP] 看门狗初始化失败: {e}")
     
@@ -139,8 +141,8 @@ def connect_wifi():
     _wdt = None
     try:
         import machine
-        _wdt = machine.WDT(timeout=10000)  # 10秒看门狗
-        print("[WiFi] 看门狗已初始化")
+        _wdt = machine.WDT(timeout=300000)  # 5分钟看门狗（调试用）
+        print("[WiFi] 看门狗已初始化（5分钟超时）")
     except Exception as e:
         print(f"[WiFi] 看门狗初始化失败: {e}")
     

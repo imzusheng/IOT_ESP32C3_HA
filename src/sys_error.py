@@ -11,7 +11,7 @@
 - 智能恢复策略
 
 内存优化说明：
-- 使用枚举和类减少内存占用
+- 使用常量代替枚举减少内存占用
 - 限制日志和错误历史大小
 - 定期垃圾回收
 - 避免复杂的数据结构
@@ -19,16 +19,13 @@
 
 import time
 import gc
-from enum import Enum
-
-import config
 
 # =============================================================================
 # 错误类型和严重程度定义
 # =============================================================================
 
-class ErrorType(Enum):
-    """错误类型枚举"""
+# 错误类型常量
+class ErrorType:
     NETWORK = "NETWORK_ERROR"      # 网络连接错误
     HARDWARE = "HARDWARE_ERROR"    # 硬件故障
     MEMORY = "MEMORY_ERROR"         # 内存不足
@@ -39,28 +36,24 @@ class ErrorType(Enum):
     DAEMON = "DAEMON_ERROR"         # 守护进程错误
     FATAL = "FATAL_ERROR"           # 致命错误
 
-class LogLevel(Enum):
-    """日志级别枚举"""
+# 日志级别常量
+class LogLevel:
     DEBUG = "DEBUG"    # 调试信息
     INFO = "INFO"      # 一般信息
     WARNING = "WARNING" # 警告信息
     ERROR = "ERROR"    # 错误信息
     CRITICAL = "CRITICAL" # 严重错误
 
-class ErrorSeverity(Enum):
-    """错误严重程度"""
+# 错误严重程度常量
+class ErrorSeverity:
     LOW = "LOW"           # 低级错误，不影响系统运行
     MEDIUM = "MEDIUM"     # 中级错误，影响部分功能
     HIGH = "HIGH"         # 高级错误，影响主要功能
     CRITICAL = "CRITICAL" # 严重错误，系统无法正常运行
     FATAL = "FATAL"       # 致命错误，需要立即重启
 
-# =============================================================================
-# 错误恢复策略
-# =============================================================================
-
-class RecoveryStrategy(Enum):
-    """恢复策略"""
+# 错误恢复策略常量
+class RecoveryStrategy:
     NONE = "NONE"                     # 无需恢复
     RETRY = "RETRY"                   # 重试
     RESTART_COMPONENT = "RESTART_COMPONENT"  # 重启组件
@@ -577,8 +570,8 @@ class ErrorHandler:
         
         # 对于致命错误，执行系统重启
         if error_type == ErrorType.FATAL:
-            if config.SystemConfig.AUTO_RESTART_ENABLED:
-                SystemRestartAction().execute(error_type, "致命错误恢复", "ErrorHandler")
+            # 默认启用自动重启
+            SystemRestartAction().execute(error_type, "致命错误恢复", "ErrorHandler")
     
     def _deep_memory_cleanup(self):
         """深度内存清理"""

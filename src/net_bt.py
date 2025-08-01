@@ -158,9 +158,7 @@ class WiFiScanner:
     
     def get_saved_networks(self):
         """获取已保存的WiFi网络"""
-        config = _config_manager.get_config()
-        if config and 'wifi' in config and 'networks' in config['wifi']:
-            return config['wifi']['networks']
+        # 注意：这个方法在BluetoothService中调用时，需要传入config_manager
         return []
 
 # =============================================================================
@@ -175,8 +173,9 @@ class BluetoothService:
     内存影响：低（约300字节）
     """
     
-    def __init__(self, ble):
+    def __init__(self, ble, config_manager):
         self.ble = ble
+        self.config_manager = config_manager
         self.wifi_scanner = WiFiScanner()
         self._setup_service()
     
@@ -234,7 +233,7 @@ class BluetoothService:
     def _get_device_info(self):
         """获取设备信息"""
         try:
-            config = _config_manager.get_config()
+            config = self.config_manager.get_config()
             device_info = {
                 'name': config.get('device', {}).get('name', 'ESP32C3-IOT'),
                 'location': config.get('device', {}).get('location', '未知位置'),
@@ -290,7 +289,7 @@ class BluetoothService:
                 
                 if cmd == 'get_config':
                     # 获取完整配置
-                    full_config = _config_manager.get_config()
+                    full_config = self.config_manager.get_config()
                     if full_config:
                         response = ujson.dumps({'cmd': 'config_data', 'data': full_config})
                         self.ble.gatts_write(self.config_handle, response.encode())
@@ -302,7 +301,7 @@ class BluetoothService:
                         path = config_data['path']
                         value = config_data['value']
                         
-                        if _config_manager.update_config(path, value):
+                        if self.config_manager.update_config(path, value):
                             response = ujson.dumps({'cmd': 'config_set', 'success': True})
                         else:
                             response = ujson.dumps({'cmd': 'config_set', 'success': False, 'error': 'save_failed'})
@@ -316,7 +315,7 @@ class BluetoothService:
                         ssid = config_data['ssid']
                         password = config_data['password']
                         
-                        config = _config_manager.get_config()
+                        config = self.config_manager.get_config()
                         if config and 'wifi' in config:
                             # 检查是否已存在
                             existing = False
@@ -327,7 +326,7 @@ class BluetoothService:
                             
                             if not existing:
                                 config['wifi']['networks'].append({'ssid': ssid, 'password': password})
-                                if _config_manager.save_config(config):
+                                if self.config_manager.save_config(config):
                                     response = ujson.dumps({'cmd': 'wifi_added', 'success': True})
                                 else:
                                     response = ujson.dumps({'cmd': 'wifi_added', 'success': False, 'error': 'save_failed'})
@@ -344,13 +343,13 @@ class BluetoothService:
                     if 'ssid' in config_data:
                         ssid = config_data['ssid']
                         
-                        config = _config_manager.get_config()
+                        config = self.config_manager.get_config()
                         if config and 'wifi' in config:
                             original_count = len(config['wifi']['networks'])
                             config['wifi']['networks'] = [net for net in config['wifi']['networks'] if net['ssid'] != ssid]
                             
                             if len(config['wifi']['networks']) < original_count:
-                                if _config_manager.save_config(config):
+                                if self.config_manager.save_config(config):
                                     response = ujson.dumps({'cmd': 'wifi_removed', 'success': True})
                                 else:
                                     response = ujson.dumps({'cmd': 'wifi_removed', 'success': False, 'error': 'save_failed'})
@@ -401,7 +400,7 @@ class BluetoothService:
                         password = config_data['password']
                         
                         # 保存到配置
-                        config = _config_manager.get_config()
+                        config = self.config_manager.get_config()
                         if config:
                             if 'wifi' not in config:
                                 config['wifi'] = {}
@@ -419,7 +418,7 @@ class BluetoothService:
                             if not existing:
                                 config['wifi']['networks'].append({'ssid': ssid, 'password': password})
                             
-                            if _config_manager.save_config(config):
+                            if self.config_manager.save_config(config):
                                 response = ujson.dumps({'cmd': 'wifi_save_result', 'success': True, 'message': 'WiFi配置已保存，设备将重启'})
                                 self.ble.gatts_write(self.config_handle, response.encode())
                                 self.ble.gatts_notify(0, self.config_handle, response.encode())
@@ -724,6 +723,8 @@ def initialize_bluetooth():
     """初始化蓝牙功能"""
     global _config_manager, _bt_manager
     
+    print("[BT] 开始初始化蓝牙功能...")
+    
     try:
         # 检查WiFi是否已激活，如果已激活则先关闭
         try:
@@ -733,13 +734,16 @@ def initialize_bluetooth():
                 print("[BT] 检测到WiFi已激活，先关闭WiFi以释放资源...")
                 wlan.active(False)
                 time.sleep_ms(1000)  # 等待WiFi完全关闭
+                print("[BT] WiFi已关闭，资源释放完成")
         except ImportError:
             pass
         
         # 初始化配置管理器
+        print("[BT] 初始化配置管理器...")
         _config_manager = BluetoothConfigManager()
         
         # 初始化蓝牙管理器
+        print("[BT] 初始化蓝牙管理器...")
         _bt_manager = BluetoothManager()
         if _bt_manager.initialize():
             print("[BT] 蓝牙功能启动成功")
