@@ -12,7 +12,27 @@ import gc
 import machine
 import ntptime
 
-import config
+# 全局WiFi网络配置
+_wifi_networks = []
+_wifi_timeout = 15
+_wifi_scan_interval = 30
+_wifi_connection_retry_delay = 2
+_wifi_max_connection_attempts = 3
+
+def set_wifi_networks(networks):
+    """设置WiFi网络配置"""
+    global _wifi_networks
+    _wifi_networks = networks
+    print(f"[WiFi] 已设置 {len(networks)} 个WiFi网络配置")
+
+def set_wifi_config(timeout=15, scan_interval=30, retry_delay=2, max_attempts=3):
+    """设置WiFi连接参数"""
+    global _wifi_timeout, _wifi_scan_interval, _wifi_connection_retry_delay, _wifi_max_connection_attempts
+    _wifi_timeout = timeout
+    _wifi_scan_interval = scan_interval
+    _wifi_connection_retry_delay = retry_delay
+    _wifi_max_connection_attempts = max_attempts
+    print(f"[WiFi] 已设置WiFi连接参数")
 
 
 def _scan_for_ssids(wlan):
@@ -27,7 +47,7 @@ def _scan_for_ssids(wlan):
     """
     print("[WiFi] 正在扫描网络...")
     scanned_networks = []
-    target_ssids = {c['ssid'] for c in config.WiFiConfig.NETWORKS}
+    target_ssids = {c['ssid'] for c in _wifi_networks}
     
     try:
         scan_results = wlan.scan()
@@ -59,13 +79,13 @@ def sync_and_set_time():
     - False: 时间同步失败
     """
     print("\n[NTP] 开始时间同步...")
-    ntptime.host = config.SystemConfig.NTP_HOST
+    ntptime.host = 'ntp.aliyun.com'  # 默认NTP服务器
     
     for i in range(3):  # 最多重试3次
         try:
             ntptime.settime()
             utc = time.localtime()
-            local_time = time.localtime(time.time() + config.SystemConfig.TIMEZONE_OFFSET_H * 3600)
+            local_time = time.localtime(time.time() + 8 * 3600)  # 中国时区 UTC+8
             
             # 设置RTC
             machine.RTC().datetime((utc[0], utc[1], utc[2], utc[6]+1, utc[3], utc[4], utc[5], 0))
@@ -119,7 +139,7 @@ def connect_wifi():
     # 获取可连接的网络配置
     available_ssids = {net[0] for net in scanned_networks}
     rssi_map = {net[0]: net[1] for net in scanned_networks}
-    connectable_configs = [c for c in config.WiFiConfig.NETWORKS if c['ssid'] in available_ssids]
+    connectable_configs = [c for c in _wifi_networks if c['ssid'] in available_ssids]
 
     if not connectable_configs:
         print("\033[1;31m[WiFi] 没有匹配的网络配置\033[0m")
@@ -142,7 +162,7 @@ def connect_wifi():
         wlan.connect(ssid, password)
         
         start_time = time.time()
-        connection_timeout = config.WiFiConfig.TIMEOUT_S
+        connection_timeout = _wifi_timeout
         
         while not wlan.isconnected():
             if time.time() - start_time > connection_timeout:

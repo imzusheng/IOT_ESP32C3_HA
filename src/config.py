@@ -151,18 +151,18 @@ class SystemConfig:
     
     # 错误恢复配置
     ERROR_RECOVERY_ENABLED = True  # 启用错误恢复，建议True
-    AUTO_RESTART_ENABLED = True    # 启用自动重启，生产环境建议True
+    AUTO_RESTART_ENABLED = False   # 启用自动重启，生产环境建议True
     HEALTH_CHECK_INTERVAL = 60000  # 健康检查间隔（毫秒），建议60秒
     MAX_RECOVERY_ATTEMPTS = 3      # 最大恢复尝试次数，建议3次
     RECOVERY_COOLDOWN = 30000      # 恢复冷却时间（毫秒），建议30秒
     CRITICAL_ERROR_THRESHOLD = 5   # 严重错误阈值，超过后重启，建议3-5次
     
     # 状态监控配置
-    STATUS_MONITOR_INTERVAL = 30000  # 状态监控间隔（毫秒），建议30秒
-    LOG_BUFFER_SIZE = 50           # 日志缓冲区大小，建议50-100条
-    METRICS_HISTORY_SIZE = 100      # 指标历史大小，建议100-200条
-    REMOTE_MONITORING_ENABLED = True  # 启用远程监控，根据需求设置
-    DIAGNOSTIC_ENABLED = True      # 启用诊断功能，建议True
+    STATUS_MONITOR_INTERVAL = 30000     # 状态监控间隔（毫秒），建议30秒
+    LOG_BUFFER_SIZE = 50                # 日志缓冲区大小，建议50-100条
+    METRICS_HISTORY_SIZE = 100          # 指标历史大小，建议100-200条
+    REMOTE_MONITORING_ENABLED = True    # 启用远程监控，根据需求设置
+    DIAGNOSTIC_ENABLED = True           # 启用诊断功能，建议True
 
 # =============================================================================
 # 配置验证器

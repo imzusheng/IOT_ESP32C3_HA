@@ -1,0 +1,1215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-touch-fullscreen" content="yes">
+    <title>ESP32C3 配置</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            /* 防止双击放大 */
+            touch-action: manipulation;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        
+        /* 防止双击放大 */
+        html, body {
+            touch-action: manipulation;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+            overscroll-behavior: none;
+        }
+        
+        /* 防止双击选中文本 */
+        input, select, button {
+            -webkit-user-select: text;
+            user-select: text;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f7;
+            min-height: 100vh;
+            color: #1d1d1f;
+            line-height: 1.47059;
+        }
+
+        .container {
+            max-width: 480px;
+            margin: 0 auto;
+            min-height: 100vh;
+            background: #ffffff;
+            box-shadow: 0 0 0 1px rgba(0,0,0,0.1);
+        }
+
+        .header {
+            background: #ffffff;
+            padding: 20px;
+            text-align: center;
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            font-size: 24px;
+            font-weight: 600;
+            color: #1d1d1f;
+            margin-bottom: 4px;
+        }
+
+        .header p {
+            font-size: 14px;
+            color: #86868b;
+        }
+
+        .content {
+            padding: 16px;
+        }
+
+        .section {
+            margin-bottom: 24px;
+            background: #ffffff;
+            border-radius: 12px;
+            border: 1px solid rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .section-header {
+            padding: 16px;
+            background: #f9f9f9;
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+        }
+
+        .section-header h2 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1d1d1f;
+        }
+
+        .section-content {
+            padding: 16px;
+        }
+
+        .btn {
+            background: #007aff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            width: 100%;
+            margin-bottom: 8px;
+        }
+
+        .btn:hover {
+            background: #0051d5;
+        }
+
+        .btn:active {
+            background: #0041b3;
+        }
+
+        .btn:disabled {
+            background: #c7c7cc;
+            cursor: not-allowed;
+        }
+
+        .btn-danger {
+            background: #ff3b30;
+        }
+
+        .btn-danger:hover {
+            background: #d70015;
+        }
+
+        .btn-danger:active {
+            background: #bd0020;
+        }
+
+        .btn-success {
+            background: #34c759;
+        }
+
+        .btn-success:hover {
+            background: #248a3d;
+        }
+
+        .btn-success:active {
+            background: #1a6b2f;
+        }
+
+        .status {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            font-size: 14px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .status.connected {
+            background: #d1f2eb;
+            color: #1d7460;
+        }
+
+        .status.disconnected {
+            background: #f8d7da;
+            color: #842029;
+        }
+
+        .status.scanning {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #1d1d1f;
+        }
+
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #d2d2d7;
+            border-radius: 8px;
+            font-size: 16px;
+            background: #ffffff;
+            transition: border-color 0.2s ease;
+        }
+
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #007aff;
+        }
+
+        .wifi-list {
+            max-height: 240px;
+            overflow-y: auto;
+            border: 1px solid #d2d2d7;
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
+
+        .wifi-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            border-bottom: 1px solid #f0f0f0;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        .wifi-item:last-child {
+            border-bottom: none;
+        }
+
+        .wifi-item:hover {
+            background: #f9f9f9;
+        }
+
+        .wifi-item.selected {
+            background: #e3f2fd;
+        }
+
+        .wifi-info {
+            flex: 1;
+        }
+
+        .wifi-name {
+            font-weight: 500;
+            color: #1d1d1f;
+            font-size: 14px;
+            margin-bottom: 2px;
+        }
+
+        .wifi-details {
+            font-size: 12px;
+            color: #86868b;
+        }
+
+        .wifi-signal {
+            width: 16px;
+            height: 16px;
+            margin-left: 8px;
+        }
+
+        .config-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 16px;
+        }
+
+        .config-section {
+            background: #ffffff;
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid #d2d2d7;
+        }
+
+        .config-section h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1d1d1f;
+            margin-bottom: 12px;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #007aff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 8px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .device-info {
+            background: #f9f9f9;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            border: 1px solid #d2d2d7;
+        }
+
+        .device-info h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1d1d1f;
+            margin-bottom: 8px;
+        }
+
+        .device-info p {
+            margin: 4px 0;
+            font-size: 13px;
+            color: #86868b;
+        }
+
+        .connection-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            z-index: 1000;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .connection-status.connected {
+            background: #34c759;
+            color: white;
+        }
+
+        .connection-status.disconnected {
+            background: #ff3b30;
+            color: white;
+        }
+
+        .connection-status.scanning {
+            background: #ff9500;
+            color: white;
+        }
+
+        .compact-form {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .compact-form .form-group:last-child {
+            grid-column: span 2;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                margin: 0;
+                border-radius: 0;
+            }
+            
+            .compact-form {
+                grid-template-columns: 1fr;
+            }
+            
+            .compact-form .form-group:last-child {
+                grid-column: span 1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 连接状态指示器 -->
+    <div id="connectionIndicator" class="connection-status disconnected">未连接</div>
+    
+    <div class="container">
+        <div class="header">
+            <h1>ESP32C3 配置</h1>
+            <p>蓝牙设备配置工具</p>
+        </div>
+
+        <div class="content">
+            <!-- 连接状态显示 -->
+            <div id="connectionStatus" class="status disconnected">未连接</div>
+            
+            <!-- 设备连接 -->
+            <div class="section">
+                <div class="section-header">
+                    <h2>设备连接</h2>
+                </div>
+                <div class="section-content">
+                    <button id="connectBtn" class="btn">连接设备</button>
+                    <button id="disconnectBtn" class="btn btn-danger hidden">断开连接</button>
+                    
+                    <div id="deviceInfo" class="device-info hidden">
+                        <div class="compact-form">
+                            <div class="form-group">
+                                <label>设备名称</label>
+                                <input type="text" id="deviceName" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label>设备位置</label>
+                                <input type="text" id="deviceLocation" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label>固件版本</label>
+                                <input type="text" id="firmwareVersion" readonly>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- WiFi配置 -->
+            <div class="section">
+                <div class="section-header">
+                    <h2>WiFi配置</h2>
+                </div>
+                <div class="section-content">
+                    <button id="scanWifiBtn" class="btn" disabled>扫描网络</button>
+                    
+                    <div id="wifiList" class="wifi-list hidden"></div>
+                    
+                    <div class="compact-form">
+                        <div class="form-group">
+                            <label for="wifiSsid">网络名称</label>
+                            <input type="text" id="wifiSsid" placeholder="SSID">
+                        </div>
+                        <div class="form-group">
+                            <label for="wifiPassword">密码</label>
+                            <input type="password" id="wifiPassword" placeholder="密码">
+                        </div>
+                    </div>
+                    
+                    <button id="addWifiBtn" class="btn btn-success" disabled>添加网络</button>
+                </div>
+            </div>
+
+            <!-- MQTT配置 -->
+            <div class="section">
+                <div class="section-header">
+                    <h2>MQTT配置</h2>
+                </div>
+                <div class="section-content">
+                    <div class="compact-form">
+                        <div class="form-group">
+                            <label for="mqttBroker">服务器</label>
+                            <input type="text" id="mqttBroker" placeholder="192.168.1.2">
+                        </div>
+                        <div class="form-group">
+                            <label for="mqttPort">端口</label>
+                            <input type="number" id="mqttPort" value="1883">
+                        </div>
+                        <div class="form-group">
+                            <label for="mqttTopic">主题</label>
+                            <input type="text" id="mqttTopic" placeholder="lzs/esp32c3">
+                        </div>
+                        <div class="form-group">
+                            <label for="mqttKeepalive">心跳</label>
+                            <input type="number" id="mqttKeepalive" value="60">
+                        </div>
+                    </div>
+                    
+                    <button id="saveMqttBtn" class="btn btn-success" disabled>保存配置</button>
+                </div>
+            </div>
+
+            <!-- 设备配置 -->
+            <div class="section">
+                <div class="section-header">
+                    <h2>设备配置</h2>
+                </div>
+                <div class="section-content">
+                    <div class="compact-form">
+                        <div class="form-group">
+                            <label for="deviceNameConfig">设备名称</label>
+                            <input type="text" id="deviceNameConfig" placeholder="设备名称">
+                        </div>
+                        <div class="form-group">
+                            <label for="deviceLocationConfig">设备位置</label>
+                            <input type="text" id="deviceLocationConfig" placeholder="设备位置">
+                        </div>
+                        <div class="form-group">
+                            <label for="logLevel">日志级别</label>
+                            <select id="logLevel">
+                                <option value="DEBUG">DEBUG</option>
+                                <option value="INFO" selected>INFO</option>
+                                <option value="WARNING">WARNING</option>
+                                <option value="ERROR">ERROR</option>
+                                <option value="CRITICAL">CRITICAL</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="debugMode">调试模式</label>
+                            <select id="debugMode">
+                                <option value="false" selected>关闭</option>
+                                <option value="true">开启</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <button id="saveDeviceBtn" class="btn btn-success" disabled>保存配置</button>
+                </div>
+            </div>
+
+            <!-- 系统操作 -->
+            <div class="section">
+                <div class="section-header">
+                    <h2>系统操作</h2>
+                </div>
+                <div class="section-content">
+                    <button id="restartDeviceBtn" class="btn btn-danger" disabled>重启设备</button>
+                    <button id="factoryResetBtn" class="btn btn-danger" disabled>恢复出厂设置</button>
+                    <p style="margin-top: 8px; font-size: 12px; color: #86868b;">
+                        注意：这些操作会立即生效
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 蓝牙配置
+        const SERVICE_UUID = '00001234-0000-1000-8000-00805f9b34fb';
+        const CHAR_CONFIG_UUID = '00001235-0000-1000-8000-00805f9b34fb';
+        const CHAR_STATUS_UUID = '00001236-0000-1000-8000-00805f9b34fb';
+        const CHAR_WIFI_SCAN_UUID = '00001237-0000-1000-8000-00805f9b34fb';
+        const CHAR_WIFI_LIST_UUID = '00001238-0000-1000-8000-00805f9b34fb';
+        const CHAR_DEVICE_INFO_UUID = '00001239-0000-1000-8000-00805f9b34fb';
+
+        // 全局变量
+        let device = null;
+        let server = null;
+        let service = null;
+        let configCharacteristic = null;
+        let statusCharacteristic = null;
+        let wifiScanCharacteristic = null;
+        let wifiListCharacteristic = null;
+        let deviceInfoCharacteristic = null;
+        let bluetoothSupported = false;
+        let scannedDevices = [];
+
+        // DOM元素
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const connectionStatus = document.getElementById('connectionStatus');
+        const deviceInfo = document.getElementById('deviceInfo');
+        const scanWifiBtn = document.getElementById('scanWifiBtn');
+        const wifiStatus = document.getElementById('wifiStatus');
+        const wifiList = document.getElementById('wifiList');
+        const addWifiBtn = document.getElementById('addWifiBtn');
+        const saveMqttBtn = document.getElementById('saveMqttBtn');
+        const saveDeviceBtn = document.getElementById('saveDeviceBtn');
+        const restartDeviceBtn = document.getElementById('restartDeviceBtn');
+        const factoryResetBtn = document.getElementById('factoryResetBtn');
+
+        // 连接设备
+        connectBtn.addEventListener('click', async () => {
+            try {
+                connectBtn.disabled = true;
+                connectionStatus.className = 'status scanning';
+                connectionStatus.innerHTML = '正在扫描设备...<div class="loading"></div>';
+
+                // 请求蓝牙设备
+                device = await navigator.bluetooth.requestDevice({
+                    filters: [{ services: [SERVICE_UUID] }],
+                    optionalServices: [SERVICE_UUID]
+                });
+
+                connectionStatus.innerHTML = '正在连接设备...<div class="loading"></div>';
+
+                // 连接设备
+                server = await device.gatt.connect();
+                
+                // 获取服务
+                service = await server.getPrimaryService(SERVICE_UUID);
+                
+                // 获取特征值
+                configCharacteristic = await service.getCharacteristic(CHAR_CONFIG_UUID);
+                statusCharacteristic = await service.getCharacteristic(CHAR_STATUS_UUID);
+                wifiScanCharacteristic = await service.getCharacteristic(CHAR_WIFI_SCAN_UUID);
+                wifiListCharacteristic = await service.getCharacteristic(CHAR_WIFI_LIST_UUID);
+                deviceInfoCharacteristic = await service.getCharacteristic(CHAR_DEVICE_INFO_UUID);
+
+                // 启用通知
+                await configCharacteristic.startNotifications();
+                await statusCharacteristic.startNotifications();
+                await wifiListCharacteristic.startNotifications();
+                await deviceInfoCharacteristic.startNotifications();
+
+                // 设置事件监听器
+                configCharacteristic.addEventListener('characteristicvaluechanged', handleConfigNotification);
+                statusCharacteristic.addEventListener('characteristicvaluechanged', handleStatusNotification);
+                wifiListCharacteristic.addEventListener('characteristicvaluechanged', handleWifiListNotification);
+                deviceInfoCharacteristic.addEventListener('characteristicvaluechanged', handleDeviceInfoNotification);
+
+                // 更新UI状态
+                updateConnectionStatus(true);
+                
+                // 获取设备信息
+                await getDeviceInfo();
+                
+                // 获取当前配置
+                await getCurrentConfig();
+
+            } catch (error) {
+                console.error('连接失败:', error);
+                connectionStatus.className = 'status disconnected';
+                connectionStatus.textContent = '连接失败: ' + error.message;
+                connectBtn.disabled = false;
+            }
+        });
+
+        // 断开连接
+        disconnectBtn.addEventListener('click', async () => {
+            if (device && device.gatt.connected) {
+                await device.gatt.disconnect();
+            }
+            updateConnectionStatus(false);
+        });
+
+        // 更新连接状态
+        function updateConnectionStatus(connected) {
+            const connectionIndicator = document.getElementById('connectionIndicator');
+            
+            if (connected) {
+                connectionStatus.className = 'status connected';
+                connectionStatus.textContent = '已连接';
+                connectBtn.classList.add('hidden');
+                disconnectBtn.classList.remove('hidden');
+                
+                // 更新连接状态指示器
+                connectionIndicator.className = 'connection-status connected';
+                connectionIndicator.textContent = '已连接';
+                
+                // 启用所有按钮
+                scanWifiBtn.disabled = false;
+                addWifiBtn.disabled = false;
+                saveMqttBtn.disabled = false;
+                saveDeviceBtn.disabled = false;
+                restartDeviceBtn.disabled = false;
+                factoryResetBtn.disabled = false;
+                
+                deviceInfo.classList.remove('hidden');
+            } else {
+                connectionStatus.className = 'status disconnected';
+                connectionStatus.textContent = '未连接';
+                connectBtn.classList.remove('hidden');
+                disconnectBtn.classList.add('hidden');
+                
+                // 更新连接状态指示器
+                connectionIndicator.className = 'connection-status disconnected';
+                connectionIndicator.textContent = '未连接';
+                
+                // 禁用所有按钮
+                scanWifiBtn.disabled = true;
+                addWifiBtn.disabled = true;
+                saveMqttBtn.disabled = true;
+                saveDeviceBtn.disabled = true;
+                restartDeviceBtn.disabled = true;
+                factoryResetBtn.disabled = true;
+                
+                deviceInfo.classList.add('hidden');
+            }
+        }
+
+        // 处理配置通知
+        function handleConfigNotification(event) {
+            const value = new TextDecoder().decode(event.target.value);
+            try {
+                const data = JSON.parse(value);
+                console.log('配置通知:', data);
+                
+                if (data.cmd === 'config_data') {
+                    updateConfigUI(data.data);
+                } else if (data.cmd === 'config_set') {
+                    showNotification(data.success ? '配置保存成功' : '配置保存失败', data.success);
+                } else if (data.cmd === 'wifi_added') {
+                    showNotification(data.success ? 'WiFi网络添加成功' : 'WiFi网络添加失败', data.success);
+                    if (data.success) {
+                        scanWifi();
+                    }
+                } else if (data.cmd === 'wifi_removed') {
+                    showNotification(data.success ? 'WiFi网络删除成功' : 'WiFi网络删除失败', data.success);
+                    if (data.success) {
+                        scanWifi();
+                    }
+                } else if (data.cmd === 'device_restart') {
+                    showNotification('设备重启命令已发送', true);
+                    setTimeout(() => {
+                        updateConnectionStatus(false);
+                    }, 2000);
+                } else if (data.cmd === 'factory_reset') {
+                    showNotification('恢复出厂设置命令已发送', true);
+                    setTimeout(() => {
+                        updateConnectionStatus(false);
+                    }, 2000);
+                }
+            } catch (error) {
+                console.error('解析配置通知失败:', error);
+            }
+        }
+
+        // 处理状态通知
+        function handleStatusNotification(event) {
+            const value = new TextDecoder().decode(event.target.value);
+            console.log('状态通知:', value);
+        }
+
+        // 处理WiFi列表通知
+        function handleWifiListNotification(event) {
+            const value = new TextDecoder().decode(event.target.value);
+            try {
+                const data = JSON.parse(value);
+                console.log('WiFi列表通知:', data);
+                
+                if (data.cmd === 'wifi_scan_result') {
+                    updateWifiList(data.networks);
+                } else if (data.cmd === 'wifi_scan_error') {
+                    wifiStatus.className = 'status disconnected';
+                    wifiStatus.textContent = 'WiFi扫描失败: ' + data.error;
+                }
+            } catch (error) {
+                console.error('解析WiFi列表通知失败:', error);
+            }
+        }
+
+        // 处理设备信息通知
+        function handleDeviceInfoNotification(event) {
+            const value = new TextDecoder().decode(event.target.value);
+            try {
+                const data = JSON.parse(value);
+                console.log('设备信息通知:', data);
+                
+                document.getElementById('deviceName').textContent = data.name || '-';
+                document.getElementById('deviceLocation').textContent = data.location || '-';
+                document.getElementById('firmwareVersion').textContent = data.firmware_version || '-';
+                document.getElementById('deviceId').textContent = data.device_id || '-';
+            } catch (error) {
+                console.error('解析设备信息通知失败:', error);
+            }
+        }
+
+        // 获取设备信息
+        async function getDeviceInfo() {
+            try {
+                const value = await deviceInfoCharacteristic.readValue();
+                const data = JSON.parse(new TextDecoder().decode(value));
+                
+                document.getElementById('deviceName').textContent = data.name || '-';
+                document.getElementById('deviceLocation').textContent = data.location || '-';
+                document.getElementById('firmwareVersion').textContent = data.firmware_version || '-';
+                document.getElementById('deviceId').textContent = data.device_id || '-';
+            } catch (error) {
+                console.error('获取设备信息失败:', error);
+            }
+        }
+
+        // 获取当前配置
+        async function getCurrentConfig() {
+            try {
+                const command = JSON.stringify({ cmd: 'get_config' });
+                await configCharacteristic.writeValue(new TextEncoder().encode(command));
+            } catch (error) {
+                console.error('获取配置失败:', error);
+            }
+        }
+
+        // 更新配置UI
+        function updateConfigUI(config) {
+            // 更新MQTT配置
+            if (config.mqtt) {
+                document.getElementById('mqttBroker').value = config.mqtt.broker || '';
+                document.getElementById('mqttPort').value = config.mqtt.port || 1883;
+                document.getElementById('mqttTopic').value = config.mqtt.topic || '';
+                document.getElementById('mqttKeepalive').value = config.mqtt.keepalive || 60;
+            }
+            
+            // 更新设备配置
+            if (config.device) {
+                document.getElementById('deviceNameConfig').value = config.device.name || '';
+                document.getElementById('deviceLocationConfig').value = config.device.location || '';
+            }
+            
+            // 更新系统配置
+            if (config.system) {
+                document.getElementById('logLevel').value = config.system.log_level || 'INFO';
+                document.getElementById('debugMode').value = config.system.debug_mode ? 'true' : 'false';
+            }
+        }
+
+        // 扫描WiFi
+        scanWifiBtn.addEventListener('click', async () => {
+            try {
+                scanWifiBtn.disabled = true;
+                wifiStatus.className = 'status scanning';
+                wifiStatus.innerHTML = '正在扫描WiFi网络...<div class="loading"></div>';
+                wifiList.classList.remove('hidden');
+                
+                await wifiScanCharacteristic.writeValue(new TextEncoder().encode('scan'));
+                
+            } catch (error) {
+                console.error('扫描WiFi失败:', error);
+                wifiStatus.className = 'status disconnected';
+                wifiStatus.textContent = 'WiFi扫描失败: ' + error.message;
+                scanWifiBtn.disabled = false;
+            }
+        });
+
+        // 更新WiFi列表
+        function updateWifiList(networks) {
+            wifiList.innerHTML = '';
+            
+            networks.forEach(network => {
+                const item = document.createElement('div');
+                item.className = `wifi-item ${network.saved ? 'saved' : ''}`;
+                
+                const authMode = ['开放', 'WEP', 'WPA', 'WPA2', 'WPA/WPA2'][network.authmode] || '未知';
+                const rssi = network.rssi;
+                const signalStrength = rssi > -50 ? '强' : rssi > -70 ? '中' : '弱';
+                
+                item.innerHTML = `
+                    <div class="wifi-info">
+                        <div class="wifi-name">${network.ssid}</div>
+                        <div class="wifi-details">
+                            ${authMode} | 信号: ${signalStrength} (${rssi}dBm) | 信道: ${network.channel}
+                            ${network.saved ? ' | 已保存' : ''}
+                        </div>
+                    </div>
+                    <div>
+                        <button class="btn ${network.saved ? 'btn-danger' : 'btn-success'}" 
+                                onclick="${network.saved ? `removeWifi('${network.ssid}')` : `selectWifi('${network.ssid}')`}">
+                            ${network.saved ? '删除' : '选择'}
+                        </button>
+                    </div>
+                `;
+                
+                wifiList.appendChild(item);
+            });
+            
+            wifiStatus.className = 'status connected';
+            wifiStatus.textContent = `发现 ${networks.length} 个WiFi网络`;
+            scanWifiBtn.disabled = false;
+        }
+
+        // 选择WiFi
+        function selectWifi(ssid) {
+            document.getElementById('wifiSsid').value = ssid;
+            document.getElementById('wifiPassword').focus();
+        }
+
+        // 删除WiFi
+        async function removeWifi(ssid) {
+            try {
+                const command = JSON.stringify({ cmd: 'wifi_remove', ssid: ssid });
+                await configCharacteristic.writeValue(new TextEncoder().encode(command));
+            } catch (error) {
+                console.error('删除WiFi失败:', error);
+                showNotification('删除WiFi失败', false);
+            }
+        }
+
+        // 添加WiFi
+        addWifiBtn.addEventListener('click', async () => {
+            const ssid = document.getElementById('wifiSsid').value.trim();
+            const password = document.getElementById('wifiPassword').value.trim();
+            
+            if (!ssid) {
+                showNotification('请输入WiFi网络名称', false);
+                return;
+            }
+            
+            if (!password) {
+                showNotification('请输入WiFi密码', false);
+                return;
+            }
+            
+            try {
+                addWifiBtn.disabled = true;
+                const command = JSON.stringify({ cmd: 'wifi_add', ssid: ssid, password: password });
+                await configCharacteristic.writeValue(new TextEncoder().encode(command));
+            } catch (error) {
+                console.error('添加WiFi失败:', error);
+                showNotification('添加WiFi失败', false);
+                addWifiBtn.disabled = false;
+            }
+        });
+
+        // 保存MQTT配置
+        saveMqttBtn.addEventListener('click', async () => {
+            const config = {
+                broker: document.getElementById('mqttBroker').value.trim(),
+                port: parseInt(document.getElementById('mqttPort').value),
+                topic: document.getElementById('mqttTopic').value.trim(),
+                keepalive: parseInt(document.getElementById('mqttKeepalive').value)
+            };
+            
+            if (!config.broker) {
+                showNotification('请输入MQTT服务器地址', false);
+                return;
+            }
+            
+            if (!config.topic) {
+                showNotification('请输入MQTT主题', false);
+                return;
+            }
+            
+            try {
+                saveMqttBtn.disabled = true;
+                
+                // 保存MQTT配置
+                await saveConfig('mqtt.broker', config.broker);
+                await saveConfig('mqtt.port', config.port);
+                await saveConfig('mqtt.topic', config.topic);
+                await saveConfig('mqtt.keepalive', config.keepalive);
+                
+                showNotification('MQTT配置保存成功', true);
+            } catch (error) {
+                console.error('保存MQTT配置失败:', error);
+                showNotification('保存MQTT配置失败', false);
+            } finally {
+                saveMqttBtn.disabled = false;
+            }
+        });
+
+        // 保存设备配置
+        saveDeviceBtn.addEventListener('click', async () => {
+            const deviceName = document.getElementById('deviceNameConfig').value.trim();
+            const deviceLocation = document.getElementById('deviceLocationConfig').value.trim();
+            const logLevel = document.getElementById('logLevel').value;
+            const debugMode = document.getElementById('debugMode').value === 'true';
+            
+            try {
+                saveDeviceBtn.disabled = true;
+                
+                // 保存设备配置
+                await saveConfig('device.name', deviceName);
+                await saveConfig('device.location', deviceLocation);
+                await saveConfig('system.log_level', logLevel);
+                await saveConfig('system.debug_mode', debugMode);
+                
+                showNotification('设备配置保存成功', true);
+                
+                // 更新设备信息显示
+                document.getElementById('deviceName').textContent = deviceName || '-';
+                document.getElementById('deviceLocation').textContent = deviceLocation || '-';
+                
+            } catch (error) {
+                console.error('保存设备配置失败:', error);
+                showNotification('保存设备配置失败', false);
+            } finally {
+                saveDeviceBtn.disabled = false;
+            }
+        });
+
+        // 保存配置
+        async function saveConfig(path, value) {
+            const command = JSON.stringify({ cmd: 'set_config', path: path, value: value });
+            await configCharacteristic.writeValue(new TextEncoder().encode(command));
+        }
+
+        // 重启设备
+        restartDeviceBtn.addEventListener('click', async () => {
+            if (confirm('确定要重启设备吗？')) {
+                try {
+                    restartDeviceBtn.disabled = true;
+                    const command = JSON.stringify({ cmd: 'device_restart' });
+                    await configCharacteristic.writeValue(new TextEncoder().encode(command));
+                } catch (error) {
+                    console.error('重启设备失败:', error);
+                    showNotification('重启设备失败', false);
+                    restartDeviceBtn.disabled = false;
+                }
+            }
+        });
+
+        // 恢复出厂设置
+        factoryResetBtn.addEventListener('click', async () => {
+            if (confirm('确定要恢复出厂设置吗？这将清除所有配置！')) {
+                if (confirm('请再次确认：恢复出厂设置将清除所有配置，设备将重启！')) {
+                    try {
+                        factoryResetBtn.disabled = true;
+                        const command = JSON.stringify({ cmd: 'factory_reset' });
+                        await configCharacteristic.writeValue(new TextEncoder().encode(command));
+                    } catch (error) {
+                        console.error('恢复出厂设置失败:', error);
+                        showNotification('恢复出厂设置失败', false);
+                        factoryResetBtn.disabled = false;
+                    }
+                }
+            }
+        });
+
+        // 显示通知
+        function showNotification(message, success) {
+            const notification = document.createElement('div');
+            notification.className = `status ${success ? 'connected' : 'disconnected'}`;
+            notification.textContent = message;
+            notification.style.position = 'fixed';
+            notification.style.top = '20px';
+            notification.style.right = '20px';
+            notification.style.zIndex = '1000';
+            notification.style.minWidth = '200px';
+            notification.style.maxWidth = '400px';
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
+
+        // 初始化蓝牙检测
+        async function initBluetooth() {
+            // 检查浏览器是否支持Web Bluetooth API
+            if (!navigator.bluetooth) {
+                bluetoothSupported = false;
+                connectionStatus.className = 'status disconnected';
+                connectionStatus.textContent = '您的浏览器不支持Web Bluetooth API，请使用Chrome或Edge浏览器';
+                connectBtn.disabled = true;
+                showNotification('浏览器不支持蓝牙功能', false);
+                return;
+            }
+
+            // 检查蓝牙是否可用
+            try {
+                const bluetooth = navigator.bluetooth;
+                const availability = await bluetooth.getAvailability();
+                bluetoothSupported = availability;
+                
+                if (!availability) {
+                    connectionStatus.className = 'status disconnected';
+                    connectionStatus.textContent = '蓝牙不可用，请检查设备蓝牙设置';
+                    connectBtn.disabled = true;
+                    showNotification('蓝牙不可用', false);
+                    return;
+                }
+                
+                // 蓝牙可用，启用连接按钮
+                connectionStatus.className = 'status connected';
+                connectionStatus.textContent = '蓝牙已就绪';
+                connectBtn.disabled = false;
+                showNotification('蓝牙检测成功', true);
+                
+                // 监听蓝牙可用性变化
+                bluetooth.addEventListener('availabilitychanged', (event) => {
+                    bluetoothSupported = event.value;
+                    if (!event.value) {
+                        connectionStatus.className = 'status disconnected';
+                        connectionStatus.textContent = '蓝牙已断开';
+                        connectBtn.disabled = true;
+                        if (device && device.gatt.connected) {
+                            updateConnectionStatus(false);
+                        }
+                    } else {
+                        connectionStatus.className = 'status connected';
+                        connectionStatus.textContent = '蓝牙已就绪';
+                        connectBtn.disabled = false;
+                    }
+                });
+                
+            } catch (error) {
+                console.error('蓝牙检测失败:', error);
+                bluetoothSupported = false;
+                connectionStatus.className = 'status disconnected';
+                connectionStatus.textContent = '蓝牙检测失败: ' + error.message;
+                connectBtn.disabled = true;
+                showNotification('蓝牙检测失败', false);
+            }
+        }
+
+        // 扫描蓝牙设备
+        async function scanBluetoothDevices() {
+            if (!bluetoothSupported) {
+                showNotification('蓝牙不可用', false);
+                return;
+            }
+
+            try {
+                connectBtn.disabled = true;
+                connectionStatus.className = 'status scanning';
+                connectionStatus.innerHTML = '正在扫描蓝牙设备...<div class="loading"></div>';
+                
+                // 扫描所有蓝牙设备
+                const device = await navigator.bluetooth.requestDevice({
+                    acceptAllDevices: true,
+                    optionalServices: [SERVICE_UUID]
+                });
+                
+                // 检查设备是否支持我们的服务
+                if (device.name) {
+                    showNotification(`发现设备: ${device.name}`, true);
+                    return device;
+                } else {
+                    showNotification('发现未知设备', true);
+                    return device;
+                }
+                
+            } catch (error) {
+                console.error('扫描蓝牙设备失败:', error);
+                connectionStatus.className = 'status disconnected';
+                connectionStatus.textContent = '扫描失败: ' + error.message;
+                connectBtn.disabled = false;
+                showNotification('扫描蓝牙设备失败', false);
+                return null;
+            }
+        }
+
+        // 连接蓝牙设备
+        async function connectBluetoothDevice(targetDevice = null) {
+            if (!bluetoothSupported) {
+                showNotification('蓝牙不可用', false);
+                return false;
+            }
+
+            try {
+                connectBtn.disabled = true;
+                connectionStatus.className = 'status scanning';
+                connectionStatus.innerHTML = '正在连接设备...<div class="loading"></div>';
+
+                // 如果没有指定设备，先扫描
+                if (!targetDevice) {
+                    targetDevice = await scanBluetoothDevices();
+                    if (!targetDevice) {
+                        connectionStatus.className = 'status disconnected';
+                        connectionStatus.textContent = '未找到设备';
+                        connectBtn.disabled = false;
+                        return false;
+                    }
+                }
+
+                device = targetDevice;
+                
+                // 连接设备
+                server = await device.gatt.connect();
+                
+                // 获取服务
+                service = await server.getPrimaryService(SERVICE_UUID);
+                
+                // 获取特征值
+                configCharacteristic = await service.getCharacteristic(CHAR_CONFIG_UUID);
+                statusCharacteristic = await service.getCharacteristic(CHAR_STATUS_UUID);
+                wifiScanCharacteristic = await service.getCharacteristic(CHAR_WIFI_SCAN_UUID);
+                wifiListCharacteristic = await service.getCharacteristic(CHAR_WIFI_LIST_UUID);
+                deviceInfoCharacteristic = await service.getCharacteristic(CHAR_DEVICE_INFO_UUID);
+
+                // 启用通知
+                await configCharacteristic.startNotifications();
+                await statusCharacteristic.startNotifications();
+                await wifiListCharacteristic.startNotifications();
+                await deviceInfoCharacteristic.startNotifications();
+
+                // 设置事件监听器
+                configCharacteristic.addEventListener('characteristicvaluechanged', handleConfigNotification);
+                statusCharacteristic.addEventListener('characteristicvaluechanged', handleStatusNotification);
+                wifiListCharacteristic.addEventListener('characteristicvaluechanged', handleWifiListNotification);
+                deviceInfoCharacteristic.addEventListener('characteristicvaluechanged', handleDeviceInfoNotification);
+
+                // 更新UI状态
+                updateConnectionStatus(true);
+                
+                // 获取设备信息
+                await getDeviceInfo();
+                
+                // 获取当前配置
+                await getCurrentConfig();
+                
+                showNotification('设备连接成功', true);
+                return true;
+
+            } catch (error) {
+                console.error('连接蓝牙设备失败:', error);
+                connectionStatus.className = 'status disconnected';
+                connectionStatus.textContent = '连接失败: ' + error.message;
+                connectBtn.disabled = false;
+                showNotification('连接蓝牙设备失败', false);
+                return false;
+            }
+        }
+
+        // 页面加载时初始化蓝牙
+        document.addEventListener('DOMContentLoaded', () => {
+            initBluetooth();
+        });
+
+        // 检查Web Bluetooth API支持
+        if (!navigator.bluetooth) {
+            connectionStatus.className = 'status disconnected';
+            connectionStatus.textContent = '您的浏览器不支持Web Bluetooth API，请使用Chrome或Edge浏览器';
+            connectBtn.disabled = true;
+        }
+
+        // 监听设备断开连接
+        if (navigator.bluetooth) {
+            navigator.bluetooth.addEventListener('availabilitychanged', (event) => {
+                if (!event.value && device && device.gatt.connected) {
+                    updateConnectionStatus(false);
+                }
+            });
+        }
+    </script>
+</body>
+</html>

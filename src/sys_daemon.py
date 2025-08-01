@@ -33,7 +33,26 @@ except ImportError:
             return 45.0
     esp32 = MockESP32()
 
-import config
+# 全局配置变量
+_daemon_config = {
+    'led_pins': [8, 9],
+    'timer_id': 0,
+    'monitor_interval': 5000,
+    'temp_threshold': 65,
+    'temp_hysteresis': 5,
+    'memory_threshold': 80,
+    'memory_hysteresis': 10,
+    'max_error_count': 10,
+    'safe_mode_cooldown': 60000
+}
+
+def set_daemon_config(config_dict=None, **kwargs):
+    """设置守护进程配置"""
+    global _daemon_config
+    if config_dict:
+        _daemon_config.update(config_dict)
+    _daemon_config.update(kwargs)
+    print("[Daemon] 守护进程配置已更新")
 
 # =============================================================================
 # 全局状态变量（内存优化：使用全局变量而非类实例）
@@ -219,21 +238,21 @@ def _check_safe_mode_recovery():
     
     try:
         # 检查冷却时间
-        cooldown_passed = time.ticks_diff(time.ticks_ms(), _safe_mode_start_time) > config.DaemonConfig.SAFE_MODE_COOLDOWN
+        cooldown_passed = time.ticks_diff(time.ticks_ms(), _safe_mode_start_time) > _daemon_config['safe_mode_cooldown']
         
         if not cooldown_passed:
             return
         
         # 检查温度
         temp = _get_temperature()
-        temp_ok = temp is not None and temp < config.DaemonConfig.TEMP_THRESHOLD - config.DaemonConfig.TEMP_HYSTERESIS
+        temp_ok = temp is not None and temp < _daemon_config['temp_threshold'] - _daemon_config['temp_hysteresis']
         
         # 检查内存
         memory = _get_memory_usage()
-        memory_ok = memory is not None and memory['percent'] < config.DaemonConfig.MEMORY_THRESHOLD - config.DaemonConfig.MEMORY_HYSTERESIS
+        memory_ok = memory is not None and memory['percent'] < _daemon_config['memory_threshold'] - _daemon_config['memory_hysteresis']
         
         # 检查错误计数
-        errors_ok = _error_count < config.DaemonConfig.MAX_ERROR_COUNT // 2
+        errors_ok = _error_count < _daemon_config['max_error_count'] // 2
         
         # 如果所有条件都满足，退出安全模式
         if temp_ok and memory_ok and errors_ok:
@@ -358,16 +377,16 @@ class SystemDaemon:
         try:
             # 初始化硬件
             _led_controller = LEDController(
-                config.DaemonConfig.LED_PINS[0], 
-                config.DaemonConfig.LED_PINS[1]
+                _daemon_config['led_pins'][0], 
+                _daemon_config['led_pins'][1]
             )
             
             # 看门狗已移至主循环管理，守护进程不再负责看门狗
             
             # 初始化定时器
-            _timer = machine.Timer(config.DaemonConfig.TIMER_ID)
+            _timer = machine.Timer(_daemon_config['timer_id'])
             _timer.init(
-                period=config.DaemonConfig.MONITOR_INTERVAL,
+                period=_daemon_config['monitor_interval'],
                 mode=machine.Timer.PERIODIC,
                 callback=_monitor_callback
             )

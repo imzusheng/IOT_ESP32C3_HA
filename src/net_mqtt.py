@@ -18,7 +18,20 @@ else:
 from umqtt.simple import MQTTClient
 import time
 import gc
-import config
+
+# 全局MQTT配置变量
+_mqtt_config = {
+    'reconnect_delay': 5,
+    'max_retries': 3
+}
+
+def set_mqtt_config(config_dict=None, **kwargs):
+    """设置MQTT配置"""
+    global _mqtt_config
+    if config_dict:
+        _mqtt_config.update(config_dict)
+    _mqtt_config.update(kwargs)
+    print("[MQTT] MQTT配置已更新")
 
 class MqttServer:
     """
@@ -72,7 +85,7 @@ class MqttServer:
             
         # 检查重连间隔
         current_time = time.time()
-        if (current_time - self.last_connect_time < config.MQTTConfig.RECONNECT_DELAY and 
+        if (current_time - self.last_connect_time < _mqtt_config['reconnect_delay'] and 
             self.connection_attempts > 0):
             return False
             
@@ -88,11 +101,11 @@ class MqttServer:
         except Exception as e:
             self.connection_attempts += 1
             self.last_connect_time = current_time
-            print(f"\033[1;31m[MQTT] 连接失败 (尝试 {self.connection_attempts}/{config.MQTTConfig.MAX_RETRIES}): {e}\033[0m")
+            print(f"\033[1;31m[MQTT] 连接失败 (尝试 {self.connection_attempts}/{_mqtt_config['max_retries']}): {e}\033[0m")
             self.is_connected = False
             
             # 如果超过最大重试次数，执行垃圾回收
-            if self.connection_attempts >= config.MQTTConfig.MAX_RETRIES:
+            if self.connection_attempts >= _mqtt_config['max_retries']:
                 gc.collect()
                 self.connection_attempts = 0
                 
