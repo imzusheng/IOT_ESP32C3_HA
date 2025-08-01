@@ -379,6 +379,62 @@ class BluetoothService:
                     
                     # 延迟恢复出厂设置
                     asyncio.create_task(self._delayed_factory_reset())
+                
+                elif cmd == 'wifi_test':
+                    # 测试WiFi连接
+                    if 'ssid' in config_data and 'password' in config_data:
+                        ssid = config_data['ssid']
+                        password = config_data['password']
+                        
+                        print(f"[BT] 测试WiFi连接: {ssid}")
+                        # 异步执行WiFi测试
+                        asyncio.create_task(self._async_wifi_test(ssid, password))
+                    else:
+                        response = ujson.dumps({'cmd': 'wifi_test_result', 'success': False, 'message': '缺少SSID或密码'})
+                        self.ble.gatts_write(self.config_handle, response.encode())
+                        self.ble.gatts_notify(0, self.config_handle, response.encode())
+                
+                elif cmd == 'wifi_save_and_restart':
+                    # 保存WiFi配置并重启
+                    if 'ssid' in config_data and 'password' in config_data:
+                        ssid = config_data['ssid']
+                        password = config_data['password']
+                        
+                        # 保存到配置
+                        config = _config_manager.get_config()
+                        if config:
+                            if 'wifi' not in config:
+                                config['wifi'] = {}
+                            if 'networks' not in config['wifi']:
+                                config['wifi']['networks'] = []
+                            
+                            # 检查是否已存在
+                            existing = False
+                            for net in config['wifi']['networks']:
+                                if net['ssid'] == ssid:
+                                    existing = True
+                                    net['password'] = password
+                                    break
+                            
+                            if not existing:
+                                config['wifi']['networks'].append({'ssid': ssid, 'password': password})
+                            
+                            if _config_manager.save_config(config):
+                                response = ujson.dumps({'cmd': 'wifi_save_result', 'success': True, 'message': 'WiFi配置已保存，设备将重启'})
+                                self.ble.gatts_write(self.config_handle, response.encode())
+                                self.ble.gatts_notify(0, self.config_handle, response.encode())
+                                
+                                # 延迟重启
+                                asyncio.create_task(self._delayed_restart())
+                            else:
+                                response = ujson.dumps({'cmd': 'wifi_save_result', 'success': False, 'message': '保存配置失败'})
+                        else:
+                            response = ujson.dumps({'cmd': 'wifi_save_result', 'success': False, 'message': '配置加载失败'})
+                    else:
+                        response = ujson.dumps({'cmd': 'wifi_save_result', 'success': False, 'message': '缺少SSID或密码'})
+                    
+                    self.ble.gatts_write(self.config_handle, response.encode())
+                    self.ble.gatts_notify(0, self.config_handle, response.encode())
             
         except Exception as e:
             print(f"[BT] 处理配置写入失败: {e}")
@@ -459,6 +515,85 @@ class BluetoothService:
         # 这里可以实现恢复出厂设置的逻辑
         # 暂时直接重启
         machine.reset()
+    
+    async def _test_wifi_connection(self, ssid, password):
+        """测试WiFi连接"""
+        try:
+            # 关闭蓝牙以释放资源
+            if self.ble:
+                self.ble.active(False)
+                await asyncio.sleep_ms(500)
+            
+            # 初始化WiFi
+            wlan = network.WLAN(network.STA_IF)
+            wlan.active(True)
+            await asyncio.sleep_ms(500)
+            
+            # 连接WiFi
+            wlan.connect(ssid, password)
+            
+            # 等待连接，最多10秒
+            for i in range(20):
+                if wlan.isconnected():
+                    ip_address = wlan.ifconfig()[0]
+                    print(f"[BT] WiFi测试连接成功: {ssid}, IP: {ip_address}")
+                    
+                    # 断开连接
+                    wlan.disconnect()
+                    wlan.active(False)
+                    
+                    # 重新启动蓝牙
+                    if self.ble:
+                        self.ble.active(True)
+                        self.service._start_advertising()
+                    
+                    return True
+                
+                await asyncio.sleep_ms(500)
+            
+            # 连接失败
+            print(f"[BT] WiFi测试连接失败: {ssid}")
+            wlan.disconnect()
+            wlan.active(False)
+            
+            # 重新启动蓝牙
+            if self.ble:
+                self.ble.active(True)
+                self.service._start_advertising()
+            
+            return False
+            
+        except Exception as e:
+            print(f"[BT] WiFi测试连接异常: {e}")
+            
+            # 尝试恢复蓝牙
+            try:
+                if self.ble:
+                    self.ble.active(True)
+                    self.service._start_advertising()
+            except:
+                pass
+            
+            return False
+    
+    async def _async_wifi_test(self, ssid, password):
+        """异步WiFi测试"""
+        try:
+            test_result = await self._test_wifi_connection(ssid, password)
+            
+            if test_result:
+                response = ujson.dumps({'cmd': 'wifi_test_result', 'success': True, 'message': 'WiFi连接测试成功'})
+            else:
+                response = ujson.dumps({'cmd': 'wifi_test_result', 'success': False, 'message': 'WiFi连接测试失败'})
+            
+            self.ble.gatts_write(self.config_handle, response.encode())
+            self.ble.gatts_notify(0, self.config_handle, response.encode())
+            
+        except Exception as e:
+            print(f"[BT] 异步WiFi测试异常: {e}")
+            error_response = ujson.dumps({'cmd': 'wifi_test_result', 'success': False, 'message': f'测试异常: {str(e)}'})
+            self.ble.gatts_write(self.config_handle, error_response.encode())
+            self.ble.gatts_notify(0, self.config_handle, error_response.encode())
 
 # =============================================================================
 # 蓝牙管理器主类
@@ -483,26 +618,82 @@ class BluetoothManager:
         try:
             print("[BT] 初始化蓝牙管理器...")
             
+            # 执行垃圾回收，确保有足够内存
+            gc.collect()
+            free_memory = gc.mem_free()
+            print(f"[BT] 可用内存: {free_memory} 字节")
+            
+            if free_memory < 50000:  # 小于50KB内存可能不够
+                print("[BT] 警告: 内存不足，可能影响蓝牙初始化")
+            
             # 初始化配置管理器
             self.config_manager = BluetoothConfigManager()
             
-            # 初始化蓝牙
-            self.ble = bluetooth.BLE()
-            self.ble.active(True)
+            # 尝试多次初始化蓝牙
+            max_attempts = 3
+            for attempt in range(max_attempts):
+                try:
+                    print(f"[BT] 蓝牙初始化尝试 {attempt + 1}/{max_attempts}...")
+                    
+                    # 确保WiFi已关闭
+                    try:
+                        import network
+                        wlan = network.WLAN(network.STA_IF)
+                        if wlan.active():
+                            print("[BT] 关闭WiFi以释放蓝牙资源...")
+                            wlan.active(False)
+                            time.sleep_ms(1000)
+                    except Exception as e:
+                        print(f"[BT] 关闭WiFi时出现警告: {e}")
+                    
+                    # 初始化蓝牙
+                    self.ble = bluetooth.BLE()
+                    
+                    # 先激活，再检查状态
+                    self.ble.active(True)
+                    time.sleep_ms(500)  # 等待蓝牙激活
+                    
+                    # 检查蓝牙是否真的激活了
+                    if not self.ble.active():
+                        print(f"[BT] 蓝牙激活失败，尝试 {attempt + 1}")
+                        if self.ble:
+                            self.ble.active(False)
+                        continue
+                    
+                    print("[BT] 蓝牙硬件初始化成功")
+                    
+                    # 初始化服务
+                    self.service = BluetoothService(self.ble)
+                    
+                    # 开始广播
+                    self.service._start_advertising()
+                    
+                    self.initialized = True
+                    print("[BT] 蓝牙管理器初始化完成")
+                    
+                    return True
+                    
+                except Exception as init_error:
+                    print(f"[BT] 蓝牙初始化尝试 {attempt + 1} 失败: {init_error}")
+                    
+                    # 清理资源
+                    try:
+                        if self.ble:
+                            self.ble.active(False)
+                            self.ble = None
+                    except:
+                        pass
+                    
+                    # 如果不是最后一次尝试，等待一段时间再重试
+                    if attempt < max_attempts - 1:
+                        print(f"[BT] 等待 {1000}ms 后重试...")
+                        time.sleep_ms(1000)
             
-            # 初始化服务
-            self.service = BluetoothService(self.ble)
-            
-            # 开始广播
-            self.service._start_advertising()
-            
-            self.initialized = True
-            print("[BT] 蓝牙管理器初始化完成")
-            
-            return True
+            print(f"[BT] 蓝牙初始化在 {max_attempts} 次尝试后仍然失败")
+            return False
             
         except Exception as e:
-            print(f"[BT] 蓝牙管理器初始化失败: {e}")
+            print(f"[BT] 蓝牙管理器初始化异常: {e}")
             return False
     
     def deinitialize(self):
@@ -534,6 +725,17 @@ def initialize_bluetooth():
     global _config_manager, _bt_manager
     
     try:
+        # 检查WiFi是否已激活，如果已激活则先关闭
+        try:
+            import network
+            wlan = network.WLAN(network.STA_IF)
+            if wlan.active():
+                print("[BT] 检测到WiFi已激活，先关闭WiFi以释放资源...")
+                wlan.active(False)
+                time.sleep_ms(1000)  # 等待WiFi完全关闭
+        except ImportError:
+            pass
+        
         # 初始化配置管理器
         _config_manager = BluetoothConfigManager()
         
@@ -567,14 +769,9 @@ def is_bluetooth_active():
 # 模块初始化
 # =============================================================================
 
-# 模块加载时自动初始化
-print("[BT] 蓝牙模块加载中...")
-_bt_initialized = initialize_bluetooth()
-
-if _bt_initialized:
-    print("[BT] 蓝牙模块加载成功")
-else:
-    print("[BT] 蓝牙模块加载失败")
+# 模块加载时不自动初始化蓝牙，由主程序控制初始化时机
+_bt_initialized = False
+print("[BT] 蓝牙模块已加载，等待初始化...")
 
 # 执行垃圾回收
 gc.collect()

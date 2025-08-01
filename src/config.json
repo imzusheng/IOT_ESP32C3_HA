@@ -11,9 +11,7 @@
   },
   "wifi": {
     "networks": [
-      {"ssid": "zsm60p", "password": "25845600"},
-      {"ssid": "CMCC-pdRG", "password": "7k77ed5p"},
-      {"ssid": "leju_software", "password": "leju123456"}
+      {"ssid": "zsm60p", "password": "25845600"}
     ],
     "config": {
       "timeout": 15,

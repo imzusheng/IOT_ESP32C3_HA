@@ -81,8 +81,20 @@ def sync_and_set_time():
     print("\n[NTP] 开始时间同步...")
     ntptime.host = 'ntp.aliyun.com'  # 默认NTP服务器
     
+    # 初始化看门狗引用
+    _wdt = None
+    try:
+        import machine
+        _wdt = machine.WDT(timeout=10000)  # 10秒看门狗
+    except Exception as e:
+        print(f"[NTP] 看门狗初始化失败: {e}")
+    
     for i in range(3):  # 最多重试3次
         try:
+            # 喂狗，防止看门狗超时
+            if _wdt:
+                _wdt.feed()
+            
             ntptime.settime()
             utc = time.localtime()
             local_time = time.localtime(time.time() + 8 * 3600)  # 中国时区 UTC+8
@@ -96,7 +108,11 @@ def sync_and_set_time():
             
         except Exception as e:
             print(f"[NTP] 重试 {i+1}/3: {e}")
-            time.sleep_ms(3000)
+            # 在等待期间也要喂狗
+            for j in range(30):  # 3秒等待，分30次喂狗
+                if _wdt:
+                    _wdt.feed()
+                time.sleep_ms(100)
     
     print("\033[1;31m[NTP] 时间同步失败\033[0m")
     gc.collect()
@@ -117,6 +133,27 @@ def connect_wifi():
     - True: WiFi连接成功
     - False: WiFi连接失败
     """
+    print("[WiFi] 开始连接WiFi...")
+    
+    # 初始化看门狗引用
+    _wdt = None
+    try:
+        import machine
+        _wdt = machine.WDT(timeout=10000)  # 10秒看门狗
+        print("[WiFi] 看门狗已初始化")
+    except Exception as e:
+        print(f"[WiFi] 看门狗初始化失败: {e}")
+    
+    # 确保蓝牙模块已释放资源
+    try:
+        import net_bt
+        if net_bt.is_bluetooth_active():
+            print("[WiFi] 检测到蓝牙激活，尝试关闭蓝牙以释放资源...")
+            net_bt.deinitialize_bluetooth()
+            time.sleep_ms(1000)  # 等待蓝牙完全关闭
+    except ImportError:
+        pass
+    
     wlan = network.WLAN(network.STA_IF)
     
     # 如果已连接，直接同步时间并返回
@@ -124,10 +161,20 @@ def connect_wifi():
         sync_and_set_time()
         return True
     
-    # 激活WLAN接口
-    if not wlan.active():
-        wlan.active(True)
-        time.sleep_ms(500)  # 等待接口激活
+    # 激活WLAN接口，添加错误处理
+    try:
+        if not wlan.active():
+            print("[WiFi] 激活WLAN接口...")
+            wlan.active(True)
+            time.sleep_ms(1000)  # 增加等待时间确保接口完全激活
+            
+            # 验证接口是否成功激活
+            if not wlan.active():
+                print("\033[1;31m[WiFi] WLAN接口激活失败\033[0m")
+                return False
+    except Exception as e:
+        print(f"\033[1;31m[WiFi] WLAN接口激活异常: {e}\033[0m")
+        return False
 
     # 扫描网络
     scanned_networks = _scan_for_ssids(wlan)
@@ -165,6 +212,10 @@ def connect_wifi():
         connection_timeout = _wifi_timeout
         
         while not wlan.isconnected():
+            # 喂狗，防止看门狗超时
+            if _wdt:
+                _wdt.feed()
+            
             if time.time() - start_time > connection_timeout:
                 print(f"\033[1;31m[WiFi] 连接 {ssid} 超时\033[0m")
                 break

@@ -75,45 +75,134 @@ MQTT_KEEPALIVE = config_manager.get('mqtt', 'keepalive', 60)
 MAIN_LOOP_DELAY = config_manager.get('system', 'main_loop_delay', 300)
 STATUS_REPORT_INTERVAL = config_manager.get('system', 'status_report_interval', 30)
 
-# 初始化蓝牙功能
-print("[Main] 初始化蓝牙功能...")
-bt_enabled = config_manager.get('device', 'bluetooth_enabled', True)
-if bt_enabled:
-    bt_initialized = net_bt.is_bluetooth_active()
-    if not bt_initialized:
-        print("[Main] 蓝牙功能初始化失败")
-    else:
-        print("[Main] 蓝牙功能初始化成功")
-else:
-    print("[Main] 蓝牙功能已禁用")
-
-loop_count = 0
-
 # 初始化看门狗 - 在主循环中喂狗，确保系统稳定运行
 _wdt_timeout = config_manager.get('daemon', 'wdt_timeout', 10000)
 _wdt = machine.WDT(timeout=_wdt_timeout)
 
-# 配置WiFi网络
+# 检查WiFi配置状态
 wifi_networks = config_manager.get('wifi', 'networks', [])
-if wifi_networks:
+has_wifi_config = len(wifi_networks) > 0
+
+if has_wifi_config:
+    print("[Main] 检测到WiFi配置，尝试连接...")
+    
+    # 配置WiFi网络
     net_wifi.set_wifi_networks(wifi_networks)
+    
+    # 配置WiFi参数
+    wifi_config = config_manager.get('wifi', 'config', {})
+    if wifi_config:
+        net_wifi.set_wifi_config(**wifi_config)
 
-# 配置WiFi参数
-wifi_config = config_manager.get('wifi', 'config', {})
-if wifi_config:
-    net_wifi.set_wifi_config(**wifi_config)
+    # 配置MQTT参数
+    mqtt_config = config_manager.get('mqtt', 'config', {})
+    if mqtt_config:
+        net_mqtt.set_mqtt_config(**mqtt_config)
 
-# 配置MQTT参数
-mqtt_config = config_manager.get('mqtt', 'config', {})
-if mqtt_config:
-    net_mqtt.set_mqtt_config(**mqtt_config)
+    # 配置守护进程参数
+    daemon_config = config_manager.get('daemon', 'config', {})
+    if daemon_config:
+        sys_daemon.set_daemon_config(**daemon_config)
 
-# 配置守护进程参数
-daemon_config = config_manager.get('daemon', 'config', {})
-if daemon_config:
-    sys_daemon.set_daemon_config(**daemon_config)
+    # 尝试连接WiFi
+    print("[Main] 正在连接WiFi...")
+    connection_successful = net_wifi.connect_wifi()
 
-connection_successful = net_wifi.connect_wifi()
+    if connection_successful:
+        print("[Main] WiFi连接成功，关闭蓝牙功能以释放资源...")
+        try:
+            net_bt.deinitialize_bluetooth()
+        except Exception as e:
+            print(f"[Main] 关闭蓝牙时出现警告: {e}")
+    else:
+        print("[Main] WiFi连接失败，启用蓝牙配置模式...")
+        
+        # 初始化蓝牙功能
+        bt_enabled = config_manager.get('device', 'bluetooth_enabled', True)
+        bt_initialized = False
+        
+        if bt_enabled:
+            print("[Main] 正在初始化蓝牙功能...")
+            bt_initialized = net_bt.initialize_bluetooth()
+            if not bt_initialized:
+                print("[Main] 蓝牙功能初始化失败")
+                print("[Main] 无法进入蓝牙配置模式，设备将重启...")
+                time.sleep(5)
+                machine.reset()
+            else:
+                print("[Main] 蓝牙功能初始化成功，等待通过蓝牙配置WiFi...")
+        else:
+            print("[Main] 蓝牙功能已禁用")
+            print("[Main] 无法进入蓝牙配置模式，设备将重启...")
+            time.sleep(5)
+            machine.reset()
+        
+        # 进入蓝牙配置模式循环
+        print("[Main] 进入蓝牙配置模式...")
+        while True:
+            # 喂狗
+            _wdt.feed()
+            
+            # 检查是否有新的WiFi配置
+            current_networks = config_manager.get('wifi', 'networks', [])
+            if len(current_networks) > 0:
+                print("[Main] 检测到新的WiFi配置，准备重启设备...")
+                time.sleep(2)
+                machine.reset()
+            
+            # 内存管理
+            if loop_count % 100 == 0:
+                gc.collect()
+                print(f"[Main] 蓝牙配置模式运行中... 内存: {gc.mem_free()} 字节")
+            
+            loop_count += 1
+            time.sleep_ms(500)
+
+else:
+    print("[Main] 未检测到WiFi配置，启用蓝牙配置模式...")
+    
+    # 初始化蓝牙功能
+    bt_enabled = config_manager.get('device', 'bluetooth_enabled', True)
+    bt_initialized = False
+    
+    if bt_enabled:
+        print("[Main] 正在初始化蓝牙功能...")
+        bt_initialized = net_bt.initialize_bluetooth()
+        if not bt_initialized:
+            print("[Main] 蓝牙功能初始化失败")
+            print("[Main] 无法进入蓝牙配置模式，设备将重启...")
+            time.sleep(5)
+            machine.reset()
+        else:
+            print("[Main] 蓝牙功能初始化成功，等待通过蓝牙配置WiFi...")
+    else:
+        print("[Main] 蓝牙功能已禁用")
+        print("[Main] 无法进入蓝牙配置模式，设备将重启...")
+        time.sleep(5)
+        machine.reset()
+    
+    # 进入蓝牙配置模式循环
+    print("[Main] 进入蓝牙配置模式...")
+    while True:
+        # 喂狗
+        _wdt.feed()
+        
+        # 检查是否有新的WiFi配置
+        current_networks = config_manager.get('wifi', 'networks', [])
+        if len(current_networks) > 0:
+            print("[Main] 检测到新的WiFi配置，准备重启设备...")
+            time.sleep(2)
+            machine.reset()
+        
+        # 内存管理
+        if loop_count % 100 == 0:
+            gc.collect()
+            print(f"[Main] 蓝牙配置模式运行中... 内存: {gc.mem_free()} 字节")
+        
+        loop_count += 1
+        time.sleep_ms(500)
+
+loop_count = 0
 
 if connection_successful:
     print("\n[Main] WiFi Connected")
