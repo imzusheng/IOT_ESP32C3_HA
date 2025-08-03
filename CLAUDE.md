@@ -49,8 +49,8 @@ This is a MicroPython project for ESP32C3 IoT devices that connects to WiFi netw
    - Integration with MQTT for Home Assistant compatibility
    - Configurable scan parameters and memory management
    - Standard MAC address formatting (XX:XX:XX:XX:XX:XX)
-   - Enhanced device name parsing with debug capabilities
-   - Alternative name parsing methods for devices with non-standard advertising data formats
+   - Standard BLE advertising data parsing based on BLE_ADV.md specification
+   - Efficient name parsing using only standard types 0x08 (Short Name) and 0x09 (Complete Name)
 
 ### Key Features
 
@@ -62,7 +62,7 @@ This is a MicroPython project for ESP32C3 IoT devices that connects to WiFi netw
 - **Bluetooth scanning**: Memory-optimized BLE device scanning with MQTT integration
 - **Chinese device name support**: UTF-8 encoding for Chinese and special characters
 - **Configuration-based**: All parameters configurable via JSON configuration file
-- **Enhanced device name parsing**: Advanced algorithms for extracting device names from non-standard advertising data formats
+- **Standard device name parsing**: Efficient parsing using BLE standard types 0x08 and 0x09 based on BLE_ADV.md specification
 - **Standard MAC address display**: Formatted MAC addresses with colon separators (XX:XX:XX:XX:XX:XX)
 
 ## Configuration
@@ -250,8 +250,7 @@ The scanner supports comprehensive parsing of BLE advertising data fields:
 - **Appearance**: Device appearance identifier
 - **Manufacturer Data**: Manufacturer-specific data
 - **Device Class**: Bluetooth device class information
-- **Enhanced Name Parsing**: Advanced algorithms that attempt to extract device names from various field types, including:
-  - Standard name fields (types 0x08, 0x09)
-  - Alternative field types containing printable characters
-  - Raw data scanning for ASCII character sequences
-  - Fallback encoding methods (UTF-8, Latin-1)
+- **Standard Name Parsing**: Efficient parsing based on BLE_ADV.md specification:
+  - Length field: 1 byte indicating data length
+  - Type field: 1 byte (0x08 for short name, 0x09 for complete name)
+  - Data content: Variable length name data in UTF-8 encoding

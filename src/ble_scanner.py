@@ -162,9 +162,23 @@ class BLEScanner:
                 device_info = self._parse_adv_data(addr_type, addr, adv_type, rssi, adv_data)
                 
                 if device_info:
-                    # 限制设备数量
-                    if len(self.scan_results) < self.max_devices:
-                        self.scan_results.append(device_info)
+                    # 检查是否已存在相同地址的设备
+                    device_mac = device_info['address']
+                    existing_device = None
+                    
+                    for i, existing in enumerate(self.scan_results):
+                        if existing['address'] == device_mac:
+                            existing_device = i
+                            break
+                    
+                    if existing_device is not None:
+                        # 更新现有设备信息（保留信号强度更强的信息）
+                        if device_info['rssi'] > self.scan_results[existing_device]['rssi']:
+                            self.scan_results[existing_device] = device_info
+                    else:
+                        # 添加新设备，限制设备数量
+                        if len(self.scan_results) < self.max_devices:
+                            self.scan_results.append(device_info)
                         
                         # 调用回调函数
                         if self.scan_callback:
@@ -186,6 +200,150 @@ class BLEScanner:
             return ':'.join([mac_address[i:i+2] for i in range(0, 12, 2)])
         return mac_address
     
+    def _parse_device_name(self, adv_data):
+        """
+        解析设备名称 - 修复版本（基于BLE_ADV.md）
+        
+        主要修复：
+        1. 修正长度字段的解析逻辑
+        2. 增强错误处理和边界检查
+        3. 优化字符编码处理
+        4. 改进调试输出
+        5. 分别保存完整名称和短名称，优先使用完整名称
+        """
+        if not adv_data:
+            return "未知"
+        
+        # 转换为bytes
+        try:
+            if isinstance(adv_data, memoryview):
+                adv_bytes = bytes(adv_data)
+            elif isinstance(adv_data, (bytes, bytearray)):
+                adv_bytes = bytes(adv_data)
+            else:
+                return "未知"
+        except:
+            return "未知"
+        
+        if len(adv_bytes) == 0:
+            return "未知"
+        
+        # 解析AD结构
+        index = 0
+        device_name = ""
+        complete_name = ""  # 优先保存完整名称
+        short_name = ""     # 备用短名称
+        
+        # 调试模式：显示解析过程
+        if self.debug_mode:
+            print(f"[DEBUG] 开始解析设备名称，数据长度: {len(adv_bytes)}")
+            print(f"[DEBUG] 原始数据: {ubinascii.hexlify(adv_bytes).decode()}")
+        
+        while index < len(adv_bytes):
+            try:
+                # 读取长度字段 (1个字节)
+                if index >= len(adv_bytes):
+                    break
+                
+                length = adv_bytes[index]
+                if length == 0:
+                    # 长度为0，跳出循环
+                    break
+                
+                # 检查是否有足够的数据（长度字段本身不包含在长度计算中）
+                if index + 1 + length > len(adv_bytes):
+                    if self.debug_mode:
+                        print(f"[DEBUG] 数据不完整，位置: {index}, 长度: {length}, 剩余数据: {len(adv_bytes) - index}")
+                    break
+                
+                # 读取类型字段 (1个字节)
+                if index + 1 >= len(adv_bytes):
+                    break
+                
+                ad_type = adv_bytes[index + 1]
+                
+                # 计算数据长度 (length - 1，因为length包含了类型字节)
+                data_len = length - 1
+                data_start = index + 2
+                data_end = data_start + data_len
+                
+                # 调试模式：显示每个字段
+                if self.debug_mode:
+                    print(f"[DEBUG] 字段位置: {index}, 长度字段值: {length}, 类型: 0x{ad_type:02X}, 数据长度: {data_len}")
+                
+                # 检查是否是设备名称类型
+                if ad_type in [0x08, 0x09]:  # 0x08=短名称, 0x09=完整名称
+                    if data_len > 0 and data_end <= len(adv_bytes):  # 确保有名称数据且不越界
+                        name_bytes = adv_bytes[data_start:data_end]
+                        
+                        if self.debug_mode:
+                            print(f"[DEBUG] 发现名称字段，类型: 0x{ad_type:02X}, 原始数据: {ubinascii.hexlify(name_bytes).decode()}")
+                        
+                        # 解析名称数据
+                        try:
+                            # 首先尝试UTF-8编码
+                            parsed_name = name_bytes.decode('utf-8').strip()
+                            
+                            # 过滤掉控制字符和不可打印字符
+                            clean_name = ''.join(c for c in parsed_name if c.isprintable() and ord(c) >= 32)
+                            
+                            if clean_name and len(clean_name.strip()) > 0:
+                                clean_name = clean_name.strip()
+                                
+                                if ad_type == 0x09:  # 完整名称
+                                    complete_name = clean_name
+                                    if self.debug_mode:
+                                        print(f"[DEBUG] 成功解析完整名称: {complete_name}")
+                                elif ad_type == 0x08:  # 短名称
+                                    short_name = clean_name
+                                    if self.debug_mode:
+                                        print(f"[DEBUG] 成功解析短名称: {short_name}")
+                                        
+                        except UnicodeDecodeError:
+                            # UTF-8解码失败，尝试ASCII编码
+                            try:
+                                parsed_name = name_bytes.decode('ascii', errors='ignore').strip()
+                                clean_name = ''.join(c for c in parsed_name if c.isprintable() and ord(c) >= 32)
+                                
+                                if clean_name and len(clean_name.strip()) > 0:
+                                    clean_name = clean_name.strip()
+                                    
+                                    if ad_type == 0x09:  # 完整名称
+                                        complete_name = clean_name
+                                        if self.debug_mode:
+                                            print(f"[DEBUG] 成功解析完整名称(ASCII): {complete_name}")
+                                    elif ad_type == 0x08:  # 短名称
+                                        short_name = clean_name
+                                        if self.debug_mode:
+                                            print(f"[DEBUG] 成功解析短名称(ASCII): {short_name}")
+                            except:
+                                if self.debug_mode:
+                                    print(f"[DEBUG] 名称解析失败，原始数据: {ubinascii.hexlify(name_bytes).decode()}")
+                
+                # 移动到下一个AD结构
+                # 关键修复：正确的偏移量计算
+                index += 1 + length  # 1字节长度字段 + length字节的数据（包含类型字段）
+                
+            except Exception as e:
+                if self.debug_mode:
+                    print(f"[DEBUG] 解析AD结构时出错: {e}")
+                break
+        
+        # 确定最终的设备名称
+        # 优先级：完整名称 > 短名称 > 未知
+        if complete_name:
+            device_name = complete_name
+        elif short_name:
+            device_name = short_name
+        else:
+            device_name = "未知"
+        
+        if self.debug_mode:
+            print(f"[DEBUG] 最终设备名称: {device_name}")
+        
+        return device_name
+    
+        
     def _parse_adv_data(self, addr_type, addr, adv_type, rssi, adv_data):
         """
         解析广播数据（增强版）
@@ -246,36 +404,14 @@ class BLEScanner:
                 
                 # 解析不同类型的字段
                 if field_type == GAP_TYPE_SHORT_LOCAL_NAME or field_type == GAP_TYPE_COMPLETE_LOCAL_NAME:
-                    try:
-                        name_data = adv_data[pos + 2:pos + field_len + 1]
-                        device_info['name'] = name_data.decode('utf-8', errors='ignore')
-                        
-                        # 调试模式：显示解析过程
-                        if self.debug_mode:
-                            print(f"[DEBUG] 解析设备名称: {device_info['name']}")
-                            print(f"[DEBUG] 原始数据: {ubinascii.hexlify(name_data).decode()}")
-                            
-                    except Exception as e:
-                        device_info['name'] = ''
-                        if self.debug_mode:
-                            print(f"[DEBUG] 名称解析失败: {e}")
+                    # 名称解析由_parse_device_name方法统一处理
+                    pass
                 
-                # 临时启用调试模式，显示所有字段解析过程
+                # 调试模式：显示所有字段解析过程
                 if self.debug_mode:
                     print(f"[DEBUG] 字段 - 长度: {field_len}, 类型: 0x{field_type:02X} ({self._get_field_type_name(field_type)})")
                     field_data = adv_data[pos + 2:pos + field_len + 1]
                     print(f"[DEBUG] 数据: {ubinascii.hexlify(field_data).decode()}")
-                    
-                    # 尝试将字段数据作为名称解析
-                    if field_type not in [GAP_TYPE_SHORT_LOCAL_NAME, GAP_TYPE_COMPLETE_LOCAL_NAME]:
-                        try:
-                            potential_name = field_data.decode('utf-8', errors='ignore')
-                            if potential_name and potential_name.isprintable() and len(potential_name) > 2:
-                                print(f"[DEBUG] 可能的名称: {potential_name}")
-                                if not device_info['name']:  # 如果还没有名称，使用这个
-                                    device_info['name'] = potential_name
-                        except:
-                            pass
                 
                 elif field_type == GAP_TYPE_FLAGS:
                     try:
@@ -320,13 +456,8 @@ class BLEScanner:
                 # 移动到下一个字段
                 pos += field_len + 1
             
-            # 如果没有找到名称，尝试替代方法
-            if not device_info['name']:
-                alternative_name = self.try_alternative_name_parsing(adv_data)
-                if alternative_name:
-                    device_info['name'] = alternative_name
-                    if self.debug_mode:
-                        print(f"[DEBUG] 使用替代方法解析到名称: {alternative_name}")
+            # 使用_parse_device_name方法解析设备名称
+            device_info['name'] = self._parse_device_name(adv_data)
             
             return device_info
             
@@ -347,215 +478,11 @@ class BLEScanner:
         self.scan_results = []
 
 # =============================================================================
-# 优化的设备名称解析器
-# =============================================================================
-
-class DeviceNameParser:
-    """
-    设备名称解析器
-    
-    作用：高效解析蓝牙设备广播数据中的设备名称
-    内存影响：极低（约200字节）
-    """
-    
-    def __init__(self):
-        # 预分配缓冲区
-        self._name_buffer = bytearray(32)
-        
-    def parse_device_name(self, adv_data):
-        """
-        从广播数据中解析设备名称
-        
-        参数:
-            adv_data: 广播数据字节数组
-            
-        返回:
-            设备名称字符串
-        """
-        try:
-            pos = 0
-            data_len = len(adv_data)
-            
-            while pos + 1 < data_len:
-                # 获取字段长度
-                field_len = adv_data[pos]
-                if field_len == 0:
-                    break
-                
-                # 检查是否超出数据范围
-                if pos + field_len >= data_len:
-                    break
-                
-                # 获取字段类型
-                field_type = adv_data[pos + 1]
-                
-                # 检查是否为名称字段
-                if field_type == GAP_TYPE_COMPLETE_LOCAL_NAME or field_type == GAP_TYPE_SHORT_LOCAL_NAME:
-                    # 提取名称数据
-                    name_data = adv_data[pos + 2:pos + field_len + 1]
-                    
-                    # 复制到缓冲区
-                    if len(name_data) > 0:
-                        buffer_len = min(len(name_data), len(self._name_buffer))
-                        for i in range(buffer_len):
-                            self._name_buffer[i] = name_data[i]
-                        
-                        # 转换为字符串
-                        try:
-                            return bytes(self._name_buffer[:buffer_len]).decode('utf-8', errors='ignore')
-                        except:
-                            return ''
-                
-                # 移动到下一个字段
-                pos += field_len + 1
-            
-            return ''
-            
-        except Exception as e:
-            print(f"[BLE] 名称解析失败: {e}")
-            return ''
-    
-    def parse_device_name_optimized(self, adv_data):
-        """
-        优化的设备名称解析算法
-        
-        基于提供的调试数据示例:
-        0319C1001409434F524F532050414345203220414232453037
-        
-        解析结构:
-        03 19 C1 00        - 长度3，类型0x19，UUID 0x00C1
-        14 09 434F524F532050414345203220414232453037 - 长度20，类型0x09(完整名称)，数据"COROS PACE 2 AB2E07"
-        
-        参数:
-            adv_data: 广播数据字节数组
-            
-        返回:
-            设备名称字符串
-        """
-        try:
-            # 使用标准解析算法确保兼容性
-            pos = 0
-            data_len = len(adv_data)
-            
-            while pos + 1 < data_len:
-                # 获取字段长度
-                field_len = adv_data[pos]
-                if field_len == 0:
-                    break
-                
-                # 检查是否超出数据范围
-                if pos + field_len >= data_len:
-                    break
-                
-                # 获取字段类型
-                field_type = adv_data[pos + 1]
-                
-                # 检查是否为名称字段
-                if field_type == GAP_TYPE_COMPLETE_LOCAL_NAME or field_type == GAP_TYPE_SHORT_LOCAL_NAME:
-                    # 提取名称数据
-                    name_data = adv_data[pos + 2:pos + field_len + 1]
-                    
-                    # 复制到缓冲区
-                    if len(name_data) > 0:
-                        buffer_len = min(len(name_data), len(self._name_buffer))
-                        for i in range(buffer_len):
-                            self._name_buffer[i] = name_data[i]
-                        
-                        # 转换为字符串
-                        try:
-                            decoded_name = bytes(self._name_buffer[:buffer_len]).decode('utf-8', errors='ignore')
-                            
-                            # 调试信息：显示解析过程
-                            print(f"[DEBUG] 名称字段 - 长度: {field_len}, 类型: 0x{field_type:02X}")
-                            print(f"[DEBUG] 原始数据: {ubinascii.hexlify(name_data).decode()}")
-                            print(f"[DEBUG] 解析结果: {decoded_name}")
-                            
-                            return decoded_name
-                        except Exception as e:
-                            print(f"[DEBUG] UTF-8解码失败: {e}")
-                            # 尝试其他编码
-                            try:
-                                return bytes(self._name_buffer[:buffer_len]).decode('latin-1', errors='ignore')
-                            except:
-                                return ''
-                
-                # 移动到下一个字段
-                pos += field_len + 1
-            
-            return ''
-            
-        except Exception as e:
-            print(f"[BLE] 优化名称解析失败: {e}")
-            return ''
-    
-    def parse_adv_packet_hex(self, hex_data):
-        """
-        从十六进制字符串解析广播数据
-        
-        参数:
-            hex_data: 十六进制格式的广播数据字符串
-            
-        返回:
-            设备名称字符串
-        """
-        try:
-            # 转换十六进制字符串为字节数组
-            adv_data = bytearray.fromhex(hex_data)
-            return self.parse_device_name_optimized(adv_data)
-        except Exception as e:
-            print(f"[BLE] 十六进制解析失败: {e}")
-            return ''
-
-# =============================================================================
-# 全局函数
-# =============================================================================
-
-def parse_device_name_from_hex(hex_data):
-    """
-    从十六进制字符串解析设备名称（全局函数）
-    
-    参数:
-        hex_data: 十六进制格式的广播数据字符串
-        
-    返回:
-        设备名称字符串
-    """
-    parser = DeviceNameParser()
-    return parser.parse_adv_packet_hex(hex_data)
-
-# =============================================================================
-# 测试函数
-# =============================================================================
-
-def test_name_parsing():
-    """测试设备名称解析功能"""
-    print("[BLE] 测试设备名称解析...")
-    
-    parser = DeviceNameParser()
-    
-    # 测试数据
-    test_data = "0319C1001409434F524F532050414345203220414232453037"
-    
-    # 解析名称
-    device_name = parser.parse_adv_packet_hex(test_data)
-    print(f"[BLE] 解析结果: {device_name}")
-    
-    # 预期结果: "COROS PACE 2 AB2E07"
-    expected = "COROS PACE 2 AB2E07"
-    if device_name == expected:
-        print("[BLE] 测试通过!")
-        return True
-    else:
-        print(f"[BLE] 测试失败! 预期: {expected}")
-        return False
-
-# =============================================================================
 # 模块初始化
 # =============================================================================
 
 # 创建全局实例
 _ble_scanner = None
-_name_parser = None
 
 def get_ble_scanner():
     """获取蓝牙扫描器实例"""
@@ -563,13 +490,6 @@ def get_ble_scanner():
     if _ble_scanner is None:
         _ble_scanner = BLEScanner()
     return _ble_scanner
-
-def get_name_parser():
-    """获取名称解析器实例"""
-    global _name_parser
-    if _name_parser is None:
-        _name_parser = DeviceNameParser()
-    return _name_parser
 
 # =============================================================================
 # 交互式蓝牙扫描器
@@ -640,12 +560,12 @@ class InteractiveBLEScanner:
         return True
     
     def _display_device_table(self, devices):
-        """显示设备表格（增强版）"""
-        print("\n" + "="*80)
+        """显示设备表格（增强版，包含详细解析信息）"""
+        print("\n" + "="*100)
         print("蓝牙设备扫描结果 (按信号强度排序)")
-        print("="*80)
-        print(f"{'序号':<4} {'信号':<6} {'地址':<12} {'名称':<20} {'类型':<8} {'服务':<15}")
-        print("-" * 80)
+        print("="*100)
+        print(f"{'序号':<4} {'信号':<6} {'地址':<12} {'名称':<20} {'类型':<8} {'服务':<8} {'详细数据':<25}")
+        print("-" * 100)
         
         for i, device in enumerate(devices):
             index = i + 1
@@ -654,6 +574,7 @@ class InteractiveBLEScanner:
             name = device.get('name', 'Unknown')
             addr_type = device.get('address_type', 0)
             services = device.get('services', [])
+            adv_data_hex = device.get('adv_data_hex', '')
             
             # 截断过长的名称
             if len(name) > 18:
@@ -663,13 +584,79 @@ class InteractiveBLEScanner:
             addr_type_str = "Public" if addr_type == 0 else "Random"
             
             # 服务数量显示
-            services_str = f"{len(services)}个" if services else "无"
+            services_str = f"{len(services)}" if services else "0"
             
-            print(f"{index:<4} {rssi:<6} {address:<12} {name:<20} {addr_type_str:<8} {services_str:<15}")
+            # 解析广播数据显示主要信息
+            details = []
+            if adv_data_hex:
+                try:
+                    adv_data = bytearray.fromhex(adv_data_hex)
+                    pos = 0
+                    data_len = len(adv_data)
+                    
+                    while pos + 1 < data_len:
+                        field_len = adv_data[pos]
+                        if field_len == 0:
+                            break
+                        
+                        if pos + field_len >= data_len:
+                            break
+                        
+                        field_type = adv_data[pos + 1]
+                        
+                        # 显示主要字段类型
+                        if field_type == GAP_TYPE_FLAGS:
+                            details.append("FLAGS")
+                        elif field_type == GAP_TYPE_TX_POWER_LEVEL:
+                            try:
+                                tx_power = adv_data[pos + 2]
+                                details.append(f"TX:{tx_power}")
+                            except:
+                                details.append("TX:?")
+                        elif field_type == GAP_TYPE_APPEARANCE:
+                            details.append("APP")
+                        elif field_type == GAP_TYPE_MANUFACTURER_SPECIFIC_DATA:
+                            details.append("MFG")
+                        elif field_type in [GAP_TYPE_COMPLETE_LIST_16BIT_SERVICE_UUIDS, 
+                                         GAP_TYPE_INCOMPLETE_LIST_16BIT_SERVICE_UUIDS]:
+                            details.append("SVC")
+                        
+                        # 限制显示的字段数量
+                        if len(details) >= 3:
+                            break
+                        
+                        pos += field_len + 1
+                except:
+                    pass
+            
+            details_str = "+".join(details) if details else "N/A"
+            if len(details_str) > 23:
+                details_str = details_str[:20] + "..."
+            
+            print(f"{index:<4} {rssi:<6} {address:<12} {name:<20} {addr_type_str:<8} {services_str:<8} {details_str:<25}")
         
-        print("="*80)
+        print("="*100)
         print(f"共发现 {len(devices)} 个设备")
         print()
+        
+        # 显示前3个设备的详细信息
+        if len(devices) > 0:
+            print("\n" + "="*80)
+            print("前3个设备的详细解析信息")
+            print("="*80)
+            
+            for i in range(min(3, len(devices))):
+                device = devices[i]
+                print(f"\n设备 {i+1}: {device.get('name', 'Unknown')} ({device.get('address', 'Unknown')})")
+                print("-" * 60)
+                
+                adv_data_hex = device.get('adv_data_hex', '')
+                if adv_data_hex:
+                    self._parse_and_display_adv_data(adv_data_hex)
+                else:
+                    print("无广播数据")
+            
+            print("="*80)
     
     def _display_device_details(self, device):
         """显示设备详细信息"""
@@ -801,29 +788,6 @@ class InteractiveBLEScanner:
         }
         return type_names.get(field_type, "未知类型")
     
-    def try_alternative_name_parsing(self, adv_data):
-        """尝试多种方法解析设备名称"""
-        try:
-            # 方法1：扫描整个数据包寻找可能的名称
-            for i in range(len(adv_data) - 2):
-                # 寻找可能的ASCII字符序列
-                if adv_data[i] >= 0x20 and adv_data[i] <= 0x7E:  # 可打印ASCII范围
-                    # 尝试提取连续的可打印字符
-                    name_parts = []
-                    j = i
-                    while j < len(adv_data) and adv_data[j] >= 0x20 and adv_data[j] <= 0x7E and len(name_parts) < 20:
-                        name_parts.append(chr(adv_data[j]))
-                        j += 1
-                    
-                    if len(name_parts) >= 3:  # 至少3个字符
-                        potential_name = ''.join(name_parts)
-                        # 过滤掉一些无意义的组合
-                        if not all(c in '0123456789ABCDEF' for c in potential_name):
-                            return potential_name
-        except:
-            pass
-        
-        return None
     
     def select_device_interactive(self):
         """交互式选择设备（增强版）"""
@@ -1086,6 +1050,139 @@ def display_adv_data_analysis(hex_data):
     
     print("=" * 80)
 
+def parse_coros_data_enhanced(hex_data):
+    """
+    增强版COROS数据解析函数 - 集成到BLE扫描器中使用
+    
+    参数:
+        hex_data: 十六进制字符串
+    
+    返回:
+        解析后的列表和设备名称
+    """
+    result = []
+    device_name = "未知设备"
+    index = 0
+    len_hex = len(hex_data)
+    
+    # 类型描述映射
+    type_descriptions = {
+        0x01: "标志",
+        0x08: "短本地名称", 
+        0x09: "完整设备名称",
+        0x19: "外观",
+        0x43: "设备标识",
+        0x32: "设备信息",
+        0xFF: "制造商特定数据"
+    }
+    
+    print(f"[COROS] 解析数据: {hex_data}")
+    
+    while index < len_hex:
+        # 读取长度 (2个十六进制字符 = 1字节)
+        if index + 2 > len_hex:
+            break
+        length = int(hex_data[index:index+2], 16)
+        index += 2
+        
+        print(f"[COROS] 位置 {index-2}: 长度字段 = {length}")
+        
+        # 读取类型 (2个十六进制字符 = 1字节)
+        if index + 2 > len_hex:
+            break
+        type_val = int(hex_data[index:index+2], 16)
+        index += 2
+        
+        print(f"[COROS] 位置 {index-2}: 类型字段 = 0x{type_val:02X}")
+        
+        # 关键修正：数据长度应该是 (length - 1) * 2
+        data_len = (length - 1) * 2
+        if index + data_len > len_hex:
+            data_hex = hex_data[index:]
+            index = len_hex
+        else:
+            data_hex = hex_data[index:index+data_len]
+            index += data_len
+        
+        print(f"[COROS] 数据长度: {data_len//2} 字节, 数据: {data_hex}")
+        
+        # 解析数据
+        data = ""
+        description = ""
+        
+        # 针对0x09类型（完整设备名称）进行专门处理
+        if type_val == 0x09:
+            try:
+                # 转换为ASCII字符串
+                data = bytes.fromhex(data_hex).decode('ascii').strip()
+                description = f"{type_descriptions[type_val]}: {data}"
+                device_name = data
+                print(f"[COROS] 成功解析设备名称: {device_name}")
+            except Exception as e:
+                data = data_hex
+                description = f"完整设备名称 (解析失败: {str(e)})"
+                print(f"[COROS] 名称解析失败: {e}")
+                
+        elif type_val == 0x19:  # 外观类型
+            # 反转字节顺序
+            bytes_list = [data_hex[i:i+2] for i in range(0, len(data_hex), 2)]
+            reversed_bytes = bytes_list[::-1]
+            uuid_hex = ''.join(reversed_bytes)
+            data = f"0x{uuid_hex}"
+            description = f"外观: {data}"
+            
+        else:  # 其他类型
+            try:
+                # 尝试解析为字符串
+                str_data = bytes.fromhex(data_hex).decode('ascii').strip()
+                data = str_data
+                description = f"{type_descriptions.get(type_val, f'类型0x{type_val:02X}')}: {data}"
+            except:
+                data = data_hex
+                description = f"{type_descriptions.get(type_val, f'类型0x{type_val:02X}')} (二进制数据)"
+        
+        # 添加到结果
+        result.append((
+            length, 
+            f"0x{type_val:02X}", 
+            type_descriptions.get(type_val, f"未知类型0x{type_val:02X}"), 
+            data, 
+            description
+        ))
+    
+    return result, device_name
+
+def test_name_parsing():
+    """测试名称解析功能"""
+    print("=" * 80)
+    print("BLE设备名称解析测试")
+    print("=" * 80)
+    
+    # 测试数据1: COROS数据
+    test_data_1 = "0319C1001409434F524F532050414345203220414232453037"
+    print(f"\n测试数据1: {test_data_1}")
+    parsed_data_1, device_name_1 = parse_coros_data_enhanced(test_data_1)
+    print(f"解析结果: {device_name_1}")
+    
+    # 测试数据2: 模拟标准BLE广播数据
+    # 长度=12, 类型=0x09(完整名称), 数据="Test Device"
+    test_name = "Test Device"
+    test_name_hex = test_name.encode('ascii').hex()
+    test_data_2 = f"0C09{test_name_hex}"
+    print(f"\n测试数据2: {test_data_2}")
+    print(f"预期名称: {test_name}")
+    
+    # 手动解析测试
+    adv_bytes = bytes.fromhex(test_data_2)
+    length = adv_bytes[0]  # 12
+    ad_type = adv_bytes[1]  # 0x09
+    name_data = adv_bytes[2:2+(length-1)]  # 去掉类型字节
+    parsed_name = name_data.decode('ascii')
+    
+    print(f"手动解析: 长度={length}, 类型=0x{ad_type:02X}, 名称={parsed_name}")
+    
+    print("=" * 80)
+
 # =============================================================================
 # 主程序入口
 # =============================================================================
@@ -1097,32 +1194,42 @@ def main():
     print("=" * 60)
     
     try:
+        # 解析命令行参数
+        import sys
+        args = sys.argv[1:] if len(sys.argv) > 1 else []
+        
+        # 测试模式
+        if len(args) > 0 and args[0] == "test":
+            test_name_parsing()
+            return
+        
+        # 解析模式
+        if len(args) > 0 and args[0] == "parse":
+            if len(args) > 1:
+                hex_data = args[1]
+                parse_coros_data_enhanced(hex_data)
+            else:
+                print("请提供要解析的十六进制数据")
+                print("用法: python ble_scanner.py parse <hex_data>")
+            return
+        
         # 执行初始垃圾回收
         gc.collect()
         print(f"[内存] 初始可用内存: {gc.mem_free()} 字节")
         
-        # 检查系统参数
-        import sys
-        scan_duration = 8000  # 减少默认扫描时间到8秒
+        # 解析扫描参数
+        scan_duration = 10000  # 默认10秒扫描时间
         debug_mode = False
         
-        # 简单的命令行参数处理
-        if len(sys.argv) > 1:
-            try:
-                if sys.argv[1] == "debug":
-                    debug_mode = True
-                    print("[设置] 调试模式: 开启")
-                    if len(sys.argv) > 2:
-                        scan_duration = int(sys.argv[2]) * 1000
-                else:
-                    scan_duration = int(sys.argv[1]) * 1000
-                
-                # 限制最大扫描时间
-                if scan_duration > 15000:
-                    scan_duration = 15000
-                print(f"[设置] 扫描时间: {scan_duration//1000} 秒")
-            except ValueError:
-                print(f"[警告] 无效的扫描时间参数，使用默认值: {scan_duration//1000} 秒")
+        # 解析命令行参数
+        for arg in args:
+            if arg == "debug":
+                debug_mode = True
+            elif arg.isdigit():
+                scan_duration = int(arg) * 1000  # 转换为毫秒
+        
+        print(f"[设置] 扫描时间: {scan_duration//1000} 秒")
+        print(f"[设置] 调试模式: {'开启' if debug_mode else '关闭'}")
         
         # 创建交互式扫描器
         scanner = InteractiveBLEScanner()
@@ -1161,140 +1268,14 @@ def main():
         print(f"[内存] 最终可用内存: {gc.mem_free()} 字节")
         print("\n[完成] 程序结束")
 
-def test_hex_parsing():
-    """测试十六进制数据解析（增强版）"""
-    print("=" * 80)
-    print("测试设备广播数据解析功能")
-    print("=" * 80)
-    
-    # 测试数据
-    test_cases = [
-        "0319C1001409434F524F532050414345203220414232453037",
-        "020A00030219C1001409434F524F532050414345203220414232453037",
-        "090948454C4C4F20574F524C44",  # HELLO WORLD
-        "02010603030218140AFF580A0C11070A18",  # 带有服务UUID的复杂数据
-        "02010603030218140AFF580A0C11070A1809095465737420446576696365",  # 带有名称的复杂数据
-    ]
-    
-    parser = DeviceNameParser()
-    
-    for i, test_data in enumerate(test_cases, 1):
-        print(f"\n测试用例 {i}:")
-        print(f"输入数据: {test_data}")
-        print("-" * 60)
-        
-        # 解析名称
-        result = parser.parse_adv_packet_hex(test_data)
-        print(f"解析结果: {result}")
-        
-        # 显示完整解析
-        print("\n完整解析:")
-        interactive_scanner = InteractiveBLEScanner()
-        interactive_scanner._parse_and_display_adv_data(test_data)
-        
-        if result:
-            print(f"✓ 解析成功")
-        else:
-            print(f"✗ 解析失败")
-        
-        print("=" * 80)
-
-def scan_simple():
-    """简单扫描模式（增强版）"""
-    print("=" * 80)
-    print("简单蓝牙扫描模式 - 增强版")
-    print("=" * 80)
-    
-    scanner = BLEScanner()
-    scanner.debug_mode = True  # 简单模式默认开启调试
-    
-    if not scanner.initialize():
-        print("[错误] 蓝牙初始化失败")
-        return
-    
-    try:
-        # 开始扫描
-        if not scanner.start_scan(5000):
-            print("[错误] 扫描启动失败")
-            return
-        
-        print("[扫描] 正在扫描蓝牙设备...")
-        
-        # 等待扫描完成
-        import time
-        start_time = time.ticks_ms()
-        while scanner.scanning:
-            if time.ticks_diff(time.ticks_ms(), start_time) > 7000:
-                print("[超时] 扫描超时")
-                break
-            time.sleep_ms(100)
-        
-        # 获取结果
-        devices = scanner.get_scan_results_sorted_by_rssi()
-        
-        if devices:
-            print(f"\n[结果] 发现 {len(devices)} 个设备:")
-            print("-" * 80)
-            print(f"{'序号':<4} {'信号':<6} {'地址':<12} {'名称':<20} {'类型':<8} {'服务':<10}")
-            print("-" * 80)
-            
-            for i, device in enumerate(devices, 1):
-                name = device.get('name', 'Unknown')
-                address = device.get('address', 'Unknown')
-                rssi = device.get('rssi', -100)
-                addr_type = device.get('address_type', 0)
-                services = device.get('services', [])
-                
-                # 截断过长的名称
-                if len(name) > 18:
-                    name = name[:15] + "..."
-                
-                # 地址类型显示
-                addr_type_str = "Public" if addr_type == 0 else "Random"
-                
-                # 服务数量显示
-                services_str = f"{len(services)}个" if services else "无"
-                
-                print(f"{i:<4} {rssi:<6} {address:<12} {name:<20} {addr_type_str:<8} {services_str:<10}")
-            
-            print("-" * 80)
-            
-            # 显示第一个设备的详细信息作为示例
-            if devices:
-                print("\n[示例] 第一个设备的详细信息:")
-                interactive_scanner = InteractiveBLEScanner()
-                interactive_scanner._display_device_details(devices[0])
-                
-        else:
-            print("[结果] 未发现任何设备")
-            
-    finally:
-        scanner.deinitialize()
 
 # =============================================================================
 # 程序入口点
 # =============================================================================
 
 if __name__ == "__main__":
-    # 检查运行模式
-    import sys
-    
-    if len(sys.argv) > 1 and sys.argv[1] == "test":
-        # 测试模式
-        test_hex_parsing()
-    elif len(sys.argv) > 1 and sys.argv[1] == "simple":
-        # 简单扫描模式
-        scan_simple()
-    elif len(sys.argv) > 1 and sys.argv[1] == "parse":
-        # 解析模式 - 解析指定的十六进制数据
-        if len(sys.argv) > 2:
-            display_adv_data_analysis(sys.argv[2])
-        else:
-            print("用法: python ble_scanner.py parse <十六进制数据>")
-            print("示例: python ble_scanner.py parse 0319C1001409434F524F532050414345203220414232453037")
-    else:
-        # 交互模式
-        main()
+    # 只有主模式
+    main()
 
 # 执行垃圾回收
 gc.collect()
