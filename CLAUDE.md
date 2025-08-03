@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 - 始终使用中文
-- 只允许编辑 ./src 一级目录的代码, 因为这是 micropython 项目的代码， 也是 ESP32C3 的代码根目录
+<!-- - 只允许编辑 ./src 一级目录的代码, 因为这是 micropython 项目的代码， 也是 ESP32C3 的代码根目录 -->
 - 代码是在嵌入式设备运行， 需要时刻注意代码的RAM使用情况以及内存泄漏问题
 - 完成时移除所有测试代码和文件
 - 不要擅自添加说明文档
@@ -38,6 +38,20 @@ This is a MicroPython project for ESP32C3 IoT devices that connects to WiFi netw
    - Garbage collection initialization for memory management
    - Minimal startup script for MicroPython environment
 
+5. **Bluetooth Scanner** (`src/ble_scanner.py`)
+   - Memory-optimized BLE device scanner for ESP32C3
+   - Enhanced device information display with MAC addresses and device names
+   - Comprehensive BLE advertising data parsing (names, services, manufacturer data)
+   - Interactive device selection with detailed information viewing
+   - Debug mode for analyzing raw advertising data
+   - Multiple scan modes: interactive, simple, and parse-only
+   - UTF-8 encoding support for Chinese device names
+   - Integration with MQTT for Home Assistant compatibility
+   - Configurable scan parameters and memory management
+   - Standard MAC address formatting (XX:XX:XX:XX:XX:XX)
+   - Enhanced device name parsing with debug capabilities
+   - Alternative name parsing methods for devices with non-standard advertising data formats
+
 ### Key Features
 
 - **Multi-network WiFi support**: Automatically connects to the strongest available configured network
@@ -45,6 +59,11 @@ This is a MicroPython project for ESP32C3 IoT devices that connects to WiFi netw
 - **Memory management**: Implements garbage collection and memory monitoring
 - **Connection resilience**: Automatic reconnection for both WiFi and MQTT
 - **Time synchronization**: NTP-based time sync with timezone offset support
+- **Bluetooth scanning**: Memory-optimized BLE device scanning with MQTT integration
+- **Chinese device name support**: UTF-8 encoding for Chinese and special characters
+- **Configuration-based**: All parameters configurable via JSON configuration file
+- **Enhanced device name parsing**: Advanced algorithms for extracting device names from non-standard advertising data formats
+- **Standard MAC address display**: Formatted MAC addresses with colon separators (XX:XX:XX:XX:XX:XX)
 
 ## Configuration
 
@@ -73,10 +92,23 @@ NTP_HOST = 'ntp.aliyun.com'
 TIMEZONE_OFFSET_H = 8
 ```
 
+### Bluetooth Configuration
+Located in `src/config.json:51-57`:
+```json
+"bluetooth": {
+  "scan_enabled": true,
+  "scan_interval": 300,
+  "max_devices": 10,
+  "scan_duration": 8000,
+  "memory_threshold": 90
+}
+```
+
 ## Dependencies
 
 - **umqtt.simple**: Lightweight MQTT client library for MicroPython
 - **MicroPython standard libraries**: network, time, machine, ntptime, socket, struct, binascii
+- **bluetooth**: MicroPython Bluetooth library for BLE scanning
 
 ## Development Workflow
 
@@ -88,6 +120,8 @@ rshell cp src/main.py /pyboard/main.py
 rshell cp src/mqtt.py /pyboard/mqtt.py
 rshell cp src/wifi_manager.py /pyboard/wifi_manager.py
 rshell cp src/boot.py /pyboard/boot.py
+rshell cp src/ble_scanner.py /pyboard/ble_scanner.py
+rshell cp src/config.json /pyboard/config.json
 ```
 
 ### Device Testing
@@ -96,6 +130,8 @@ The main application includes memory monitoring and logs loop count every 30 ite
 - MQTT connection state
 - Memory usage reports
 - System logs
+- Bluetooth scanning results
+- Device discovery notifications
 
 ## Memory Management
 
@@ -104,6 +140,11 @@ The project implements careful memory management:
 - Memory monitoring with `gc.mem_free()`
 - Efficient string concatenation using `bytearray` for MQTT messages
 - Minimal memory footprint design for constrained ESP32C3 environment
+- Bluetooth scanner memory optimization:
+  - Pre-allocated buffers to reduce memory allocation
+  - Device count limits to prevent memory overflow
+  - Memory threshold monitoring (configurable)
+  - Smart garbage collection before and after scans
 
 ## Error Handling
 
@@ -112,6 +153,11 @@ The project implements careful memory management:
 - Network scanning failures with graceful degradation
 - Memory allocation monitoring and recovery
 - Color-coded console output for different log levels
+- Bluetooth scanning error handling:
+  - Scan timeout protection with automatic recovery
+  - Memory threshold monitoring to prevent crashes
+  - Scanner auto-reset on critical errors
+  - UTF-8 decoding error handling for device names
 
 ## Network Behavior
 
@@ -120,3 +166,92 @@ The project implements careful memory management:
 3. **Time sync**: Synchronize with NTP server after successful WiFi connection
 4. **MQTT connection**: Connect to broker and start publishing logs
 5. **Main loop**: Periodic connection checks, memory management, and logging
+6. **Bluetooth scanning**: Periodic BLE device scanning with configurable intervals
+7. **Device reporting**: Send discovered devices to MQTT topic for Home Assistant integration
+
+## Bluetooth Features
+
+### Scanning Capabilities
+- **BLE device discovery**: Scans for nearby Bluetooth Low Energy devices
+- **Enhanced device information display**: Shows MAC addresses, device names, signal strength, address type, and service count
+- **Comprehensive advertising data parsing**: Extracts device names, service UUIDs, manufacturer data, appearance, TX power, and flags
+- **Signal strength monitoring**: Records RSSI values for each discovered device
+- **Memory-optimized parsing**: Efficient packet parsing to minimize memory usage
+
+### BLE Scanner Usage Modes
+
+#### Interactive Mode
+```bash
+python ble_scanner.py                    # Standard interactive mode
+python ble_scanner.py debug              # Debug mode with raw advertising data
+python ble_scanner.py 10                 # 10-second scan
+python ble_scanner.py debug 15            # Debug mode with 15-second scan
+```
+
+#### Simple Mode
+```bash
+python ble_scanner.py simple             # Simple scan with debug output
+```
+
+#### Parse Mode
+```bash
+python ble_scanner.py parse <hex_data>   # Parse hex advertising data
+python ble_scanner.py parse 0319C1001409434F524F532050414345203220414232453037
+```
+
+#### Test Mode
+```bash
+python ble_scanner.py test               # Test parsing functionality
+```
+
+### Device Information Display
+The scanner displays devices in a formatted table with columns:
+- **序号**: Device index number
+- **信号**: Signal strength (RSSI) in dBm
+- **地址**: MAC address in standard format (XX:XX:XX:XX:XX:XX)
+- **名称**: Device name (truncated if too long)
+- **类型**: Address type (Public/Random)
+- **服务**: Number of service UUIDs discovered
+
+### Interactive Features
+- **Device selection**: Choose devices by index number
+- **Detailed view**: View complete device information including advertising data
+- **Advertising data analysis**: Raw hex data parsing with field-by-field breakdown
+- **Confirmation prompts**: Confirm device selection before proceeding
+
+### Debug Capabilities
+- **Raw advertising data display**: Shows hex data for each discovered device
+- **Field-by-field parsing**: Detailed breakdown of advertising packet structure
+- **Memory monitoring**: Real-time memory usage reports
+- **Error handling**: Comprehensive error reporting and recovery
+- **Enhanced name parsing debug**: Shows detailed parsing process for device names
+- **Alternative parsing methods**: Attempts multiple approaches to extract device names from non-standard advertising data formats
+- **Real-time field analysis**: Displays all field types and attempts to extract names from any printable character sequences
+
+### MQTT Integration
+- **Automatic reporting**: Sends scan results to configured MQTT topic
+- **Structured data**: JSON format with device information and timestamps
+- **Configurable reporting**: Adjustable scan intervals and device limits
+- **Home Assistant ready**: Direct integration with Home Assistant device tracking
+
+### Configuration Options
+- `scan_enabled`: Enable/disable Bluetooth scanning
+- `scan_interval`: Time between scans in seconds (default: 300)
+- `max_devices`: Maximum number of devices to track (default: 10)
+- `scan_duration`: Scan duration in milliseconds (default: 8000)
+- `memory_threshold`: Memory usage threshold percentage (default: 90)
+
+### BLE Advertising Data Parsing
+The scanner supports comprehensive parsing of BLE advertising data fields:
+- **Flags**: Device discoverability and connection modes
+- **Service UUIDs**: 16-bit, 32-bit, and 128-bit service identifiers
+- **Local Name**: Complete and short device names with UTF-8 support
+- **TX Power Level**: Transmit power level information
+- **Appearance**: Device appearance identifier
+- **Manufacturer Data**: Manufacturer-specific data
+- **Device Class**: Bluetooth device class information
+- **Enhanced Name Parsing**: Advanced algorithms that attempt to extract device names from various field types, including:
+  - Standard name fields (types 0x08, 0x09)
+  - Alternative field types containing printable characters
+  - Raw data scanning for ASCII character sequences
+  - Fallback encoding methods (UTF-8, Latin-1)

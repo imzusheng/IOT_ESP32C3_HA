@@ -35,7 +35,7 @@ except ImportError:
 
 # 全局配置变量
 _daemon_config = {
-    'led_pins': [8, 9],
+    'led_pins': [12, 13],
     'timer_id': 0,
     'monitor_interval': 5000,
     'temp_threshold': 65,
@@ -113,14 +113,20 @@ class LEDController:
         if not _safe_mode_active:
             return
         
-        # 简单的交替闪烁逻辑
-        cycle_time = 500  # 500ms周期
-        position = (time.ticks_ms() - _safe_mode_start_time) % cycle_time
+        # 安全模式LED闪烁逻辑 - 两个LED交替闪烁
+        current_time = time.ticks_ms()
+        blink_period = 300  # 300ms闪烁周期
         
-        if position < cycle_time // 2:
+        # 计算当前闪烁状态
+        elapsed = time.ticks_diff(current_time, _safe_mode_start_time)
+        blink_state = (elapsed // blink_period) % 2
+        
+        if blink_state == 0:
+            # 第一个状态：LED1亮，LED2灭
             self.led1.on()
             self.led2.off()
         else:
+            # 第二个状态：LED1灭，LED2亮
             self.led1.off()
             self.led2.on()
 
@@ -541,9 +547,9 @@ def force_safe_mode(reason: str = "未知错误"):
             except Exception:
                 pass
         
-        # 设置LED为错误闪烁模式
+        # 设置LED为安全模式闪烁
         if _led_controller:
-            _led_controller.set_status('error')
+            _led_controller.set_status('safe_mode')
         
         # 执行深度垃圾回收
         for _ in range(2):

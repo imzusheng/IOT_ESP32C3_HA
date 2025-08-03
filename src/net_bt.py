@@ -177,7 +177,26 @@ class BluetoothService:
         self.ble = ble
         self.config_manager = config_manager
         self.wifi_scanner = WiFiScanner()
-        self._setup_service()
+        self.config_handle = None
+        self.status_handle = None
+        self.wifi_scan_handle = None
+        self.wifi_list_handle = None
+        self.device_info_handle = None
+        # 延迟初始化服务，避免在构造函数中调用复杂方法
+        self._service_initialized = False
+    
+    def initialize_service(self):
+        """初始化蓝牙服务"""
+        if not self._service_initialized:
+            try:
+                self._setup_service()
+                self._service_initialized = True
+                print("[BT] 蓝牙服务初始化完成")
+                return True
+            except Exception as e:
+                print(f"[BT] 蓝牙服务初始化失败: {e}")
+                return False
+        return True
     
     def _setup_service(self):
         """设置蓝牙服务"""
@@ -544,7 +563,7 @@ class BluetoothService:
                     # 重新启动蓝牙
                     if self.ble:
                         self.ble.active(True)
-                        self.service._start_advertising()
+                        self._start_advertising()
                     
                     return True
                 
@@ -558,7 +577,7 @@ class BluetoothService:
             # 重新启动蓝牙
             if self.ble:
                 self.ble.active(True)
-                self.service._start_advertising()
+                self._start_advertising()
             
             return False
             
@@ -569,7 +588,7 @@ class BluetoothService:
             try:
                 if self.ble:
                     self.ble.active(True)
-                    self.service._start_advertising()
+                    self._start_advertising()
             except:
                 pass
             
@@ -662,7 +681,14 @@ class BluetoothManager:
                     print("[BT] 蓝牙硬件初始化成功")
                     
                     # 初始化服务
-                    self.service = BluetoothService(self.ble)
+                    self.service = BluetoothService(self.ble, self.config_manager)
+                    
+                    # 初始化蓝牙服务
+                    if not self.service.initialize_service():
+                        print(f"[BT] 蓝牙服务初始化失败，尝试 {attempt + 1}")
+                        if self.ble:
+                            self.ble.active(False)
+                        continue
                     
                     # 开始广播
                     self.service._start_advertising()
