@@ -113,7 +113,7 @@ class LEDController:
         # 移除守护进程状态检查，让LED闪烁独立工作
         # 简化的安全模式LED闪烁逻辑 - 两个LED交替闪烁
         current_time = time.ticks_ms()
-        blink_period = 300  # 300ms闪烁周期
+        blink_period = 500  # 500ms闪烁周期，更容易观察
         
         # 使用简单的时间戳方法计算闪烁状态
         blink_state = (current_time // blink_period) % 2
@@ -127,13 +127,17 @@ class LEDController:
             self.led1.off()
             self.led2.on()
         
-        # 每30次调用打印一次调试信息（约3秒一次）
+        # 每10次调用打印一次调试信息（约5秒一次）
         if not hasattr(self, '_blink_debug_count'):
             self._blink_debug_count = 0
         self._blink_debug_count += 1
         
-        if self._blink_debug_count % 30 == 0:
+        if self._blink_debug_count % 10 == 0:
             print(f"[LED] 安全模式闪烁状态: {blink_state} (LED1: {'开' if blink_state == 0 else '关'}, LED2: {'关' if blink_state == 0 else '开'})")
+    
+    def update_safe_mode_led(self):
+        """更新安全模式LED状态 - 这个方法需要被定期调用"""
+        self._blink_safe_mode()
 
 # =============================================================================
 # 系统监控函数

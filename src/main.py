@@ -79,9 +79,39 @@ MQTT_KEEPALIVE = get_config_value(config, 'mqtt', 'keepalive', 60)
 MAIN_LOOP_DELAY = get_config_value(config, 'system', 'main_loop_delay', 300)
 STATUS_REPORT_INTERVAL = get_config_value(config, 'system', 'status_report_interval', 30)
 
-# 初始化看门狗 - 在主循环中喂狗，确保系统稳定运行
+# 软件看门狗实现 - 超时触发安全模式而非重启
+class SoftwareWatchdog:
+    def __init__(self, timeout_ms):
+        self.timeout_ms = timeout_ms
+        self.last_feed_time = time.ticks_ms()
+        self.enabled = True
+        print(f"[WDT] 软件看门狗已初始化，超时时间: {timeout_ms}ms")
+    
+    def feed(self):
+        """喂狗"""
+        if self.enabled:
+            self.last_feed_time = time.ticks_ms()
+    
+    def check(self):
+        """检查是否超时，超时则进入安全模式"""
+        if not self.enabled:
+            return False
+        
+        elapsed = time.ticks_diff(time.ticks_ms(), self.last_feed_time)
+        if elapsed > self.timeout_ms:
+            print(f"[WDT] 看门狗超时 ({elapsed}ms)，进入安全模式")
+            self.enabled = False  # 防止重复触发
+            return True
+        return False
+    
+    def reset(self):
+        """重置看门狗"""
+        self.last_feed_time = time.ticks_ms()
+        self.enabled = True
+
+# 初始化软件看门狗
 _wdt_timeout = get_config_value(config, 'daemon', 'wdt_timeout', 10000)
-_wdt = machine.WDT(timeout=_wdt_timeout)
+_wdt = SoftwareWatchdog(_wdt_timeout)
 
 # 蓝牙功能已暂时屏蔽
 _ble_scan_enabled = False
@@ -144,8 +174,21 @@ if connection_successful:
         print("[Main] 守护进程启动失败")
 
     while True:
-        # 在主循环中喂狗（最高优先级），确保系统稳定运行
-        _wdt.feed()
+        # 检查软件看门狗
+        if _wdt.check():
+            print("[Main] 看门狗超时，强制进入安全模式")
+            # 确保LED控制器已初始化
+            if not hasattr(sys_daemon, '_led_controller') or sys_daemon._led_controller is None:
+                print("[Main] 初始化LED控制器用于安全模式")
+                import machine
+                led_pins = [12, 13]
+                sys_daemon._led_controller = sys_daemon.LEDController(led_pins[0], led_pins[1])
+            # 强制进入安全模式
+            sys_daemon.force_safe_mode("看门狗超时")
+            _wdt.reset()  # 重置看门狗
+        else:
+            # 正常喂狗
+            _wdt.feed()
         
         if loop_count % STATUS_REPORT_INTERVAL == 0:
             # 内存管理和报告
@@ -206,8 +249,13 @@ else:
     print("\n[Main] WiFi连接失败，进入安全模式")
     safe_mode_loop_count = 0
     while True:
-        # 在安全模式下持续喂狗，防止看门狗重启
-        _wdt.feed()
+        # 在安全模式下持续检查看门狗
+        if _wdt.check():
+            print("[Main] 安全模式下看门狗超时，重置看门狗")
+            _wdt.reset()
+        else:
+            # 正常喂狗
+            _wdt.feed()
         
         # 持续更新LED闪烁状态
         try:
@@ -219,8 +267,8 @@ else:
                 led_pins = [12, 13]  # 使用默认LED引脚
                 sys_daemon._led_controller = sys_daemon.LEDController(led_pins[0], led_pins[1])
             
-            # 更新LED闪烁状态
-            sys_daemon._led_controller.set_status('safe_mode')
+            # 更新LED闪烁状态 - 使用新的更新方法
+            sys_daemon._led_controller.update_safe_mode_led()
             
             # 每50次循环打印一次调试信息
             if safe_mode_loop_count % 50 == 0:
@@ -230,4 +278,4 @@ else:
         
         safe_mode_loop_count += 1
         
-        time.sleep_ms(100)  # 更频繁的更新以确保LED闪烁效果
+        time.sleep_ms(200)  # 200ms延迟，配合500ms闪烁周期确保良好效果
