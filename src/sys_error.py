@@ -69,8 +69,8 @@ class RecoveryStrategy:
 class ErrorInfo:
     """错误信息类"""
     
-    def __init__(self, error_type: ErrorType, message: str, context: str = "", 
-                 severity: ErrorSeverity = ErrorSeverity.MEDIUM):
+    def __init__(self, error_type: str, message: str, context: str = "", 
+                 severity: str = ErrorSeverity.MEDIUM):
         self.type = error_type
         self.message = message
         self.context = context
@@ -81,16 +81,16 @@ class ErrorInfo:
     def to_dict(self):
         """转换为字典"""
         return {
-            'type': self.type.value,
+            'type': self.type,
             'message': self.message,
             'context': self.context,
-            'severity': self.severity.value,
+            'severity': self.severity,
             'timestamp': self.timestamp,
             'count': self.count
         }
     
     def __str__(self):
-        return f"[{self.type.value}] {self.message} (上下文: {self.context})"
+        return f"[{self.type}] {self.message} (上下文: {self.context})"
 
 # =============================================================================
 # 错误统计类
@@ -105,11 +105,11 @@ class ErrorStats:
         self._error_history = []
         self._last_reset_time = time.time()
     
-    def record_error(self, error_type: ErrorType, message: str, context: str = "",
-                    severity: ErrorSeverity = ErrorSeverity.MEDIUM):
+    def record_error(self, error_type: str, message: str, context: str = "",
+                    severity: str = ErrorSeverity.MEDIUM):
         """记录错误"""
         # 更新统计
-        type_key = error_type.value
+        type_key = error_type
         if type_key not in self._stats:
             self._stats[type_key] = {
                 'count': 0,
@@ -122,7 +122,7 @@ class ErrorStats:
         self._stats[type_key]['last_occurrence'] = time.time()
         
         # 更新严重程度统计
-        severity_key = severity.value
+        severity_key = severity
         if severity_key not in self._stats[type_key]['severity_counts']:
             self._stats[type_key]['severity_counts'][severity_key] = 0
         self._stats[type_key]['severity_counts'][severity_key] += 1
@@ -139,12 +139,12 @@ class ErrorStats:
         if len(self._error_history) % 10 == 0:
             gc.collect()
     
-    def get_error_count(self, error_type: ErrorType = None):
+    def get_error_count(self, error_type: str = None):
         """获取错误计数"""
         if error_type is None:
             return sum(stat['count'] for stat in self._stats.values())
         
-        return self._stats.get(error_type.value, {}).get('count', 0)
+        return self._stats.get(error_type, {}).get('count', 0)
     
     def get_stats(self):
         """获取错误统计"""
@@ -161,7 +161,7 @@ class ErrorStats:
         self._last_reset_time = time.time()
         gc.collect()
     
-    def should_trigger_recovery(self, error_type: ErrorType) -> bool:
+    def should_trigger_recovery(self, error_type: str) -> bool:
         """检查是否应该触发恢复机制"""
         # 根据错误类型和严重程度设置不同的阈值
         thresholds = {
@@ -190,11 +190,11 @@ class LogBuffer:
         self._max_size = max_size
         self._buffer = []
     
-    def add_log(self, level: LogLevel, message: str, module: str = ""):
+    def add_log(self, level: str, message: str, module: str = ""):
         """添加日志到缓冲区"""
         log_entry = {
             'timestamp': time.time(),
-            'level': level.value,
+            'level': level,
             'message': message,
             'module': module
         }
@@ -240,7 +240,7 @@ class UnifiedLogger:
         self._mqtt_enabled = True
         self._log_format = "[{level}] [{module}] {message}"
     
-    def set_log_level(self, level: LogLevel):
+    def set_log_level(self, level: str):
         """设置日志级别"""
         self._log_level = level
     
@@ -256,7 +256,7 @@ class UnifiedLogger:
         """启用/禁用MQTT输出"""
         self._mqtt_enabled = enabled
     
-    def log(self, level: LogLevel, message: str, module: str = ""):
+    def log(self, level: str, message: str, module: str = ""):
         """记录日志"""
         # 检查日志级别
         if not self._should_log(level):
@@ -267,7 +267,7 @@ class UnifiedLogger:
         
         # 格式化日志消息
         formatted_msg = self._log_format.format(
-            level=level.value,
+            level=level,
             time=time_str,
             module=module,
             message=message
@@ -284,7 +284,7 @@ class UnifiedLogger:
         if self._mqtt_enabled and self._mqtt_client and hasattr(self._mqtt_client, 'is_connected') and self._mqtt_client.is_connected:
             try:
                 if hasattr(self._mqtt_client, 'publish'):
-                    topic = f"esp32c3/logs/{level.value.lower()}"
+                    topic = f"esp32c3/logs/{level.lower()}"
                     self._mqtt_client.publish(topic, formatted_msg)
             except Exception:
                 # MQTT发送失败时不影响主流程
@@ -310,7 +310,7 @@ class UnifiedLogger:
         """严重错误日志"""
         self.log(LogLevel.CRITICAL, message, module)
     
-    def _should_log(self, level: LogLevel) -> bool:
+    def _should_log(self, level: str) -> bool:
         """检查是否应该记录该级别的日志"""
         levels = [LogLevel.DEBUG, LogLevel.INFO, LogLevel.WARNING, LogLevel.ERROR, LogLevel.CRITICAL]
         return levels.index(level) >= levels.index(self._log_level)
@@ -337,7 +337,7 @@ class RecoveryAction:
         self.success_count = 0
         self.last_execution = 0
         
-    def execute(self, error_type: ErrorType, message: str, context: str = "") -> bool:
+    def execute(self, error_type: str, message: str, context: str = "") -> bool:
         """执行恢复动作"""
         try:
             self.execution_count += 1
@@ -355,7 +355,7 @@ class RecoveryAction:
             print(f"[Recovery] {self.name} 执行失败: {e}")
             return False
     
-    def _execute_action(self, error_type: ErrorType, message: str, context: str) -> bool:
+    def _execute_action(self, error_type: str, message: str, context: str) -> bool:
         """子类实现具体恢复逻辑"""
         raise NotImplementedError
     
@@ -373,7 +373,7 @@ class RetryAction(RecoveryAction):
         self.max_retries = max_retries
         self.delay_ms = delay_ms
     
-    def _execute_action(self, error_type: ErrorType, message: str, context: str) -> bool:
+    def _execute_action(self, error_type: str, message: str, context: str) -> bool:
         """执行重试"""
         # 简化版本：等待一段时间后返回成功
         if self.delay_ms > 0:
@@ -386,7 +386,7 @@ class MemoryCleanupAction(RecoveryAction):
     def __init__(self):
         super().__init__("内存清理", RecoveryStrategy.CLEAR_CACHE)
     
-    def _execute_action(self, error_type: ErrorType, message: str, context: str) -> bool:
+    def _execute_action(self, error_type: str, message: str, context: str) -> bool:
         """执行内存清理"""
         try:
             # 执行深度垃圾回收
@@ -403,7 +403,7 @@ class SystemRestartAction(RecoveryAction):
     def __init__(self):
         super().__init__("系统重启", RecoveryStrategy.RESTART_SYSTEM)
     
-    def _execute_action(self, error_type: ErrorType, message: str, context: str) -> bool:
+    def _execute_action(self, error_type: str, message: str, context: str) -> bool:
         """执行系统重启"""
         try:
             # 延迟重启以允许日志记录
@@ -471,8 +471,8 @@ class ErrorHandler:
             ]
         }
     
-    def handle_error(self, error_type: ErrorType, error: Exception, 
-                    context: str = "", severity: ErrorSeverity = None):
+    def handle_error(self, error_type: str, error: Exception, 
+                    context: str = "", severity: str = None):
         """处理错误"""
         try:
             # 确定错误严重程度
@@ -485,7 +485,7 @@ class ErrorHandler:
             
             # 记录日志
             log_method = self._get_log_method(severity)
-            log_method(f"{error_type.value}: {error_message}", "ErrorHandler")
+            log_method(f"{error_type}: {error_message}", "ErrorHandler")
             
             # 检查是否在冷却期
             if self._is_in_cooldown(error_type):
@@ -509,7 +509,7 @@ class ErrorHandler:
             print(f"[ErrorHandler] 错误处理失败: {e}")
             return False
     
-    def _determine_severity(self, error_type: ErrorType) -> ErrorSeverity:
+    def _determine_severity(self, error_type: str) -> str:
         """根据错误类型确定严重程度"""
         severity_map = {
             ErrorType.HARDWARE: ErrorSeverity.HIGH,
@@ -525,7 +525,7 @@ class ErrorHandler:
         
         return severity_map.get(error_type, ErrorSeverity.MEDIUM)
     
-    def _get_log_method(self, severity: ErrorSeverity):
+    def _get_log_method(self, severity: str):
         """根据严重程度获取日志方法"""
         log_methods = {
             ErrorSeverity.LOW: self._logger.info,
@@ -536,16 +536,16 @@ class ErrorHandler:
         }
         return log_methods.get(severity, self._logger.error)
     
-    def _is_in_cooldown(self, error_type: ErrorType) -> bool:
+    def _is_in_cooldown(self, error_type: str) -> bool:
         """检查是否在冷却期"""
         cooldown_time = self._recovery_cooldowns.get(error_type, 0)
         return time.time() - cooldown_time < 30  # 30秒冷却期
     
-    def _set_cooldown(self, error_type: ErrorType):
+    def _set_cooldown(self, error_type: str):
         """设置冷却期"""
         self._recovery_cooldowns[error_type] = time.time()
     
-    def _execute_recovery_actions(self, error_type: ErrorType, message: str, context: str) -> bool:
+    def _execute_recovery_actions(self, error_type: str, message: str, context: str) -> bool:
         """执行恢复动作"""
         actions = self._recovery_actions.get(error_type, [])
         
@@ -561,9 +561,9 @@ class ErrorHandler:
         
         return False
     
-    def _trigger_system_recovery(self, error_type: ErrorType):
+    def _trigger_system_recovery(self, error_type: str):
         """触发系统恢复"""
-        self._logger.critical(f"触发系统恢复: {error_type.value}", "ErrorHandler")
+        self._logger.critical(f"触发系统恢复: {error_type}", "ErrorHandler")
         
         # 执行深度内存清理
         self._deep_memory_cleanup()
@@ -629,8 +629,8 @@ def set_log_level(level: LogLevel):
     """设置日志级别"""
     _logger.set_log_level(level)
 
-def handle_error(error_type: ErrorType, error: Exception, 
-                context: str = "", severity: ErrorSeverity = None):
+def handle_error(error_type: str, error: Exception, 
+                context: str = "", severity: str = None):
     """处理错误"""
     return _error_handler.handle_error(error_type, error, context, severity)
 

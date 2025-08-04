@@ -13,60 +13,34 @@ import net_wifi
 import net_mqtt
 import sys_daemon
 import sys_error
-# 蓝牙扫描器模块
-import ble_scanner
+# 蓝牙扫描器模块 - 暂时屏蔽
+# import ble_scanner
 
-# 配置管理
-class ConfigManager:
-    """配置管理器 - 从JSON文件加载配置"""
-    
-    def __init__(self, config_path='config.json'):
-        self.config_path = config_path
-        self.config = None
-        self.load_config()
-    
-    def load_config(self):
-        """加载配置文件"""
-        try:
-            with open(self.config_path, 'r') as f:
-                self.config = ujson.load(f)
-            print("[Main] 配置文件加载成功")
-            return True
-        except Exception as e:
-            print(f"[Main] 配置文件加载失败: {e}")
-            return False
-    
-    def get(self, section, key=None, default=None):
-        """获取配置值"""
-        if not self.config:
-            return default
-        
-        if key is None:
-            return self.config.get(section, default)
-        
-        section_config = self.config.get(section, {})
-        return section_config.get(key, default)
-    
-    def set(self, section, key, value):
-        """设置配置值"""
-        if not self.config:
-            return False
-        
-        if section not in self.config:
-            self.config[section] = {}
-        
-        self.config[section][key] = value
-        
-        try:
-            with open(self.config_path, 'w') as f:
-                ujson.dump(self.config, f)
-            return True
-        except Exception as e:
-            print(f"[Main] 保存配置失败: {e}")
-            return False
+# 配置管理 - 使用统一的JSON配置文件
+def load_config(config_path='config.json'):
+    """加载配置文件"""
+    try:
+        with open(config_path, 'r') as f:
+            config = ujson.load(f)
+        print("[Main] 配置文件加载成功")
+        return config
+    except Exception as e:
+        print(f"[Main] 配置文件加载失败: {e}")
+        return None
 
-# 初始化配置管理器
-config_manager = ConfigManager()
+def get_config_value(config, section, key=None, default=None):
+    """获取配置值"""
+    if not config:
+        return default
+    
+    if key is None:
+        return config.get(section, default)
+    
+    section_config = config.get(section, {})
+    return section_config.get(key, default)
+
+# 初始化配置
+config = load_config()
 
 # 全局错误处理函数
 def handle_critical_error(error_msg, error_type=None):
@@ -98,43 +72,23 @@ def handle_critical_error(error_msg, error_type=None):
 
 # 从配置中获取参数
 CLIENT_ID = f"esp32c3-client-{machine.unique_id().hex()}"
-MQTT_BROKER = config_manager.get('mqtt', 'broker', '192.168.1.2')
-MQTT_PORT = config_manager.get('mqtt', 'port', 1883)
-MQTT_TOPIC = config_manager.get('mqtt', 'topic', 'lzs/esp32c3')
-MQTT_KEEPALIVE = config_manager.get('mqtt', 'keepalive', 60)
-MAIN_LOOP_DELAY = config_manager.get('system', 'main_loop_delay', 300)
-STATUS_REPORT_INTERVAL = config_manager.get('system', 'status_report_interval', 30)
+MQTT_BROKER = get_config_value(config, 'mqtt', 'broker', '192.168.1.2')
+MQTT_PORT = get_config_value(config, 'mqtt', 'port', 1883)
+MQTT_TOPIC = get_config_value(config, 'mqtt', 'topic', 'lzs/esp32c3')
+MQTT_KEEPALIVE = get_config_value(config, 'mqtt', 'keepalive', 60)
+MAIN_LOOP_DELAY = get_config_value(config, 'system', 'main_loop_delay', 300)
+STATUS_REPORT_INTERVAL = get_config_value(config, 'system', 'status_report_interval', 30)
 
 # 初始化看门狗 - 在主循环中喂狗，确保系统稳定运行
-_wdt_timeout = config_manager.get('daemon', 'wdt_timeout', 10000)
+_wdt_timeout = get_config_value(config, 'daemon', 'wdt_timeout', 10000)
 _wdt = machine.WDT(timeout=_wdt_timeout)
 
-# 初始化蓝牙扫描器
-_ble_scanner = None
-_ble_scan_enabled = config_manager.get('bluetooth', 'scan_enabled', False)
-_ble_scan_interval = config_manager.get('bluetooth', 'scan_interval', 300)  # 5分钟
-_ble_max_devices = config_manager.get('bluetooth', 'max_devices', 10)
-_ble_scan_duration = config_manager.get('bluetooth', 'scan_duration', 8000)
-_ble_memory_threshold = config_manager.get('bluetooth', 'memory_threshold', 90)
-_last_ble_scan = 0
-
-if _ble_scan_enabled:
-    print("[Main] 蓝牙扫描功能已启用")
-    print(f"[Main] 扫描间隔: {_ble_scan_interval}秒, 最大设备数: {_ble_max_devices}")
-    try:
-        _ble_scanner = ble_scanner.get_ble_scanner()
-        _ble_scanner.max_devices = _ble_max_devices  # 设置最大设备数
-        if _ble_scanner.initialize():
-            print("[Main] 蓝牙扫描器初始化成功")
-        else:
-            print("[Main] 蓝牙扫描器初始化失败")
-            _ble_scanner = None
-    except Exception as e:
-        print(f"[Main] 蓝牙扫描器初始化异常: {e}")
-        _ble_scanner = None
+# 蓝牙功能已暂时屏蔽
+_ble_scan_enabled = False
+print("[Main] 蓝牙功能已暂时屏蔽")
 
 # 检查WiFi配置状态
-wifi_networks = config_manager.get('wifi', 'networks', [])
+wifi_networks = get_config_value(config, 'wifi', 'networks', [])
 has_wifi_config = len(wifi_networks) > 0
 
 if has_wifi_config:
@@ -144,17 +98,17 @@ if has_wifi_config:
     net_wifi.set_wifi_networks(wifi_networks)
     
     # 配置WiFi参数
-    wifi_config = config_manager.get('wifi', 'config', {})
+    wifi_config = get_config_value(config, 'wifi', 'config', {})
     if wifi_config:
         net_wifi.set_wifi_config(**wifi_config)
 
     # 配置MQTT参数
-    mqtt_config = config_manager.get('mqtt', 'config', {})
+    mqtt_config = get_config_value(config, 'mqtt', 'config', {})
     if mqtt_config:
         net_mqtt.set_mqtt_config(**mqtt_config)
 
     # 配置守护进程参数
-    daemon_config = config_manager.get('daemon', 'config', {})
+    daemon_config = get_config_value(config, 'daemon', 'config', {})
     if daemon_config:
         sys_daemon.set_daemon_config(**daemon_config)
 
@@ -165,12 +119,12 @@ if has_wifi_config:
     if connection_successful:
         print("[Main] WiFi连接成功")
     else:
-        print("[Main] WiFi连接失败，蓝牙功能已停用")
-        handle_critical_error("WiFi连接失败，蓝牙功能已停用", sys_error.ErrorType.NETWORK)
+        print("[Main] WiFi连接失败")
+        handle_critical_error("WiFi连接失败", sys_error.ErrorType.NETWORK)
 
 else:
-    print("[Main] 未检测到WiFi配置，蓝牙功能已停用")
-    handle_critical_error("未检测到WiFi配置，蓝牙功能已停用", sys_error.ErrorType.CONFIG)
+    print("[Main] 未检测到WiFi配置")
+    handle_critical_error("未检测到WiFi配置", sys_error.ErrorType.CONFIG)
 
 loop_count = 0
 
@@ -201,19 +155,27 @@ if connection_successful:
             
             print(f"[Main] 内存: {free_memory} 字节 ({memory_usage_percent:.1f}%)")
             
-            # 根据配置进行垃圾回收
-            gc_force_threshold = config_manager.get('daemon', 'gc_force_threshold', 95)
-            debug_mode = config_manager.get('system', 'debug_mode', False)
+            # 智能垃圾回收策略
+            gc_force_threshold = get_config_value(config, 'daemon', 'gc_force_threshold', 95)
+            gc_warning_threshold = gc_force_threshold - 10  # 警告阈值
+            debug_mode = get_config_value(config, 'system', 'debug_mode', False)
             
             if memory_usage_percent > gc_force_threshold:
                 print("[Main] 内存使用过高，执行强制垃圾回收")
-                gc.collect()
+                # 执行深度垃圾回收
+                for _ in range(2):
+                    gc.collect()
+                    time.sleep_ms(50)
                 free_memory_after = gc.mem_free()
                 memory_usage_after = ((total_memory - free_memory_after) / total_memory) * 100
                 print(f"[Main] 内存回收后: {free_memory_after} 字节 ({memory_usage_after:.1f}%)")
-            elif debug_mode:
+            elif memory_usage_percent > gc_warning_threshold:
+                print("[Main] 内存使用较高，执行预防性垃圾回收")
                 gc.collect()
-                print(f"[Main] 内存回收后: {gc.mem_free()} 字节")
+            elif debug_mode or loop_count % 10 == 0:  # 调试模式或每10次循环回收一次
+                gc.collect()
+                if debug_mode:
+                    print(f"[Main] 内存回收后: {gc.mem_free()} 字节")
 
             # 检查守护进程状态
             daemon_status = sys_daemon.get_daemon_status()
@@ -229,79 +191,8 @@ if connection_successful:
             else:
                 mqtt_server.check_connection()
             
-            # 蓝牙设备扫描
-            if _ble_scan_enabled and _ble_scanner:
-                current_time = time.time()
-                if current_time - _last_ble_scan >= _ble_scan_interval:
-                    # 检查内存使用情况
-                    free_memory = gc.mem_free()
-                    total_memory = 264192  # ESP32C3总内存约264KB
-                    memory_usage_percent = ((total_memory - free_memory) / total_memory) * 100
-                    
-                    if memory_usage_percent > _ble_memory_threshold:
-                        print(f"[Main] 内存使用过高 ({memory_usage_percent:.1f}%)，跳过蓝牙扫描")
-                        _last_ble_scan = current_time
-                        continue
-                    
-                    print("[Main] 开始蓝牙设备扫描...")
-                    try:
-                        # 执行垃圾回收
-                        gc.collect()
-                        
-                        # 开始扫描
-                        if _ble_scanner.start_scan(_ble_scan_duration):
-                            # 等待扫描完成
-                            scan_start = time.ticks_ms()
-                            scan_timeout = _ble_scan_duration + 2000  # 扫描时间 + 2秒缓冲
-                            while _ble_scanner.scanning:
-                                if time.ticks_diff(time.ticks_ms(), scan_start) > scan_timeout:
-                                    print("[Main] 蓝牙扫描超时")
-                                    break
-                                time.sleep_ms(100)
-                            
-                            # 获取扫描结果
-                            devices = _ble_scanner.get_scan_results_sorted_by_rssi()
-                            
-                            if devices:
-                                print(f"[Main] 发现 {len(devices)} 个蓝牙设备")
-                                
-                                # 发送设备信息到MQTT
-                                device_list = []
-                                for device in devices[:5]:  # 限制发送前5个设备
-                                    device_info = {
-                                        'address': device.get('address', ''),
-                                        'name': device.get('name', ''),
-                                        'rssi': device.get('rssi', -100)
-                                    }
-                                    device_list.append(device_info)
-                                
-                                # 发送蓝牙扫描结果
-                                ble_msg = {
-                                    'type': 'ble_scan',
-                                    'device_count': len(devices),
-                                    'devices': device_list,
-                                    'timestamp': current_time
-                                }
-                                mqtt_server.log("BLE", ujson.dumps(ble_msg))
-                            else:
-                                print("[Main] 未发现蓝牙设备")
-                                
-                            # 清空扫描结果
-                            _ble_scanner.clear_scan_results()
-                        
-                        _last_ble_scan = current_time
-                        
-                        # 执行垃圾回收
-                        gc.collect()
-                        
-                    except Exception as e:
-                        print(f"[Main] 蓝牙扫描异常: {e}")
-                        # 发生错误时重置扫描器
-                        try:
-                            _ble_scanner.deinitialize()
-                            _ble_scanner.initialize()
-                        except:
-                            pass
+            # 蓝牙功能已暂时屏蔽
+            # 原蓝牙扫描代码已移除
 
             # 发送系统状态信息
             status_msg = f"Loop: {loop_count}, 守护进程: {'活跃' if daemon_status['active'] else '停止'}, 安全模式: {'是' if daemon_status['safe_mode'] else '否'}"
@@ -312,13 +203,31 @@ if connection_successful:
         time.sleep_ms(MAIN_LOOP_DELAY)
 
 else:
-    print("\n[Main] WiFi连接失败，进入深度睡眠")
-    # 如果配置了自动重启，则重启设备
-    auto_restart_enabled = config_manager.get('system', 'auto_restart_enabled', False)
-    if auto_restart_enabled:
-        print("[Main] 5秒后重启设备...")
-        print("[Main] 进入安全模式，请手动重启设备")
-        handle_critical_error("WiFi连接失败，需要手动重启", sys_error.ErrorType.NETWORK)
-    else:
-        # 进入深度睡眠节省电量
-        machine.deepsleep(60000)
+    print("\n[Main] WiFi连接失败，进入安全模式")
+    safe_mode_loop_count = 0
+    while True:
+        # 在安全模式下持续喂狗，防止看门狗重启
+        _wdt.feed()
+        
+        # 持续更新LED闪烁状态
+        try:
+            # 检查LED控制器是否已初始化，如果没有则直接初始化
+            if not hasattr(sys_daemon, '_led_controller') or sys_daemon._led_controller is None:
+                print("[Main] 初始化LED控制器用于安全模式")
+                # 直接创建LED控制器实例
+                import machine
+                led_pins = [12, 13]  # 使用默认LED引脚
+                sys_daemon._led_controller = sys_daemon.LEDController(led_pins[0], led_pins[1])
+            
+            # 更新LED闪烁状态
+            sys_daemon._led_controller.set_status('safe_mode')
+            
+            # 每50次循环打印一次调试信息
+            if safe_mode_loop_count % 50 == 0:
+                print(f"[Main] 安全模式LED状态更新中...")
+        except Exception as e:
+            print(f"[Main] LED状态更新失败: {e}")
+        
+        safe_mode_loop_count += 1
+        
+        time.sleep_ms(100)  # 更频繁的更新以确保LED闪烁效果

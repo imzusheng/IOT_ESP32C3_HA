@@ -46,23 +46,55 @@ def _scan_for_ssids(wlan):
     - list: [(ssid, rssi), ...] 匹配配置的网络列表
     """
     print("[WiFi] 正在扫描网络...")
+    print(f"[WiFi] 配置的网络: {[c['ssid'] for c in _wifi_networks]}")
+    
     scanned_networks = []
     target_ssids = {c['ssid'] for c in _wifi_networks}
     
     try:
         scan_results = wlan.scan()
-        for res in scan_results:
+        print(f"[WiFi] 扫描到 {len(scan_results)} 个网络")
+        
+        if not scan_results:
+            print("[WiFi] 警告: 没有扫描到任何网络")
+            return []
+        
+        for i, res in enumerate(scan_results):
             try:
-                ssid = res[0].decode('utf-8')
+                ssid_bytes = res[0]
+                ssid = ssid_bytes.decode('utf-8')
+                rssi = res[3]
+                channel = res[2]
+                bssid = res[1]
+                
+                print(f"[WiFi] 网络 {i+1}: SSID='{ssid}' | RSSI={rssi} dBm | CH={channel} | BSSID={bssid.hex()}")
+                
                 if ssid in target_ssids:
-                    rssi = res[3]
                     scanned_networks.append((ssid, rssi))
-                    print(f"[WiFi] 发现配置网络: {ssid:<20} | RSSI: {rssi} dBm")
+                    print(f"[WiFi] ✓ 发现配置网络: {ssid:<20} | RSSI: {rssi} dBm")
+                else:
+                    # 检查是否有相似的SSID（用于调试）
+                    for target_ssid in target_ssids:
+                        if target_ssid.lower() in ssid.lower() or ssid.lower() in target_ssid.lower():
+                            print(f"[WiFi] ! 发现相似网络: '{ssid}' (目标: '{target_ssid}')")
+                    
             except UnicodeError:
-                pass
+                try:
+                    # 尝试其他编码
+                    ssid = res[0].decode('latin-1')
+                    print(f"[WiFi] 网络 {i+1}: SSID='{ssid}' (Latin-1编码) | RSSI={res[3]} dBm")
+                    
+                    if ssid in target_ssids:
+                        scanned_networks.append((ssid, res[3]))
+                        print(f"[WiFi] ✓ 发现配置网络(Latin-1): {ssid:<20} | RSSI: {res[3]} dBm")
+                except:
+                    print(f"[WiFi] 网络 {i+1}: 无法解码SSID")
+            except Exception as e:
+                print(f"[WiFi] 解析网络 {i+1} 失败: {e}")
                 
         # 按RSSI强度排序
         scanned_networks.sort(key=lambda x: x[1], reverse=True)
+        print(f"[WiFi] 匹配的网络数量: {len(scanned_networks)}")
         return scanned_networks
         
     except Exception as e:
@@ -82,20 +114,10 @@ def sync_and_set_time():
     ntptime.host = 'ntp.aliyun.com'  # 默认NTP服务器
     print(f"[NTP] 使用NTP服务器: {ntptime.host}")
     
-    # 初始化看门狗引用
-    _wdt = None
-    try:
-        import machine
-        _wdt = machine.WDT(timeout=300000)  # 5分钟看门狗（调试用）
-        print("[NTP] 看门狗已初始化（5分钟超时）")
-    except Exception as e:
-        print(f"[NTP] 看门狗初始化失败: {e}")
+    # 看门狗已移至主循环统一管理，NTP模块不再需要单独处理
     
     for i in range(3):  # 最多重试3次
         try:
-            # 喂狗，防止看门狗超时
-            if _wdt:
-                _wdt.feed()
             
             ntptime.settime()
             utc = time.localtime()
@@ -110,11 +132,8 @@ def sync_and_set_time():
             
         except Exception as e:
             print(f"[NTP] 重试 {i+1}/3: {e}")
-            # 在等待期间也要喂狗
-            for j in range(30):  # 3秒等待，分30次喂狗
-                if _wdt:
-                    _wdt.feed()
-                time.sleep_ms(100)
+            # 等待重试
+            time.sleep(3)
     
     print("\033[1;31m[NTP] 时间同步失败\033[0m")
     gc.collect()
@@ -137,24 +156,10 @@ def connect_wifi():
     """
     print("[WiFi] 开始连接WiFi...")
     
-    # 初始化看门狗引用
-    _wdt = None
-    try:
-        import machine
-        _wdt = machine.WDT(timeout=300000)  # 5分钟看门狗（调试用）
-        print("[WiFi] 看门狗已初始化（5分钟超时）")
-    except Exception as e:
-        print(f"[WiFi] 看门狗初始化失败: {e}")
+    # 看门狗已移至主循环统一管理，WiFi模块不再需要单独处理
     
-    # 确保蓝牙模块已释放资源
-    try:
-        import net_bt
-        if net_bt.is_bluetooth_active():
-            print("[WiFi] 检测到蓝牙激活，尝试关闭蓝牙以释放资源...")
-            net_bt.deinitialize_bluetooth()
-            time.sleep_ms(1000)  # 等待蓝牙完全关闭
-    except ImportError:
-        pass
+    # 蓝牙功能已移除，不再需要蓝牙资源管理
+    print("[WiFi] 蓝牙功能已移除，跳过蓝牙资源管理")
     
     wlan = network.WLAN(network.STA_IF)
     
@@ -214,9 +219,7 @@ def connect_wifi():
         connection_timeout = _wifi_timeout
         
         while not wlan.isconnected():
-            # 喂狗，防止看门狗超时
-            if _wdt:
-                _wdt.feed()
+            # 看门狗已移至主循环统一管理
             
             if time.time() - start_time > connection_timeout:
                 print(f"\033[1;31m[WiFi] 连接 {ssid} 超时\033[0m")

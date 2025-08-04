@@ -110,16 +110,13 @@ class LEDController:
     
     def _blink_safe_mode(self):
         """安全模式LED闪烁"""
-        if not _safe_mode_active:
-            return
-        
-        # 安全模式LED闪烁逻辑 - 两个LED交替闪烁
+        # 移除守护进程状态检查，让LED闪烁独立工作
+        # 简化的安全模式LED闪烁逻辑 - 两个LED交替闪烁
         current_time = time.ticks_ms()
         blink_period = 300  # 300ms闪烁周期
         
-        # 计算当前闪烁状态
-        elapsed = time.ticks_diff(current_time, _safe_mode_start_time)
-        blink_state = (elapsed // blink_period) % 2
+        # 使用简单的时间戳方法计算闪烁状态
+        blink_state = (current_time // blink_period) % 2
         
         if blink_state == 0:
             # 第一个状态：LED1亮，LED2灭
@@ -129,6 +126,14 @@ class LEDController:
             # 第二个状态：LED1灭，LED2亮
             self.led1.off()
             self.led2.on()
+        
+        # 每30次调用打印一次调试信息（约3秒一次）
+        if not hasattr(self, '_blink_debug_count'):
+            self._blink_debug_count = 0
+        self._blink_debug_count += 1
+        
+        if self._blink_debug_count % 30 == 0:
+            print(f"[LED] 安全模式闪烁状态: {blink_state} (LED1: {'开' if blink_state == 0 else '关'}, LED2: {'关' if blink_state == 0 else '开'})")
 
 # =============================================================================
 # 系统监控函数
@@ -424,7 +429,7 @@ class SystemDaemon:
                 _timer.deinit()
                 _timer = None
             
-            # 看门狗已移至主循环管理，守护进程不再负责看门狗清理
+            # 看门狗已移至主循环管理，守护进程不再负责看门狗
             
             _daemon_active = False
             self._initialized = False
@@ -531,7 +536,7 @@ def reset_error_count():
 
 def force_safe_mode(reason: str = "未知错误"):
     """强制进入安全模式"""
-    global _safe_mode_active, _safe_mode_start_time
+    global _safe_mode_active, _safe_mode_start_time, _led_controller
     
     print(f"[Daemon] 强制进入安全模式: {reason}")
     
@@ -547,9 +552,23 @@ def force_safe_mode(reason: str = "未知错误"):
             except Exception:
                 pass
         
+        # 确保LED控制器已初始化
+        if _led_controller is None:
+            try:
+                print("[Daemon] 初始化LED控制器用于安全模式")
+                _led_controller = LEDController(
+                    _daemon_config['led_pins'][0], 
+                    _daemon_config['led_pins'][1]
+                )
+            except Exception as e:
+                print(f"[Daemon] LED控制器初始化失败: {e}")
+                _led_controller = None
+        
         # 设置LED为安全模式闪烁
         if _led_controller:
             _led_controller.set_status('safe_mode')
+        else:
+            print("[Daemon] LED控制器不可用，无法设置安全模式LED")
         
         # 执行深度垃圾回收
         for _ in range(2):

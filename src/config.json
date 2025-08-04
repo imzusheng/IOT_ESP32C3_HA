@@ -45,14 +45,6 @@
   "device": {
     "name": "ESP32C3-IOT",
     "location": "未知位置",
-    "firmware_version": "1.0.0",
-    "bluetooth_enabled": true
-  },
-  "bluetooth": {
-    "scan_enabled": true,
-    "scan_interval": 300,
-    "max_devices": 10,
-    "scan_duration": 8000,
-    "memory_threshold": 90
+    "firmware_version": "1.0.0"
   }
 }
