@@ -173,7 +173,27 @@ if connection_successful:
     if not daemon_started:
         print("[Main] 守护进程启动失败")
 
+    # LED功能测试
+    print("[Main] 开始LED功能测试...")
+    led_test_result = sys_daemon.test_led_functionality()
+    if led_test_result:
+        print("[Main] LED基本功能测试通过")
+        # 等待2秒后开始闪烁测试
+        time.sleep(2)
+        # 进行极简闪烁测试
+        print("[Main] 开始极简LED闪烁测试...")
+        simple_blink_result = sys_daemon.test_simple_blink(3000)  # 3秒测试
+        if simple_blink_result:
+            print("[Main] 极简LED闪烁测试通过")
+        else:
+            print("[Main] 极简LED闪烁测试失败")
+    else:
+        print("[Main] LED基本功能测试失败")
+
     while True:
+        # 更新LED测试状态
+        test_completed = sys_daemon.update_led_tests()
+        
         # 检查软件看门狗
         if _wdt.check():
             print("[Main] 看门狗超时，强制进入安全模式")
@@ -223,9 +243,37 @@ if connection_successful:
             # 检查守护进程状态
             daemon_status = sys_daemon.get_daemon_status()
             if sys_daemon.is_safe_mode():
-                print("[Main] 系统处于安全模式，暂停正常操作")
-                time.sleep(1)
-                continue
+                print("[Main] 系统处于安全模式，暂停正常操作，持续更新LED闪烁")
+                # 在安全模式下使用独立的循环确保LED闪烁流畅
+                safe_mode_loop_count = 0
+                while sys_daemon.is_safe_mode():
+                    # 检查软件看门狗
+                    if _wdt.check():
+                        print("[Main] 安全模式下看门狗超时，重置看门狗")
+                        _wdt.reset()
+                    else:
+                        _wdt.feed()
+                    
+                    # 持续更新LED闪烁状态
+                    try:
+                        if hasattr(sys_daemon, '_led_controller') and sys_daemon._led_controller:
+                            sys_daemon._led_controller.update_safe_mode_led()
+                    except Exception as e:
+                        print(f"[Main] LED状态更新失败: {e}")
+                    
+                    # 短暂延迟，确保500ms闪烁周期的流畅性
+                    time.sleep_ms(100)
+                    
+                    # 每100次循环检查一次是否可以退出安全模式
+                    safe_mode_loop_count += 1
+                    if safe_mode_loop_count % 100 == 0:
+                        # 强制进行一次守护进程状态更新以检查安全模式状态
+                        sys_daemon.check_safe_mode_recovery()
+                        if not sys_daemon.is_safe_mode():
+                            print("[Main] 检测到安全模式已退出")
+                            break
+                
+                continue  # 跳过正常的主循环处理
 
             # MQTT连接检查
             if not mqtt_server.is_connected:
@@ -278,4 +326,4 @@ else:
         
         safe_mode_loop_count += 1
         
-        time.sleep_ms(200)  # 200ms延迟，配合500ms闪烁周期确保良好效果
+        time.sleep_ms(100)  # 100ms延迟，配合500ms闪烁周期确保良好效果

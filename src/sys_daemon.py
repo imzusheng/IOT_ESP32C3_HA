@@ -110,34 +110,146 @@ class LEDController:
     
     def _blink_safe_mode(self):
         """安全模式LED闪烁"""
-        # 移除守护进程状态检查，让LED闪烁独立工作
-        # 简化的安全模式LED闪烁逻辑 - 两个LED交替闪烁
+        # 改进的闪烁逻辑：基于时间差实现真正的闪烁效果
         current_time = time.ticks_ms()
-        blink_period = 500  # 500ms闪烁周期，更容易观察
+        blink_period = 500  # 500ms闪烁周期
         
-        # 使用简单的时间戳方法计算闪烁状态
-        blink_state = (current_time // blink_period) % 2
+        # 检查是否首次调用，初始化闪烁状态
+        if not hasattr(self, '_blink_start_time'):
+            self._blink_start_time = current_time
+            self._last_blink_state = 0
         
-        if blink_state == 0:
-            # 第一个状态：LED1亮，LED2灭
-            self.led1.on()
-            self.led2.off()
-        else:
-            # 第二个状态：LED1灭，LED2亮
-            self.led1.off()
-            self.led2.on()
+        # 计算自开始闪烁以来的时间差
+        elapsed = time.ticks_diff(current_time, self._blink_start_time)
         
-        # 每10次调用打印一次调试信息（约5秒一次）
-        if not hasattr(self, '_blink_debug_count'):
-            self._blink_debug_count = 0
-        self._blink_debug_count += 1
+        # 基于时间差计算当前应该的闪烁状态
+        blink_state = (elapsed // blink_period) % 2
         
-        if self._blink_debug_count % 10 == 0:
-            print(f"[LED] 安全模式闪烁状态: {blink_state} (LED1: {'开' if blink_state == 0 else '关'}, LED2: {'关' if blink_state == 0 else '开'})")
+        # 只有当状态改变时才更新LED
+        if blink_state != self._last_blink_state:
+            if blink_state == 0:
+                # 第一个状态：LED1亮，LED2灭
+                self.led1.on()
+                self.led2.off()
+            else:
+                # 第二个状态：LED1灭，LED2亮
+                self.led1.off()
+                self.led2.on()
+            
+            self._last_blink_state = blink_state
+            
+            # 状态改变时打印调试信息
+            print(f"[LED] 安全模式闪烁状态改变: {blink_state} (LED1: {'开' if blink_state == 0 else '关'}, LED2: {'关' if blink_state == 0 else '开'})")
     
     def update_safe_mode_led(self):
         """更新安全模式LED状态 - 这个方法需要被定期调用"""
         self._blink_safe_mode()
+    
+    def reset_blink_state(self):
+        """重置闪烁状态，用于重新开始闪烁动画"""
+        if hasattr(self, '_blink_start_time'):
+            delattr(self, '_blink_start_time')
+        if hasattr(self, '_last_blink_state'):
+            delattr(self, '_last_blink_state')
+        if hasattr(self, '_blink_debug_count'):
+            delattr(self, '_blink_debug_count')
+        print("[LED] 闪烁状态已重置")
+    
+    def test_simple_blink(self):
+        """简单的LED测试闪烁 - 用于测试LED硬件"""
+        print("[LED] 开始简单LED测试...")
+        
+        # 测试1：依次点亮每个LED
+        print("[LED] 测试1：依次点亮LED")
+        self.led1.on()
+        self.led2.off()
+        time.sleep_ms(500)
+        print("[LED] LED1亮，LED2灭")
+        
+        self.led1.off()
+        self.led2.on()
+        time.sleep_ms(500)
+        print("[LED] LED1灭，LED2亮")
+        
+        # 测试2：两个LED都亮
+        print("[LED] 测试2：两个LED都亮")
+        self.led1.on()
+        self.led2.on()
+        time.sleep_ms(500)
+        
+        # 测试3：两个LED都灭
+        print("[LED] 测试3：两个LED都灭")
+        self.led1.off()
+        self.led2.off()
+        time.sleep_ms(500)
+        
+        print("[LED] 简单LED测试完成")
+    
+    def test_alternating_blink(self):
+        """测试交替闪烁功能"""
+        print("[LED] 开始交替闪烁测试...")
+        
+        # 重置闪烁状态
+        self.reset_blink_state()
+        
+        # 记录测试开始时间
+        self._blink_test_start = time.ticks_ms()
+        self._blink_test_duration = 3000  # 测试3秒
+        self._blink_test_active = True
+        
+        print("[LED] 交替闪烁测试已启动，将在3秒后自动完成")
+    
+    def update_blink_test(self):
+        """更新闪烁测试状态"""
+        if hasattr(self, '_blink_test_active') and self._blink_test_active:
+            # 检查测试是否完成
+            if time.ticks_diff(time.ticks_ms(), self._blink_test_start) >= self._blink_test_duration:
+                self._blink_test_active = False
+                self.reset_blink_state()
+                print("[LED] 交替闪烁测试完成")
+                self.led1.off()
+                self.led2.off()
+                return True  # 测试完成
+            
+            # 继续闪烁测试 - 使用更简单的逻辑
+            current_time = time.ticks_ms()
+            blink_period = 500  # 500ms闪烁周期
+            
+            # 计算当前闪烁状态
+            blink_state = (current_time // blink_period) % 2
+            
+            if blink_state == 0:
+                self.led1.on()
+                self.led2.off()
+            else:
+                self.led1.off()
+                self.led2.on()
+            
+            return False  # 测试仍在进行
+        
+        return True  # 没有测试在进行
+    
+    def simple_blink_test(self, duration_ms=5000):
+        """极简闪烁测试 - 用于验证LED硬件"""
+        print(f"[LED] 开始极简闪烁测试，持续{duration_ms}ms...")
+        
+        start_time = time.ticks_ms()
+        end_time = start_time + duration_ms
+        
+        while time.ticks_ms() < end_time:
+            # 简单的交替闪烁
+            self.led1.on()
+            self.led2.off()
+            time.sleep_ms(250)
+            
+            self.led1.off()
+            self.led2.on()
+            time.sleep_ms(250)
+        
+        # 测试完成，关闭LED
+        self.led1.off()
+        self.led2.off()
+        print("[LED] 极简闪烁测试完成")
 
 # =============================================================================
 # 系统监控函数
@@ -320,10 +432,14 @@ def _monitor_callback(timer):
         
         # 任务6：LED状态控制
         if _safe_mode_active:
-            _led_controller.set_status('safe_mode')
+            # 安全模式：持续更新LED闪烁状态
+            _led_controller.update_safe_mode_led()
             _check_safe_mode_recovery()
         else:
-            # 根据健康状态设置LED
+            # 正常模式：根据健康状态设置LED
+            # 重置闪烁状态，确保下次进入安全模式时重新开始闪烁
+            _led_controller.reset_blink_state()
+            
             if health['overall']:
                 _led_controller.set_status('normal')
             else:
@@ -570,6 +686,8 @@ def force_safe_mode(reason: str = "未知错误"):
         
         # 设置LED为安全模式闪烁
         if _led_controller:
+            # 重置闪烁状态，确保从初始状态开始闪烁
+            _led_controller.reset_blink_state()
             _led_controller.set_status('safe_mode')
         else:
             print("[Daemon] LED控制器不可用，无法设置安全模式LED")
@@ -580,6 +698,135 @@ def force_safe_mode(reason: str = "未知错误"):
             time.sleep_ms(50)
     
     return True
+
+def check_safe_mode_recovery():
+    """检查是否可以从安全模式恢复 - 公共接口"""
+    global _safe_mode_active
+    
+    if not _safe_mode_active:
+        return
+    
+    try:
+        # 检查冷却时间
+        cooldown_passed = time.ticks_diff(time.ticks_ms(), _safe_mode_start_time) > _daemon_config['safe_mode_cooldown']
+        
+        if not cooldown_passed:
+            return
+        
+        # 检查温度
+        temp = _get_temperature()
+        temp_ok = temp is not None and temp < _daemon_config['temp_threshold'] - _daemon_config['temp_hysteresis']
+        
+        # 检查内存
+        memory = _get_memory_usage()
+        memory_ok = memory is not None and memory['percent'] < _daemon_config['memory_threshold'] - _daemon_config['memory_hysteresis']
+        
+        # 检查错误计数
+        errors_ok = _error_count < _daemon_config['max_error_count'] // 2
+        
+        # 如果所有条件都满足，退出安全模式
+        if temp_ok and memory_ok and errors_ok:
+            _safe_mode_active = False
+            
+            # 记录日志
+            if _mqtt_client and hasattr(_mqtt_client, 'is_connected') and _mqtt_client.is_connected:
+                try:
+                    if hasattr(_mqtt_client, 'log'):
+                        _mqtt_client.log("INFO", "退出安全模式")
+                except Exception:
+                    pass
+            
+            # 执行垃圾回收
+            gc.collect()
+    
+    except Exception:
+        pass
+
+def test_led_functionality():
+    """测试LED功能"""
+    global _led_controller
+    
+    print("[Daemon] 开始LED功能测试...")
+    
+    # 确保LED控制器已初始化
+    if _led_controller is None:
+        try:
+            print("[Daemon] 初始化LED控制器用于测试")
+            _led_controller = LEDController(
+                _daemon_config['led_pins'][0], 
+                _daemon_config['led_pins'][1]
+            )
+        except Exception as e:
+            print(f"[Daemon] LED控制器初始化失败: {e}")
+            return False
+    
+    # 执行简单LED测试
+    try:
+        _led_controller.test_simple_blink()
+        return True
+    except Exception as e:
+        print(f"[Daemon] LED测试失败: {e}")
+        return False
+
+def test_led_blinking():
+    """测试LED闪烁功能"""
+    global _led_controller
+    
+    print("[Daemon] 开始LED闪烁测试...")
+    
+    # 确保LED控制器已初始化
+    if _led_controller is None:
+        try:
+            print("[Daemon] 初始化LED控制器用于测试")
+            _led_controller = LEDController(
+                _daemon_config['led_pins'][0], 
+                _daemon_config['led_pins'][1]
+            )
+        except Exception as e:
+            print(f"[Daemon] LED控制器初始化失败: {e}")
+            return False
+    
+    # 启动闪烁测试
+    try:
+        _led_controller.test_alternating_blink()
+        return True
+    except Exception as e:
+        print(f"[Daemon] LED闪烁测试失败: {e}")
+        return False
+
+def update_led_tests():
+    """更新LED测试状态"""
+    global _led_controller
+    
+    if _led_controller:
+        return _led_controller.update_blink_test()
+    return True
+
+def test_simple_blink(duration_ms=5000):
+    """执行极简LED闪烁测试"""
+    global _led_controller
+    
+    print("[Daemon] 开始极简LED闪烁测试...")
+    
+    # 确保LED控制器已初始化
+    if _led_controller is None:
+        try:
+            print("[Daemon] 初始化LED控制器用于测试")
+            _led_controller = LEDController(
+                _daemon_config['led_pins'][0], 
+                _daemon_config['led_pins'][1]
+            )
+        except Exception as e:
+            print(f"[Daemon] LED控制器初始化失败: {e}")
+            return False
+    
+    # 执行极简闪烁测试
+    try:
+        _led_controller.simple_blink_test(duration_ms)
+        return True
+    except Exception as e:
+        print(f"[Daemon] 极简LED闪烁测试失败: {e}")
+        return False
 
 # =============================================================================
 # 初始化

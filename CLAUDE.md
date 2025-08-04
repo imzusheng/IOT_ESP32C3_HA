@@ -3,11 +3,11 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 - 始终使用中文
-- 代码是在嵌入式设备运行， 需要时刻注意代码的RAM使用情况以及内存泄漏问题
-- 只允许编辑 ./src 下一级目录的文件
-- 完成时移除所有测试代码和文件
+- 代码是在嵌入式设备运行
+   - 需要时刻注意代码的RAM使用情况以及内存泄漏问题
+   - 只允许编辑 ./src 下一级目录的文件
+- 不要添加测试代码和文件
 - 不要擅自添加说明文档
-- 不需要测试代码
 
 ## Project Overview
 
