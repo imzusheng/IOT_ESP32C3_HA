@@ -103,6 +103,7 @@ class LEDController:
             self.led1.off()
             self.led2.on()
         elif status == 'safe_mode':
+            # 安全模式：开始闪烁效果
             self._blink_safe_mode()
         elif status == 'off':
             self.led1.off()
@@ -430,12 +431,8 @@ def _monitor_callback(timer):
         if _monitor_count % 30 == 0:
             _log_system_status()
         
-        # 任务6：LED状态控制
-        if _safe_mode_active:
-            # 安全模式：持续更新LED闪烁状态
-            _led_controller.update_safe_mode_led()
-            _check_safe_mode_recovery()
-        else:
+        # 任务6：LED状态控制（仅在非安全模式下）
+        if not _safe_mode_active:
             # 正常模式：根据健康状态设置LED
             # 重置闪烁状态，确保下次进入安全模式时重新开始闪烁
             _led_controller.reset_blink_state()
@@ -444,6 +441,9 @@ def _monitor_callback(timer):
                 _led_controller.set_status('normal')
             else:
                 _led_controller.set_status('warning')
+        else:
+            # 安全模式：检查恢复条件，LED控制由主循环负责
+            _check_safe_mode_recovery()
         
         # 定期垃圾回收（每100次监控）
         if _monitor_count % 100 == 0:
@@ -672,7 +672,7 @@ def force_safe_mode(reason: str = "未知错误"):
             except Exception:
                 pass
         
-        # 确保LED控制器已初始化
+        # 确保LED控制器已初始化（主循环会使用它来显示安全模式）
         if _led_controller is None:
             try:
                 print("[Daemon] 初始化LED控制器用于安全模式")
@@ -684,13 +684,8 @@ def force_safe_mode(reason: str = "未知错误"):
                 print(f"[Daemon] LED控制器初始化失败: {e}")
                 _led_controller = None
         
-        # 设置LED为安全模式闪烁
-        if _led_controller:
-            # 重置闪烁状态，确保从初始状态开始闪烁
-            _led_controller.reset_blink_state()
-            _led_controller.set_status('safe_mode')
-        else:
-            print("[Daemon] LED控制器不可用，无法设置安全模式LED")
+        # 注意：LED控制现在由主循环负责，这里不直接设置LED状态
+        print("[Daemon] 安全模式已激活，LED控制由主循环负责")
         
         # 执行深度垃圾回收
         for _ in range(2):

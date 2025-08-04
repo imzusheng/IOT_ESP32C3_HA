@@ -1,10 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-ESP32C3主程序
+ESP32C3主程序 - 重构版本
 
-集成集中配置管理、WiFi连接、MQTT通信和守护进程功能。
-提供稳定可靠的IoT设备运行环境。
+简化的主程序，专注于核心功能：
+- 系统初始化和配置加载
+- WiFi连接管理
+- MQTT通信
+- 基础系统监控
+- 安全模式处理
 """
+
 import time
 import machine
 import gc
@@ -13,10 +18,11 @@ import net_wifi
 import net_mqtt
 import sys_daemon
 import sys_error
-# 蓝牙扫描器模块 - 暂时屏蔽
-# import ble_scanner
 
-# 配置管理 - 使用统一的JSON配置文件
+# =============================================================================
+# 配置管理
+# =============================================================================
+
 def load_config(config_path='config.json'):
     """加载配置文件"""
     try:
@@ -39,291 +45,296 @@ def get_config_value(config, section, key=None, default=None):
     section_config = config.get(section, {})
     return section_config.get(key, default)
 
-# 初始化配置
-config = load_config()
+# =============================================================================
+# 系统初始化
+# =============================================================================
 
-# 全局错误处理函数
-def handle_critical_error(error_msg, error_type=None):
-    """处理严重错误，进入安全模式"""
-    print(f"[Main] 严重错误: {error_msg}")
+def initialize_system():
+    """系统初始化"""
+    print("[Main] 开始系统初始化...")
     
-    # 记录错误到错误处理系统
-    if error_type:
-        try:
-            sys_error.handle_error(error_type, Exception(error_msg), "Main", sys_error.ErrorSeverity.CRITICAL)
-        except Exception as e:
-            print(f"[Main] 错误处理失败: {e}")
+    # 加载配置
+    config = load_config()
+    if not config:
+        print("[Main] 配置加载失败，使用默认配置")
+        config = {}
     
-    # 强制进入安全模式
-    try:
-        sys_daemon.force_safe_mode(error_msg)
-        print("[Main] 已进入安全模式，LED闪烁提示，请按RST重启")
-    except Exception as e:
-        print(f"[Main] 安全模式激活失败: {e}")
+    # 生成客户端ID
+    client_id = f"esp32c3-client-{machine.unique_id().hex()}"
     
-    # 进入无限循环，等待手动重启
-    while True:
-        try:
-            # 尝试喂狗，防止看门狗重启
-            _wdt.feed()
-        except:
-            pass
-        time.sleep_ms(1000)
-
-# 从配置中获取参数
-CLIENT_ID = f"esp32c3-client-{machine.unique_id().hex()}"
-MQTT_BROKER = get_config_value(config, 'mqtt', 'broker', '192.168.1.2')
-MQTT_PORT = get_config_value(config, 'mqtt', 'port', 1883)
-MQTT_TOPIC = get_config_value(config, 'mqtt', 'topic', 'lzs/esp32c3')
-MQTT_KEEPALIVE = get_config_value(config, 'mqtt', 'keepalive', 60)
-MAIN_LOOP_DELAY = get_config_value(config, 'system', 'main_loop_delay', 300)
-STATUS_REPORT_INTERVAL = get_config_value(config, 'system', 'status_report_interval', 30)
-
-# 软件看门狗实现 - 超时触发安全模式而非重启
-class SoftwareWatchdog:
-    def __init__(self, timeout_ms):
-        self.timeout_ms = timeout_ms
-        self.last_feed_time = time.ticks_ms()
-        self.enabled = True
-        print(f"[WDT] 软件看门狗已初始化，超时时间: {timeout_ms}ms")
+    # 获取配置参数
+    mqtt_broker = get_config_value(config, 'mqtt', 'broker', '192.168.1.2')
+    mqtt_port = get_config_value(config, 'mqtt', 'port', 1883)
+    mqtt_topic = get_config_value(config, 'mqtt', 'topic', 'lzs/esp32c3')
+    mqtt_keepalive = get_config_value(config, 'mqtt', 'keepalive', 60)
+    loop_delay = get_config_value(config, 'system', 'main_loop_delay', 300)
+    status_interval = get_config_value(config, 'system', 'status_report_interval', 30)
     
-    def feed(self):
-        """喂狗"""
-        if self.enabled:
-            self.last_feed_time = time.ticks_ms()
+    # 设置WiFi网络
+    wifi_networks = get_config_value(config, 'wifi', 'networks', [])
+    if wifi_networks:
+        net_wifi.set_wifi_networks(wifi_networks)
+        wifi_config = get_config_value(config, 'wifi', 'config', {})
+        if wifi_config:
+            net_wifi.set_wifi_config(**wifi_config)
     
-    def check(self):
-        """检查是否超时，超时则进入安全模式"""
-        if not self.enabled:
-            return False
-        
-        elapsed = time.ticks_diff(time.ticks_ms(), self.last_feed_time)
-        if elapsed > self.timeout_ms:
-            print(f"[WDT] 看门狗超时 ({elapsed}ms)，进入安全模式")
-            self.enabled = False  # 防止重复触发
-            return True
-        return False
-    
-    def reset(self):
-        """重置看门狗"""
-        self.last_feed_time = time.ticks_ms()
-        self.enabled = True
-
-# 初始化软件看门狗
-_wdt_timeout = get_config_value(config, 'daemon', 'wdt_timeout', 10000)
-_wdt = SoftwareWatchdog(_wdt_timeout)
-
-# 蓝牙功能已暂时屏蔽
-_ble_scan_enabled = False
-print("[Main] 蓝牙功能已暂时屏蔽")
-
-# 检查WiFi配置状态
-wifi_networks = get_config_value(config, 'wifi', 'networks', [])
-has_wifi_config = len(wifi_networks) > 0
-
-if has_wifi_config:
-    print("[Main] 检测到WiFi配置，尝试连接...")
-    
-    # 配置WiFi网络
-    net_wifi.set_wifi_networks(wifi_networks)
-    
-    # 配置WiFi参数
-    wifi_config = get_config_value(config, 'wifi', 'config', {})
-    if wifi_config:
-        net_wifi.set_wifi_config(**wifi_config)
-
-    # 配置MQTT参数
-    mqtt_config = get_config_value(config, 'mqtt', 'config', {})
-    if mqtt_config:
-        net_mqtt.set_mqtt_config(**mqtt_config)
-
-    # 配置守护进程参数
+    # 设置守护进程配置
     daemon_config = get_config_value(config, 'daemon', 'config', {})
     if daemon_config:
         sys_daemon.set_daemon_config(**daemon_config)
+    
+    print("[Main] 系统初始化完成")
+    
+    return {
+        'config': config,
+        'client_id': client_id,
+        'mqtt_broker': mqtt_broker,
+        'mqtt_port': mqtt_port,
+        'mqtt_topic': mqtt_topic,
+        'mqtt_keepalive': mqtt_keepalive,
+        'loop_delay': loop_delay,
+        'status_interval': status_interval
+    }
 
-    # 尝试连接WiFi
-    print("[Main] 正在连接WiFi...")
-    connection_successful = net_wifi.connect_wifi()
+# =============================================================================
+# 网络连接
+# =============================================================================
 
-    if connection_successful:
-        print("[Main] WiFi连接成功")
-    else:
+def connect_networks():
+    """连接网络"""
+    print("[Main] 开始网络连接...")
+    
+    # 连接WiFi
+    wifi_connected = net_wifi.connect_wifi()
+    if not wifi_connected:
         print("[Main] WiFi连接失败")
-        handle_critical_error("WiFi连接失败", sys_error.ErrorType.NETWORK)
-
-else:
-    print("[Main] 未检测到WiFi配置")
-    handle_critical_error("未检测到WiFi配置", sys_error.ErrorType.CONFIG)
-
-loop_count = 0
-
-if connection_successful:
-    print("\n[Main] WiFi Connected")
-
-    # 创建MQTT客户端
-    mqtt_server = net_mqtt.MqttServer(CLIENT_ID, MQTT_BROKER, port=MQTT_PORT, topic=MQTT_TOPIC, keepalive=MQTT_KEEPALIVE)
-    mqtt_server.connect()
+        return False, None
     
-    # 设置MQTT客户端给守护进程
-    sys_daemon.set_mqtt_client(mqtt_server)
+    print("[Main] 网络连接成功")
+    return True, None
+
+# =============================================================================
+# MQTT客户端管理
+# =============================================================================
+
+def create_mqtt_client(client_id, broker, port=1883, topic='lzs/esp32c3', keepalive=60):
+    """创建MQTT客户端"""
+    try:
+        mqtt_client = net_mqtt.MqttServer(
+            client_id, broker, port=port, 
+            topic=topic, keepalive=keepalive
+        )
+        
+        # 连接MQTT
+        if mqtt_client.connect():
+            print("[Main] MQTT连接成功")
+            return mqtt_client
+        else:
+            print("[Main] MQTT连接失败")
+            return None
+            
+    except Exception as e:
+        print(f"[Main] MQTT客户端创建失败: {e}")
+        return None
+
+# =============================================================================
+# 系统监控
+# =============================================================================
+
+def monitor_system_memory():
+    """监控系统内存"""
+    try:
+        free_memory = gc.mem_free()
+        total_memory = 264192  # ESP32C3总内存约264KB
+        memory_usage_percent = ((total_memory - free_memory) / total_memory) * 100
+        
+        # 智能垃圾回收
+        if memory_usage_percent > 95:
+            print("[Main] 内存使用过高，执行强制垃圾回收")
+            for _ in range(2):
+                gc.collect()
+                time.sleep_ms(50)
+        elif memory_usage_percent > 85:
+            print("[Main] 内存使用较高，执行预防性垃圾回收")
+            gc.collect()
+        
+        return {
+            'free': free_memory,
+            'total': total_memory,
+            'percent': memory_usage_percent
+        }
+        
+    except Exception as e:
+        print(f"[Main] 内存监控失败: {e}")
+        return None
+
+def check_system_health():
+    """检查系统健康状态"""
+    try:
+        # 检查守护进程状态
+        daemon_status = sys_daemon.get_daemon_status()
+        
+        # 检查内存状态
+        memory_status = monitor_system_memory()
+        
+        # 检查错误统计
+        error_stats = sys_error.get_error_stats()
+        
+        return {
+            'daemon': daemon_status,
+            'memory': memory_status,
+            'errors': error_stats
+        }
+        
+    except Exception as e:
+        print(f"[Main] 系统健康检查失败: {e}")
+        return None
+
+# =============================================================================
+# 安全模式处理
+# =============================================================================
+
+def handle_safe_mode(mqtt_client=None):
+    """处理安全模式"""
+    print("[Main] 进入安全模式处理循环")
     
-    # 启动守护进程
-    daemon_started = sys_daemon.start_daemon()
-    if not daemon_started:
-        print("[Main] 守护进程启动失败")
-
-    # LED功能测试
-    print("[Main] 开始LED功能测试...")
-    led_test_result = sys_daemon.test_led_functionality()
-    if led_test_result:
-        print("[Main] LED基本功能测试通过")
-        # 等待2秒后开始闪烁测试
-        time.sleep(2)
-        # 进行极简闪烁测试
-        print("[Main] 开始极简LED闪烁测试...")
-        simple_blink_result = sys_daemon.test_simple_blink(3000)  # 3秒测试
-        if simple_blink_result:
-            print("[Main] 极简LED闪烁测试通过")
-        else:
-            print("[Main] 极简LED闪烁测试失败")
-    else:
-        print("[Main] LED基本功能测试失败")
-
-    while True:
-        # 更新LED测试状态
-        test_completed = sys_daemon.update_led_tests()
-        
-        # 检查软件看门狗
-        if _wdt.check():
-            print("[Main] 看门狗超时，强制进入安全模式")
-            # 确保LED控制器已初始化
-            if not hasattr(sys_daemon, '_led_controller') or sys_daemon._led_controller is None:
-                print("[Main] 初始化LED控制器用于安全模式")
-                import machine
-                led_pins = [12, 13]
-                sys_daemon._led_controller = sys_daemon.LEDController(led_pins[0], led_pins[1])
-            # 强制进入安全模式
-            sys_daemon.force_safe_mode("看门狗超时")
-            _wdt.reset()  # 重置看门狗
-        else:
-            # 正常喂狗
-            _wdt.feed()
-        
-        if loop_count % STATUS_REPORT_INTERVAL == 0:
-            # 内存管理和报告
-            free_memory = gc.mem_free()
-            total_memory = 264192  # ESP32C3总内存约264KB
-            memory_usage_percent = ((total_memory - free_memory) / total_memory) * 100
-            
-            print(f"[Main] 内存: {free_memory} 字节 ({memory_usage_percent:.1f}%)")
-            
-            # 智能垃圾回收策略
-            gc_force_threshold = get_config_value(config, 'daemon', 'gc_force_threshold', 95)
-            gc_warning_threshold = gc_force_threshold - 10  # 警告阈值
-            debug_mode = get_config_value(config, 'system', 'debug_mode', False)
-            
-            if memory_usage_percent > gc_force_threshold:
-                print("[Main] 内存使用过高，执行强制垃圾回收")
-                # 执行深度垃圾回收
-                for _ in range(2):
-                    gc.collect()
-                    time.sleep_ms(50)
-                free_memory_after = gc.mem_free()
-                memory_usage_after = ((total_memory - free_memory_after) / total_memory) * 100
-                print(f"[Main] 内存回收后: {free_memory_after} 字节 ({memory_usage_after:.1f}%)")
-            elif memory_usage_percent > gc_warning_threshold:
-                print("[Main] 内存使用较高，执行预防性垃圾回收")
-                gc.collect()
-            elif debug_mode or loop_count % 10 == 0:  # 调试模式或每10次循环回收一次
-                gc.collect()
-                if debug_mode:
-                    print(f"[Main] 内存回收后: {gc.mem_free()} 字节")
-
-            # 检查守护进程状态
-            daemon_status = sys_daemon.get_daemon_status()
-            if sys_daemon.is_safe_mode():
-                print("[Main] 系统处于安全模式，暂停正常操作，持续更新LED闪烁")
-                # 在安全模式下使用独立的循环确保LED闪烁流畅
-                safe_mode_loop_count = 0
-                while sys_daemon.is_safe_mode():
-                    # 检查软件看门狗
-                    if _wdt.check():
-                        print("[Main] 安全模式下看门狗超时，重置看门狗")
-                        _wdt.reset()
-                    else:
-                        _wdt.feed()
-                    
-                    # 持续更新LED闪烁状态
-                    try:
-                        if hasattr(sys_daemon, '_led_controller') and sys_daemon._led_controller:
-                            sys_daemon._led_controller.update_safe_mode_led()
-                    except Exception as e:
-                        print(f"[Main] LED状态更新失败: {e}")
-                    
-                    # 短暂延迟，确保500ms闪烁周期的流畅性
-                    time.sleep_ms(100)
-                    
-                    # 每100次循环检查一次是否可以退出安全模式
-                    safe_mode_loop_count += 1
-                    if safe_mode_loop_count % 100 == 0:
-                        # 强制进行一次守护进程状态更新以检查安全模式状态
-                        sys_daemon.check_safe_mode_recovery()
-                        if not sys_daemon.is_safe_mode():
-                            print("[Main] 检测到安全模式已退出")
-                            break
-                
-                continue  # 跳过正常的主循环处理
-
-            # MQTT连接检查
-            if not mqtt_server.is_connected:
-                print("\033[1;31m[Main] MQTT断开，重新连接...\033[0m")
-                mqtt_server.connect()
-            else:
-                mqtt_server.check_connection()
-            
-            # 蓝牙功能已暂时屏蔽
-            # 原蓝牙扫描代码已移除
-
-            # 发送系统状态信息
-            status_msg = f"Loop: {loop_count}, 守护进程: {'活跃' if daemon_status['active'] else '停止'}, 安全模式: {'是' if daemon_status['safe_mode'] else '否'}"
-            mqtt_server.log("INFO", status_msg)
-
-        loop_count += 1
-        # 使用配置的延迟时间，避免CPU空转
-        time.sleep_ms(MAIN_LOOP_DELAY)
-
-else:
-    print("\n[Main] WiFi连接失败，进入安全模式")
-    safe_mode_loop_count = 0
-    while True:
-        # 在安全模式下持续检查看门狗
-        if _wdt.check():
-            print("[Main] 安全模式下看门狗超时，重置看门狗")
-            _wdt.reset()
-        else:
-            # 正常喂狗
-            _wdt.feed()
-        
-        # 持续更新LED闪烁状态
+    # 强制进入安全模式（这会初始化LED控制器）
+    sys_daemon.force_safe_mode("系统异常")
+    
+    # 安全模式循环
+    safe_mode_count = 0
+    while sys_daemon.is_safe_mode():
         try:
-            # 检查LED控制器是否已初始化，如果没有则直接初始化
-            if not hasattr(sys_daemon, '_led_controller') or sys_daemon._led_controller is None:
-                print("[Main] 初始化LED控制器用于安全模式")
-                # 直接创建LED控制器实例
-                import machine
-                led_pins = [12, 13]  # 使用默认LED引脚
-                sys_daemon._led_controller = sys_daemon.LEDController(led_pins[0], led_pins[1])
+            # 安全模式LED控制 - 闪烁模式
+            # 通过守护进程的LED控制器实现闪烁效果
+            daemon_status = sys_daemon.get_daemon_status()
+            if daemon_status and hasattr(sys_daemon, '_led_controller') and sys_daemon._led_controller:
+                # 使用LED控制器的闪烁功能
+                sys_daemon._led_controller.update_safe_mode_led()
             
-            # 更新LED闪烁状态 - 使用新的更新方法
-            sys_daemon._led_controller.update_safe_mode_led()
+            # 短暂延迟，控制闪烁频率
+            time.sleep_ms(100)
             
-            # 每50次循环打印一次调试信息
-            if safe_mode_loop_count % 50 == 0:
-                print(f"[Main] 安全模式LED状态更新中...")
+            # 每100次循环检查一次恢复条件
+            safe_mode_count += 1
+            if safe_mode_count % 100 == 0:
+                sys_daemon.check_safe_mode_recovery()
+                if not sys_daemon.is_safe_mode():
+                    print("[Main] 安全模式已退出")
+                    break
+                    
         except Exception as e:
-            print(f"[Main] LED状态更新失败: {e}")
+            print(f"[Main] 安全模式处理异常: {e}")
+            time.sleep_ms(500)
+
+# =============================================================================
+# 主循环
+# =============================================================================
+
+def main_loop(sys_config, mqtt_client):
+    """主循环"""
+    print("[Main] 开始主循环")
+    
+    loop_count = 0
+    status_interval = sys_config['status_interval']
+    loop_delay = sys_config['loop_delay']
+    
+    while True:
+        try:
+            # 系统监控
+            health = check_system_health()
+            
+            # 检查安全模式
+            if sys_daemon.is_safe_mode():
+                handle_safe_mode(mqtt_client)
+                continue
+            
+            # MQTT连接检查
+            if mqtt_client and not mqtt_client.is_connected:
+                print("[Main] MQTT断开，尝试重连...")
+                mqtt_client.connect()
+            
+            # 定期状态报告
+            if loop_count % status_interval == 0:
+                if health and mqtt_client and mqtt_client.is_connected:
+                    status_msg = f"Loop:{loop_count}, 内存:{health['memory']['percent']:.1f}%, 守护进程:{'活跃' if health['daemon']['active'] else '停止'}"
+                    mqtt_client.log("INFO", status_msg)
+                    
+                    # 打印到串口
+                    print(f"[Main] {status_msg}")
+            
+            loop_count += 1
+            time.sleep_ms(loop_delay)
+            
+        except KeyboardInterrupt:
+            print("[Main] 用户中断，退出程序")
+            break
+        except Exception as e:
+            print(f"[Main] 主循环异常: {e}")
+            sys_error.handle_error("SYSTEM_ERROR", e, "MainLoop")
+            time.sleep_ms(1000)
+
+# =============================================================================
+# 主程序入口
+# =============================================================================
+
+def main():
+    """主程序入口"""
+    try:
+        print("=== ESP32-C3 IoT设备启动 ===")
         
-        safe_mode_loop_count += 1
+        # 系统初始化
+        sys_config = initialize_system()
         
-        time.sleep_ms(100)  # 100ms延迟，配合500ms闪烁周期确保良好效果
+        # 网络连接
+        wifi_connected, error_msg = connect_networks()
+        if not wifi_connected:
+            print("[Main] 网络连接失败，进入安全模式")
+            sys_daemon.force_safe_mode("网络连接失败")
+            handle_safe_mode()
+            return
+        
+        # 创建MQTT客户端
+        mqtt_client = create_mqtt_client(
+            sys_config['client_id'],
+            sys_config['mqtt_broker'],
+            sys_config['mqtt_port'],
+            sys_config['mqtt_topic'],
+            sys_config['mqtt_keepalive']
+        )
+        
+        if mqtt_client:
+            # 设置MQTT客户端给其他模块
+            sys_daemon.set_mqtt_client(mqtt_client)
+            sys_error.set_mqtt_client(mqtt_client)
+        
+        # 启动守护进程
+        daemon_started = sys_daemon.start_daemon()
+        if not daemon_started:
+            print("[Main] 守护进程启动失败")
+        
+        # LED功能测试
+        print("[Main] 测试LED功能...")
+        led_test_result = sys_daemon.test_led_functionality()
+        if led_test_result:
+            print("[Main] LED功能测试通过")
+        else:
+            print("[Main] LED功能测试失败")
+        
+        # 进入主循环
+        main_loop(sys_config, mqtt_client)
+        
+    except Exception as e:
+        print(f"[Main] 主程序异常: {e}")
+        sys_error.handle_error("FATAL_ERROR", e, "Main")
+        
+        # 进入安全模式
+        sys_daemon.force_safe_mode("主程序异常")
+        handle_safe_mode()
+
+# =============================================================================
+# 程序入口
+# =============================================================================
+
+if __name__ == "__main__":
+    main()

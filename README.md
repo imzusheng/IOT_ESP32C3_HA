@@ -1,433 +1,312 @@
-# ESP32C3 IoT 设备项目
+# ESP32-C3 物联网设备项目
 
 ## 项目概述
 
-这是一个基于ESP32C3的MicroPython物联网设备项目，专为Home Assistant智能家居系统设计。项目采用模块化架构，提供WiFi连接、MQTT通信、系统监控和错误恢复等功能，确保设备在资源受限的嵌入式环境中稳定运行。
-
-## 项目特性
-
-- **多网络WiFi支持**: 自动扫描并连接信号最强的配置网络
-- **MQTT通信**: 高效的MQTT客户端，支持自动重连和内存优化
-- **系统监控**: 实时监控温度、内存使用和系统健康状态
-- **错误恢复**: 智能错误处理和自动恢复机制
-- **内存管理**: 优化的垃圾回收策略，适合ESP32C3的264KB内存限制
-- **看门狗保护**: 防止系统死锁，确保设备稳定运行
-- **LED状态指示**: 通过LED显示设备运行状态
-- **NTP时间同步**: 自动同步网络时间，支持时区设置
+这是一个基于ESP32-C3的MicroPython物联网设备项目，专为Home Assistant智能家居系统设计。项目提供WiFi连接、MQTT通信、系统监控和错误恢复等功能，针对资源受限的嵌入式环境进行了优化。
 
 ## 项目结构
 
 ```
-src/
-├── boot.py              # 系统启动脚本，初始化垃圾回收
-├── config.py            # 统一配置管理模块
-├── main.py              # 主程序入口
-├── net_mqtt.py          # MQTT通信模块
-├── net_wifi.py          # WiFi管理模块
-├── sys_daemon.py        # 系统守护进程
-├── sys_error.py         # 错误处理和日志模块
-└── lib/
-    └── umqtt/
-        └── simple.py    # MQTT客户端库
+IOT_ESP32C3_HA/
+├── src/                          # 源代码目录
+│   ├── main.py                   # 主程序入口
+│   ├── boot.py                   # 启动脚本
+│   ├── config.json               # 配置文件
+│   ├── net_wifi.py               # WiFi管理模块
+│   ├── net_mqtt.py               # MQTT通信模块
+│   ├── sys_daemon.py             # 系统守护进程
+│   ├── sys_error.py              # 错误处理模块
+│   ├── led_tester.py             # LED测试模块
+│   └── lib/                      # 第三方库
+│       └── umqtt/
+│           └── simple.py         # MQTT客户端库
+├── web/                          # Web相关文件
+├── public/                       # 公共资源
+├── README.md                     # 项目文档
+├── CLAUDE.md                     # AI助手指南
+└── ISSUE.md                      # 问题分析文档
 ```
 
-## 核心模块详解
+## 核心模块分析
 
-### 1. main.py - 主程序入口
+### 1. 主程序 (main.py)
 
-**作用**: 系统的主控制中心，协调各模块运行。
+**当前问题：**
+- 逻辑过于复杂，包含太多功能模块
+- 主循环中存在多重嵌套和复杂的状态管理
+- 安全模式处理逻辑混乱，与LED控制冲突
+- 看门狗实现不够健壮
+- 内存管理策略分散
 
-**主要功能**:
-- 系统初始化和配置验证
+**主要功能：**
+- 系统初始化和配置加载
 - WiFi连接管理
-- MQTT客户端创建和连接
-- 守护进程启动和管理
-- 主循环控制和内存监控
-- 看门狗喂狗操作
-- 系统状态报告
+- MQTT客户端创建和管理
+- 系统监控循环
+- 安全模式处理
+- LED状态控制
 
-**关键代码**:
-```python
-# 初始化看门狗
-_wdt = machine.WDT(timeout=config.DaemonConfig.WDT_TIMEOUT)
+### 2. WiFi管理器 (net_wifi.py)
 
-# WiFi连接
-connection_successful = net_wifi.connect_wifi()
+**功能特点：**
+- 多网络支持，按信号强度排序
+- 自动网络扫描和连接
+- NTP时间同步
+- 错误恢复和重试机制
 
-# 创建MQTT客户端
-mqtt_server = net_mqtt.MqttServer(CLIENT_ID, MQTT_BROKER, port=MQTT_PORT, topic=MQTT_TOPIC)
-mqtt_server.connect()
+**核心接口：**
+- `connect_wifi()` - 连接WiFi
+- `set_wifi_networks()` - 设置WiFi网络配置
+- `get_wifi_status()` - 获取连接状态
 
-# 启动守护进程
-daemon_started = sys_daemon.start_daemon()
+### 3. MQTT客户端 (net_mqtt.py)
 
-# 主循环
-while True:
-    _wdt.feed()  # 喂狗
-    # 内存管理和状态监控
-    # MQTT连接检查
-    # 系统状态报告
-```
-
-### 2. config.py - 统一配置管理
-
-**作用**: 集中管理所有系统配置参数，提供配置验证功能。
-
-**配置分类**:
-- `MQTTConfig`: MQTT服务器连接参数
-- `WiFiConfig`: WiFi网络配置
-- `DaemonConfig`: 守护进程参数
-- `SystemConfig`: 系统级参数
-
-**关键配置**:
-```python
-class MQTTConfig:
-    BROKER = "192.168.3.15"
-    PORT = 1883
-    TOPIC = "lzs/esp32c3"
-    KEEPALIVE = 60
-
-class WiFiConfig:
-    NETWORKS = [
-        {"ssid": "zsm60p", "password": "25845600"},
-        {"ssid": "CMCC-pdRG", "password": "7k77ed5p"},
-        {"ssid": "leju_software", "password": "leju123456"}
-    ]
-    TIMEOUT_S = 15
-
-class DaemonConfig:
-    LED_PINS = [12, 13]
-    TEMP_THRESHOLD = 60.0
-    MEMORY_THRESHOLD = 90
-    WDT_TIMEOUT = 10000
-
-class SystemConfig:
-    DEBUG_MODE = False
-    MAIN_LOOP_DELAY = 300
-    AUTO_RESTART_ENABLED = False
-```
-
-### 3. net_wifi.py - WiFi管理模块
-
-**作用**: 提供健壮的WiFi连接管理和NTP时间同步功能。
-
-**主要功能**:
-- 多WiFi网络支持，按信号强度自动选择
-- 网络扫描和RSSI排序
-- 自动重连和错误恢复
-- NTP时间同步和时区设置
-- 连接状态监控
-
-**关键代码**:
-```python
-def connect_wifi():
-    """连接WiFi并同步时间"""
-    wlan = network.WLAN(network.STA_IF)
-    
-    # 扫描网络
-    scanned_networks = _scan_for_ssids(wlan)
-    
-    # 按信号强度排序并连接最优网络
-    for network_config in connectable_configs:
-        wlan.connect(ssid, password)
-        # 等待连接成功
-        if wlan.isconnected():
-            sync_and_set_time()  # 同步时间
-            return True
-    return False
-```
-
-### 4. net_mqtt.py - MQTT通信模块
-
-**作用**: 提供高效的MQTT通信功能，支持自动重连和内存优化。
-
-**主要功能**:
-- MQTT客户端创建和连接管理
+**功能特点：**
+- 基于umqtt.simple的轻量级实现
 - 自动重连机制
 - 内存优化的日志发送
 - 连接状态监控
-- 错误恢复机制
 
-**关键代码**:
-```python
-class MqttServer:
-    def connect(self):
-        """连接到MQTT代理"""
-        try:
-            self.client.connect()
-            self.is_connected = True
-            self.log("INFO", f"设备在线，ID: {self.client_id}")
-            return True
-        except Exception as e:
-            self.connection_attempts += 1
-            return False
-    
-    def log(self, level, message):
-        """格式化并发送日志消息"""
-        # 使用bytearray进行内存优化的字符串拼接
-        log_ba = bytearray()
-        log_ba.extend(f"[{level}] [".encode())
-        log_ba.extend(f"{timestamp}".encode())
-        log_ba.extend(f"] {message}".encode())
-        self.client.publish(self.topic, log_ba)
-```
+**核心接口：**
+- `MqttServer` 类 - MQTT客户端封装
+- `connect()` - 连接服务器
+- `log()` - 发送日志消息
+- `check_connection()` - 检查连接状态
 
-### 5. sys_daemon.py - 系统守护进程
+### 4. 系统守护进程 (sys_daemon.py)
 
-**作用**: 提供系统监控和安全保护功能，确保设备稳定运行。
+**功能特点：**
+- 系统健康监控（温度、内存、错误计数）
+- LED状态控制
+- 安全模式管理
+- 定时任务执行
 
-**主要功能**:
-- LED状态指示控制
-- 温度监控和安全模式
-- 内存监控和垃圾回收
-- 系统健康检查
-- 错误处理和恢复
-- 定时器监控
+**当前问题：**
+- LED控制逻辑复杂，存在双重控制冲突
+- 定时器回调与主循环存在资源竞争
+- 安全模式LED闪烁不稳定
 
-**关键代码**:
-```python
-def _monitor_callback(timer):
-    """监控定时器回调函数"""
-    # 系统健康检查
-    health = _perform_health_check()
-    
-    # 根据健康状态决定是否进入安全模式
-    if not health['overall']:
-        _enter_safe_mode(f"系统异常: {reason}")
-    
-    # LED状态控制
-    if _safe_mode_active:
-        _led_controller.set_status('safe_mode')
-    else:
-        _led_controller.set_status('normal' if health['overall'] else 'warning')
-```
+**核心接口：**
+- `start_daemon()` - 启动守护进程
+- `is_safe_mode()` - 检查安全模式
+- `force_safe_mode()` - 强制进入安全模式
+- `get_daemon_status()` - 获取系统状态
 
-### 6. sys_error.py - 错误处理模块
+### 5. 错误处理系统 (sys_error.py)
 
-**作用**: 提供集中式错误处理和日志管理功能。
-
-**主要功能**:
+**功能特点：**
 - 统一错误分类和处理
-- 智能日志系统
-- 自动错误恢复机制
+- 智能恢复策略
 - 内存友好的日志缓冲
-- 错误严重程度分类
+- 错误统计和分析
 
-**错误类型**:
-```python
-class ErrorType(Enum):
-    NETWORK = "NETWORK_ERROR"
-    HARDWARE = "HARDWARE_ERROR"
-    MEMORY = "MEMORY_ERROR"
-    CONFIG = "CONFIG_ERROR"
-    SYSTEM = "SYSTEM_ERROR"
-    MQTT = "MQTT_ERROR"
-    WIFI = "WIFI_ERROR"
-    DAEMON = "DAEMON_ERROR"
-    FATAL = "FATAL_ERROR"
-```
+**核心接口：**
+- `handle_error()` - 处理错误
+- `get_error_stats()` - 获取错误统计
+- `set_log_level()` - 设置日志级别
 
-### 7. boot.py - 启动脚本
+### 6. LED测试模块 (led_tester.py)
 
-**作用**: 系统启动时首先执行的脚本，负责初始化垃圾回收。
+**功能特点：**
+- 多种预设LED闪烁模式
+- 独立的测试功能
+- 硬件验证工具
 
-```python
-import gc
-gc.collect()
+**预设模式：**
+- 快闪三下
+- 一长两短
+- SOS求救信号
+- 心跳模式
+- 警灯模式
+- 呼吸灯模式
+
+## 配置系统
+
+### config.json 结构
+
+```json
+{
+  "mqtt": {
+    "broker": "192.168.3.15",
+    "port": 1883,
+    "topic": "lzs/esp32c3",
+    "keepalive": 60
+  },
+  "wifi": {
+    "networks": [
+      {"ssid": "zsm60p", "password": "25845600"}
+    ],
+    "config": {
+      "timeout": 15,
+      "scan_interval": 30
+    }
+  },
+  "daemon": {
+    "config": {
+      "led_pins": [12, 13],
+      "monitor_interval": 5000,
+      "temp_threshold": 65,
+      "memory_threshold": 80
+    }
+  },
+  "system": {
+    "main_loop_delay": 300,
+    "status_report_interval": 30
+  }
+}
 ```
 
 ## 系统工作流程
 
-### 1. 启动流程
+### 正常启动流程
 
-```
-boot.py → main.py → config.py → WiFi连接 → MQTT连接 → 守护进程启动 → 主循环
-```
+1. **boot.py** → 垃圾回收初始化
+2. **main.py** → 系统初始化
+3. **配置加载** → 读取config.json
+4. **WiFi连接** → 连接最优网络
+5. **时间同步** → NTP同步时间
+6. **MQTT连接** → 连接MQTT代理
+7. **守护进程启动** → 开始系统监控
+8. **主循环** → 持续运行和监控
 
-### 2. 主循环流程
+### 主循环任务
 
-```
-喂狗 → 内存监控 → 守护进程状态检查 → 安全模式判断 → MQTT连接检查 → 状态报告 → 延迟
-```
+1. **看门狗喂狗** → 防止系统死锁
+2. **内存监控** → 智能垃圾回收
+3. **状态报告** → 定期发送系统状态
+4. **连接检查** → 检查WiFi和MQTT连接
+5. **安全模式处理** → 处理异常状态
 
-### 3. 错误处理流程
+### 错误处理流程
 
-```
-错误发生 → 错误分类 → 严重程度判断 → 执行恢复动作 → 记录日志 → 继续运行/进入安全模式/重启
-```
+1. **错误发生** → 错误分类和记录
+2. **严重程度判断** → 确定处理优先级
+3. **恢复动作执行** → 尝试自动恢复
+4. **系统保护** → 必要时进入安全模式
+5. **日志记录** → 记录错误和恢复过程
 
-## 内存管理策略
+## 当前问题分析
 
-### 1. 内存优化技术
+### 1. LED控制冲突 ⚠️
 
-- **全局变量使用**: 减少实例化开销
-- **智能垃圾回收**: 根据内存使用情况动态调整
-- **轻量级数据结构**: 使用简单数据类型和bytearray
-- **限制缓冲区大小**: 限制日志和错误历史记录
-- **避免复杂对象**: 减少对象创建和销毁
+**问题描述：**
+- 守护进程定时器和主循环同时控制LED
+- 安全模式LED闪烁不稳定
+- 状态管理混乱
 
-### 2. 垃圾回收策略
+**影响：** 安全模式指示功能失效
 
-```python
-# 定期垃圾回收
-if memory_usage_percent > config.DaemonConfig.GC_FORCE_THRESHOLD:
-    print("[Main] 内存使用过高，执行强制垃圾回收")
-    gc.collect()
+### 2. 主循环过于复杂 ⚠️
 
-# 深度垃圾回收
-for _ in range(2):
-    gc.collect()
-    time.sleep_ms(50)
-```
+**问题描述：**
+- 主循环包含太多逻辑分支
+- 安全模式处理与正常模式混合
+- 状态管理不清晰
 
-## 配置管理
+**影响：** 代码维护困难，bug难以定位
 
-### 1. 配置验证
+### 3. 内存管理分散 ⚠️
 
-系统启动时自动验证所有配置参数：
-- 类型检查：确保参数类型正确
-- 范围检查：验证数值在合理范围内
-- 依赖检查：检查配置间的依赖关系
+**问题描述：**
+- 垃圾回收策略分散在多个模块
+- 内存监控逻辑不统一
+- 缺乏统一的内存管理策略
 
-### 2. 配置修改
+**影响：** 系统稳定性受影响
 
-根据实际环境修改 `config.py` 中的配置：
-- WiFi网络配置：修改 `WiFiConfig.NETWORKS`
-- MQTT服务器配置：修改 `MQTTConfig.BROKER`
-- 监控参数：调整 `DaemonConfig` 中的阈值
-- LED引脚：配置 `DaemonConfig.LED_PINS`
+### 4. 错误恢复机制不够健壮 ⚠️
+
+**问题描述：**
+- 某些错误类型的恢复策略不够完善
+- 错误统计和阈值设置需要优化
+- 恢复动作的成功率有待提高
+
+**影响：** 系统自愈能力有限
+
+## 硬件资源
+
+### ESP32-C3 规格
+- **内存：** 264KB SRAM
+- **存储：** 4MB Flash
+- **处理器：** RISC-V 双核 32位
+- **无线：** WiFi 802.11b/g/n
+- **GPIO：** 22个数字IO引脚
+- **接口：** SPI, I2C, UART, ADC
+
+### 引脚分配
+- **LED1：** GPIO 12
+- **LED2：** GPIO 13
+- **看门狗：** 软件实现
 
 ## 部署和使用
 
-### 1. 文件上传
-
-使用MicroPython工具将文件上传到ESP32C3：
+### 文件上传到设备
 
 ```bash
-# 上传所有源文件
+# 使用rshell上传文件
 rshell cp src/boot.py /pyboard/boot.py
 rshell cp src/config.py /pyboard/config.py
 rshell cp src/main.py /pyboard/main.py
-rshell cp src/net_mqtt.py /pyboard/net_mqtt.py
-rshell cp src/net_wifi.py /pyboard/net_wifi.py
-rshell cp src/sys_daemon.py /pyboard/sys_daemon.py
-rshell cp src/sys_error.py /pyboard/sys_error.py
-rshell cp src/lib/umqtt/simple.py /pyboard/umqtt/simple.py
+rshell cp src/config.json /pyboard/config.json
+# ... 其他文件
 ```
 
-### 2. 设备测试
+### 设备测试
 
-设备启动后，通过串口查看输出：
+通过串口监控设备输出：
 - WiFi连接状态
 - MQTT连接状态
-- 系统监控信息
-- 内存使用情况
-- 错误和警告信息
+- 内存使用报告
+- 系统日志
+- LED状态指示
 
-### 3. MQTT主题
+## 优化方向
 
-设备发布状态到以下MQTT主题：
-- 主主题：`lzs/esp32c3`
-- 日志主题：`esp32c3/logs/{level}`
+### 1. 代码重构
+- 简化主循环逻辑
+- 分离安全模式处理
+- 统一LED控制接口
+- 优化状态管理
 
-## 开发指南
+### 2. 内存优化
+- 统一内存管理策略
+- 优化数据结构
+- 减少内存碎片
+- 改进垃圾回收
 
-### 1. 添加新功能
+### 3. 错误处理增强
+- 完善恢复策略
+- 优化错误分类
+- 改进日志系统
+- 增强自愈能力
 
-1. **确定模块位置**: 根据功能性质选择合适的模块
-2. **创建函数/类**: 在相应模块中添加新功能
-3. **更新配置**: 在 `config.py` 中添加相关配置
-4. **集成错误处理**: 使用 `sys_error.py` 的错误处理机制
-5. **添加日志**: 使用统一的日志系统
+### 4. 功能扩展
+- 蓝牙功能重构
+- 传感器集成
+- 本地控制接口
+- 远程管理功能
 
-### 2. 调试技巧
+## 维护说明
 
-1. **启用调试模式**:
-   ```python
-   # 在config.py中设置
-   DEBUG_MODE = True
-   ```
-
-2. **查看内存使用**:
-   ```python
-   free_memory = gc.mem_free()
-   memory_usage_percent = ((total_memory - free_memory) / total_memory) * 100
-   ```
-
-3. **监控系统状态**:
-   ```python
-   daemon_status = sys_daemon.get_daemon_status()
-   health = sys_daemon.get_system_health()
-   ```
-
-## 注意事项
-
-### 1. 内存限制
-
-- ESP32C3总内存约264KB
-- 避免创建大对象和复杂数据结构
-- 定期监控内存使用情况
-- 使用内存优化的数据结构（如bytearray）
-
-### 2. 实时性要求
-
-- 主循环延迟不宜过长（建议100-500ms）
-- 避免阻塞操作
-- 确保看门狗正常喂狗
-- 合理设置定时器间隔
-
-### 3. 网络稳定性
-
-- WiFi连接可能不稳定，需要重连机制
-- MQTT连接需要心跳保持
-- 网络操作要有超时处理
-- 考虑网络中断时的降级运行
-
-### 4. 硬件限制
-
-- LED引脚必须是ESP32C3有效GPIO（0-19, 21-23, 26-33）
-- 温度监控：ESP32C3正常工作温度<85°C
-- 看门狗超时：建议1000-32000毫秒
-
-## 故障排除
-
-### 1. WiFi连接问题
-
-- 检查WiFi配置是否正确
-- 确保路由器信号强度足够
-- 验证密码是否正确
-- 查看串口输出的错误信息
-
-### 2. MQTT连接问题
-
-- 检查MQTT服务器地址和端口
-- 确保网络连接正常
-- 验证MQTT服务器运行状态
-- 检查防火墙设置
-
-### 3. 内存问题
-
+### 日常维护
+- 定期检查错误日志
 - 监控内存使用情况
-- 检查是否有内存泄漏
-- 调整垃圾回收策略
-- 优化数据结构使用
+- 更新配置文件
+- 备份重要数据
 
-### 4. 系统不稳定
+### 故障排除
+1. 查看串口输出日志
+2. 检查WiFi和MQTT连接
+3. 验证配置文件正确性
+4. 测试LED硬件功能
+5. 分析错误统计信息
 
-- 检查看门狗配置
-- 验证主循环延迟设置
-- 查看错误日志
-- 检查硬件连接
+### 性能监控
+- 内存使用率
+- 错误发生频率
+- 网络连接稳定性
+- 系统响应时间
 
-## 总结
+---
 
-本项目提供了一个完整的ESP32C3 IoT设备解决方案，具有以下特点：
-
-- **模块化设计**: 清晰的模块划分，便于维护和扩展
-- **内存优化**: 针对ESP32C3内存限制的优化策略
-- **错误恢复**: 完善的错误处理和自动恢复机制
-- **系统监控**: 全面的系统状态监控和健康检查
-- **配置管理**: 灵活的配置系统，支持运行时验证
-- **易于部署**: 简单的文件上传和配置过程
-
-通过这些特性，项目能够在资源受限的嵌入式环境中稳定运行，为Home Assistant等智能家居系统提供可靠的设备支持。
+**注意：** 本项目针对ESP32-C3的264KB内存限制进行了优化，在功能丰富性和资源消耗之间取得了平衡。所有模块都考虑了嵌入式环境的特殊要求。
