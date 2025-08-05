@@ -18,16 +18,19 @@ import net_wifi
 import net_mqtt
 import sys_daemon
 import sys_error
+import object_pool
+import state_machine
+import recovery_manager
+import config_manager
 
 # =============================================================================
 # 配置管理
 # =============================================================================
 
 def load_config(config_path='config.json'):
-    """加载配置文件"""
+    """加载配置文件 - 使用配置管理器"""
     try:
-        with open(config_path, 'r') as f:
-            config = ujson.load(f)
+        config = config_manager.load_config()
         print("[Main] 配置文件加载成功")
         return config
     except Exception as e:
@@ -35,23 +38,23 @@ def load_config(config_path='config.json'):
         return None
 
 def get_config_value(config, section, key=None, default=None):
-    """获取配置值"""
-    if not config:
-        return default
-    
+    """获取配置值 - 使用配置管理器"""
+    # 优先使用配置管理器
     if key is None:
-        return config.get(section, default)
-    
-    section_config = config.get(section, {})
-    return section_config.get(key, default)
+        return config_manager.get_config(section, default)
+    else:
+        return config_manager.get_config(section, key, default)
 
 # =============================================================================
 # 系统初始化
 # =============================================================================
 
 def initialize_system():
-    """系统初始化"""
+    """系统初始化 - 优化内存使用和状态管理"""
     print("[Main] 开始系统初始化...")
+    
+    # 使用对象池获取配置字典
+    config_dict = object_pool.get_dict()
     
     # 加载配置
     config = load_config()
@@ -86,9 +89,8 @@ def initialize_system():
     # 初始化看门狗
     initialize_watchdog(config)
     
-    print("[Main] 系统初始化完成")
-    
-    return {
+    # 配置系统信息
+    config_dict.update({
         'config': config,
         'client_id': client_id,
         'mqtt_broker': mqtt_broker,
@@ -97,7 +99,11 @@ def initialize_system():
         'mqtt_keepalive': mqtt_keepalive,
         'loop_delay': loop_delay,
         'status_interval': status_interval
-    }
+    })
+    
+    print("[Main] 系统初始化完成")
+    
+    return config_dict
 
 # =============================================================================
 # 网络连接
@@ -294,81 +300,49 @@ def handle_safe_mode(mqtt_client=None):
 # =============================================================================
 
 def main_loop(sys_config, mqtt_client):
-    """主循环 - 优化内存使用"""
-    print("[Main] 开始主循环")
+    """主循环 - 使用状态机模式和优化内存管理"""
+    print("[Main] 开始状态机主循环")
     
+    # 获取状态机实例
+    sm = state_machine.get_state_machine()
+    
+    # 循环计数器和配置
     loop_count = 0
     status_interval = sys_config['status_interval']
     loop_delay = sys_config['loop_delay']
     
-    # 预分配字典对象，避免频繁创建
-    health_cache = {}
-    status_cache = {
-        'active_str': '活跃',
-        'inactive_str': '停止',
-        'enabled_str': '启用',
-        'disabled_str': '禁用'
-    }
+    # 使用对象池获取缓存字典
+    health_cache = object_pool.get_dict()
+    status_cache = object_pool.get_dict()
     
-    # 深度内存清理间隔
-    DEEP_CLEANUP_INTERVAL = 100  # 每100次循环执行一次深度清理
+    # 预填充状态缓存
+    status_cache.update({
+        'active_str': object_pool.get_string('active'),
+        'inactive_str': object_pool.get_string('inactive'),
+        'enabled_str': object_pool.get_string('enabled'),
+        'disabled_str': object_pool.get_string('disabled')
+    })
     
+    # 主循环
     while True:
         try:
-            # 喂狗 - 放在循环开始确保及时喂狗
-            feed_watchdog()
+            # 1. 系统基础维护
+            _perform_system_maintenance()
             
-            # 检查看门狗状态
-            if not check_watchdog():
-                print("[Main] 看门狗状态异常，尝试恢复...")
-                feed_watchdog()
+            # 2. 更新状态机
+            state_machine.update_state_machine()
             
-            # 系统监控 - 重用字典对象
-            health = check_system_health()
-            if health:
-                health_cache.update(health)
+            # 3. 根据当前状态执行相应处理
+            current_state = state_machine.get_current_state()
+            _handle_state_specific_tasks(current_state, sys_config, mqtt_client, health_cache, status_cache)
             
-            # 检查安全模式
-            if sys_daemon.is_safe_mode():
-                handle_safe_mode(mqtt_client)
-                continue
-            
-            # MQTT连接检查
-            if mqtt_client and not mqtt_client.is_connected:
-                print("[Main] MQTT断开，尝试重连...")
-                mqtt_client.connect()
-            
-            # 定期状态报告 - 使用预分配的字符串格式
+            # 4. 定期状态报告
             if loop_count % status_interval == 0:
-                if health_cache and mqtt_client and mqtt_client.is_connected:
-                    # 使用预分配的字符串格式，减少字符串创建
-                    daemon_status = status_cache['active_str'] if health_cache.get('daemon', {}).get('active', False) else status_cache['inactive_str']
-                    wdt_status = status_cache['enabled_str'] if _wdt else status_cache['disabled_str']
-                    memory_percent = health_cache.get('memory', {}).get('percent', 0)
-                    
-                    # 构建状态消息
-                    status_msg = f"Loop:{loop_count},内存:{memory_percent:.1f}%,守护进程:{daemon_status},看门狗:{wdt_status}"
-                    
-                    mqtt_client.log("INFO", status_msg)
-                    
-                    # 打印到串口
-                    print(f"[Main] {status_msg}")
+                _perform_status_report(loop_count, mqtt_client, health_cache, status_cache)
             
-            # 深度内存清理 - 定期执行
-            if loop_count % DEEP_CLEANUP_INTERVAL == 0:
-                print("[Main] 执行深度内存清理...")
-                # 执行多次垃圾回收
-                for _ in range(3):
-                    gc.collect()
-                    time.sleep_ms(50)
-                
-                # 清理健康缓存
-                health_cache.clear()
-                
-                # 清理错误历史
-                sys_error.reset_error_stats()
-                
-                print(f"[Main] 深度内存清理完成，当前内存使用: {gc.mem_free()}/{gc.mem_alloc() + gc.mem_free()} bytes")
+            # 5. 内存管理和优化
+            if loop_count % 100 == 0:  # 每100次循环执行一次内存优化
+                _perform_memory_optimization(health_cache)
             
             loop_count += 1
             time.sleep_ms(loop_delay)
@@ -378,28 +352,195 @@ def main_loop(sys_config, mqtt_client):
             break
         except Exception as e:
             print(f"[Main] 主循环异常: {e}")
-            sys_error.handle_error("SYSTEM_ERROR", e, "MainLoop")
+            # 使用恢复管理器处理错误
+            error_data = {
+                'mqtt_client': mqtt_client,
+                'loop_count': loop_count,
+                'state': state_machine.get_current_state()
+            }
+            recovery_manager.handle_error_with_recovery(
+                "SYSTEM_ERROR", e, "MainLoop", "HIGH", error_data
+            )
+            state_machine.handle_state_event(state_machine.StateEvent.SYSTEM_ERROR)
             time.sleep_ms(1000)
+        
+        finally:
+            # 确保状态机持续运行
+            if loop_count % 1000 == 0:
+                state_machine.update_state_machine()
+
+def _perform_system_maintenance():
+    """执行系统基础维护任务"""
+    # 喂狗
+    feed_watchdog()
+    
+    # 检查看门狗状态
+    if not check_watchdog():
+        print("[Main] 看门狗状态异常，尝试恢复...")
+        feed_watchdog()
+        state_machine.handle_state_event(state_machine.StateEvent.WATCHDOG_TIMEOUT)
+
+def _handle_state_specific_tasks(current_state, sys_config, mqtt_client, health_cache, status_cache):
+    """根据状态执行特定任务"""
+    if current_state == state_machine.SystemState.RUNNING:
+        _handle_running_state(sys_config, mqtt_client, health_cache, status_cache)
+    elif current_state == state_machine.SystemState.NETWORKING:
+        _handle_networking_state(sys_config, mqtt_client)
+    elif current_state == state_machine.SystemState.SAFE_MODE:
+        _handle_safe_mode_state(mqtt_client)
+    elif current_state == state_machine.SystemState.WARNING:
+        _handle_warning_state(sys_config, mqtt_client, health_cache)
+    elif current_state == state_machine.SystemState.ERROR:
+        _handle_error_state(mqtt_client)
+    elif current_state == state_machine.SystemState.RECOVERY:
+        _handle_recovery_state(sys_config, mqtt_client)
+
+def _handle_running_state(sys_config, mqtt_client, health_cache, status_cache):
+    """处理运行状态"""
+    # 系统监控 - 重用字典对象
+    health = check_system_health()
+    if health:
+        health_cache.update(health)
+    
+    # 检查系统健康状态
+    if health_cache.get('memory', {}).get('percent', 0) > 90:
+        state_machine.handle_state_event(state_machine.StateEvent.MEMORY_CRITICAL)
+    
+    # MQTT连接检查
+    if mqtt_client and not mqtt_client.is_connected:
+        print("[Main] MQTT断开，尝试重连...")
+        if mqtt_client.connect():
+            print("[Main] MQTT重连成功")
+        else:
+            state_machine.handle_state_event(state_machine.StateEvent.NETWORK_FAILED)
+
+def _handle_networking_state(sys_config, mqtt_client):
+    """处理网络连接状态"""
+    # 网络连接已在初始化时完成，这里主要监控
+    wifi_connected = net_wifi.get_wifi_status().get('connected', False)
+    if not wifi_connected:
+        state_machine.handle_state_event(state_machine.StateEvent.NETWORK_FAILED)
+    else:
+        # 网络连接成功，尝试创建MQTT客户端
+        if mqtt_client and not mqtt_client.is_connected:
+            if mqtt_client.connect():
+                state_machine.handle_state_event(state_machine.StateEvent.NETWORK_SUCCESS)
+
+def _handle_safe_mode_state(mqtt_client):
+    """处理安全模式状态"""
+    # 安全模式处理
+    if sys_daemon.is_safe_mode():
+        handle_safe_mode(mqtt_client)
+
+def _handle_warning_state(sys_config, mqtt_client, health_cache):
+    """处理警告状态"""
+    # 警告状态监控
+    health = check_system_health()
+    if health:
+        health_cache.update(health)
+    
+    # 检查是否恢复正常
+    if health_cache.get('daemon', {}).get('active', False):
+        if health_cache.get('memory', {}).get('percent', 0) < 70:
+            state_machine.handle_state_event(state_machine.StateEvent.RECOVERY_SUCCESS)
+
+def _handle_error_state(mqtt_client):
+    """处理错误状态"""
+    # 错误状态处理
+    print("[Main] 处理错误状态...")
+    time.sleep_ms(1000)  # 等待恢复
+
+def _handle_recovery_state(sys_config, mqtt_client):
+    """处理恢复状态"""
+    # 恢复状态处理
+    print("[Main] 处理恢复状态...")
+    
+    # 尝试恢复网络连接
+    wifi_connected = net_wifi.connect_wifi()
+    if wifi_connected:
+        print("[Main] 网络恢复成功")
+        state_machine.handle_state_event(state_machine.StateEvent.RECOVERY_SUCCESS)
+    else:
+        print("[Main] 网络恢复失败")
+        state_machine.handle_state_event(state_machine.StateEvent.RECOVERY_FAILED)
+
+def _perform_status_report(loop_count, mqtt_client, health_cache, status_cache):
+    """执行状态报告"""
+    if not (health_cache and mqtt_client and mqtt_client.is_connected):
+        return
+    
+    try:
+        # 使用缓存字符串构建状态消息
+        daemon_status = status_cache['active_str'] if health_cache.get('daemon', {}).get('active', False) else status_cache['inactive_str']
+        wdt_status = status_cache['enabled_str'] if _wdt else status_cache['disabled_str']
+        memory_percent = health_cache.get('memory', {}).get('percent', 0)
+        current_state = state_machine.get_current_state()
+        
+        # 构建状态消息
+        status_msg = object_pool.get_cached_string(
+            "Loop:{},状态:{},内存:{:.1f}%,守护进程:{},看门狗:{}", 
+            loop_count, current_state, memory_percent, daemon_status, wdt_status
+        )
+        
+        mqtt_client.log("INFO", status_msg)
+        print(f"[Main] {status_msg}")
+        
+    except Exception as e:
+        print(f"[Main] 状态报告失败: {e}")
+
+def _perform_memory_optimization(health_cache):
+    """执行内存优化"""
+    try:
+        # 使用内存优化器检查内存
+        memory_info = object_pool.check_memory()
+        
+        if memory_info and memory_info['percent'] > 85:
+            print(f"[Main] 执行内存优化，当前使用率: {memory_info['percent']:.1f}%")
+            
+            # 清理健康缓存
+            health_cache.clear()
+            
+            # 执行垃圾回收
+            gc.collect()
+            
+            # 获取内存统计
+            stats = object_pool.get_memory_stats()
+            print(f"[Main] 内存优化完成: {stats}")
+        
+    except Exception as e:
+        print(f"[Main] 内存优化失败: {e}")
 
 # =============================================================================
 # 主程序入口
 # =============================================================================
 
 def main():
-    """主程序入口"""
+    """主程序入口 - 集成状态机管理"""
     try:
         print("=== ESP32-C3 IoT设备启动 ===")
+        
+        # 获取状态机实例
+        sm = state_machine.get_state_machine()
+        
+        # 初始状态：系统初始化
+        print("[Main] 状态: 系统初始化")
         
         # 系统初始化
         sys_config = initialize_system()
         
+        # 初始化完成，转换到网络连接状态
+        if sm.handle_state_event(state_machine.StateEvent.INIT_COMPLETE):
+            print("[Main] 状态转换: 网络连接")
+        
         # 网络连接
         wifi_connected, error_msg = connect_networks()
         if not wifi_connected:
-            print("[Main] 网络连接失败，进入安全模式")
+            print("[Main] 网络连接失败，进入警告状态")
+            sm.handle_state_event(state_machine.StateEvent.NETWORK_FAILED)
             sys_daemon.force_safe_mode("网络连接失败")
-            handle_safe_mode()
-            return
+        else:
+            print("[Main] 网络连接成功")
+            sm.handle_state_event(state_machine.StateEvent.NETWORK_SUCCESS)
         
         # 创建MQTT客户端
         mqtt_client = create_mqtt_client(
@@ -414,11 +555,18 @@ def main():
             # 设置MQTT客户端给其他模块
             sys_daemon.set_mqtt_client(mqtt_client)
             sys_error.set_mqtt_client(mqtt_client)
+            print("[Main] MQTT客户端配置完成")
+        else:
+            print("[Main] MQTT客户端创建失败")
+            sm.handle_state_event(state_machine.StateEvent.SYSTEM_ERROR)
         
         # 启动守护进程
         daemon_started = sys_daemon.start_daemon()
         if not daemon_started:
             print("[Main] 守护进程启动失败")
+            sm.handle_state_event(state_machine.StateEvent.SYSTEM_ERROR)
+        else:
+            print("[Main] 守护进程启动成功")
         
         # LED功能测试（仅调试模式）
         debug_mode = get_config_value(sys_config['config'], 'system', 'debug_mode', False)
@@ -430,12 +578,27 @@ def main():
             else:
                 print("[Main] LED功能测试失败")
         
+        # 检查最终状态并进入主循环
+        final_state = sm.get_current_state()
+        print(f"[Main] 初始化完成，当前状态: {final_state}")
+        
+        # 如果处于正常运行状态，转换到运行状态
+        if final_state == state_machine.SystemState.NETWORKING and wifi_connected:
+            sm.handle_state_event(state_machine.StateEvent.NETWORK_SUCCESS)
+        
         # 进入主循环
         main_loop(sys_config, mqtt_client)
         
     except Exception as e:
         print(f"[Main] 主程序异常: {e}")
-        sys_error.handle_error("FATAL_ERROR", e, "Main")
+        # 使用恢复管理器处理致命错误
+        error_data = {
+            'mqtt_client': mqtt_client if 'mqtt_client' in locals() else None,
+            'sys_config': sys_config if 'sys_config' in locals() else None
+        }
+        recovery_manager.handle_error_with_recovery(
+            "FATAL_ERROR", e, "Main", "CRITICAL", error_data
+        )
         
         # 进入安全模式
         sys_daemon.force_safe_mode("主程序异常")

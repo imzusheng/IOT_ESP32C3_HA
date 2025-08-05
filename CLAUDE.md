@@ -11,7 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-这是一个基于ESP32C3的MicroPython物联网设备项目，专为Home Assistant智能家居系统设计。项目采用模块化架构，提供WiFi连接、MQTT通信、系统监控、蓝牙扫描和错误恢复等功能，确保设备在资源受限的嵌入式环境中稳定运行。
+这是一个基于ESP32C3的MicroPython物联网设备项目，专为Home Assistant智能家居系统设计。项目采用模块化架构，提供WiFi连接、MQTT通信、系统监控、LED状态指示和错误恢复等功能，确保设备在资源受限的嵌入式环境中稳定运行。
 
 ## Architecture
 
@@ -21,7 +21,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - 系统主控制中心，协调各模块运行
    - 实现主循环、内存管理和看门狗喂狗
    - 集成配置管理器、WiFi连接、MQTT通信和守护进程
-   - 蓝牙扫描集成和设备发现功能
+   - LED状态指示和系统监控功能
 
 2. **Configuration Manager** (`src/config.py`)
    - 集中式配置管理，使用类常量定义所有参数
@@ -54,12 +54,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - 内存友好的日志缓冲
    - 自动错误恢复和系统重启
 
-7. **Bluetooth Scanner** (`src/ble_scanner.py`)
-   - 内存优化的BLE设备扫描器
-   - 增强的设备信息显示和名称解析
-   - 标准BLE广告数据解析
-   - 多种扫描模式和调试功能
-   - MQTT集成用于Home Assistant兼容性
+7. **LED Preset Manager** (`src/led_preset.py`)
+   - 统一的LED状态指示管理
+   - 多种预设闪烁模式（快闪三下、SOS、心跳等）
+   - 系统状态可视化（正常、警告、错误、安全模式）
+   - 单例模式设计，避免重复初始化
 
 8. **Boot Sequence** (`src/boot.py`)
    - 垃圾回收初始化
@@ -73,8 +72,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **错误恢复**: 智能错误处理和自动恢复机制
 - **内存管理**: 优化的垃圾回收策略，适合ESP32C3的264KB内存限制
 - **看门狗保护**: 防止系统死锁，确保设备稳定运行
-- **LED状态指示**: 通过LED显示设备运行状态
-- **蓝牙扫描**: 内存优化的BLE设备扫描与MQTT集成
+- **LED状态指示**: 通过LED显示设备运行状态，支持多种预设模式
 - **配置管理**: 灵活的配置系统，支持运行时验证
 
 ## Configuration
@@ -82,59 +80,84 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### 配置文件结构
 项目使用双重配置系统：
 - `src/config.py`: Python类常量配置（主要配置）
-- `src/config.json`: JSON运行时配置（蓝牙和动态参数）
+- `src/config.json`: JSON运行时配置（动态参数和设备设置）
 
 ### 主要配置类
 
-#### MQTT配置 (`src/config.py:21-44`)
-```python
-class MQTTConfig:
-    BROKER = "192.168.3.15"         # MQTT服务器地址
-    PORT = 1883                     # MQTT端口
-    TOPIC = "lzs/esp32c3"          # 设备主题
-    KEEPALIVE = 60                 # 心跳间隔
-    CONNECT_TIMEOUT = 10           # 连接超时
-    RECONNECT_DELAY = 5            # 重连延迟
-    MAX_RETRIES = 3                # 最大重试次数
-```
-
-#### WiFi配置 (`src/config.py:49-72`)
-```python
-class WiFiConfig:
-    TIMEOUT_S = 15                 # 连接超时
-    SCAN_INTERVAL = 30             # 扫描间隔
-    NETWORKS = [
-        {"ssid": "zsm60p", "password": "25845600"},
-        {"ssid": "CMCC-pdRG", "password": "7k77ed5p"},
-        {"ssid": "leju_software", "password": "leju123456"}
-    ]
-```
-
-#### 守护进程配置 (`src/config.py:78-122`)
-```python
-class DaemonConfig:
-    LED_PINS = [12, 13]           # LED引脚
-    TEMP_THRESHOLD = 60.0          # 温度阈值
-    MEMORY_THRESHOLD = 90         # 内存阈值
-    WDT_TIMEOUT = 10000           # 看门狗超时
-    MONITOR_INTERVAL = 30000      # 监控间隔
-```
-
-#### 蓝牙配置 (`src/config.json:51-57`)
+#### MQTT配置 (`src/config.json:2-11`)
 ```json
-"bluetooth": {
-  "scan_enabled": true,
-  "scan_interval": 300,
-  "max_devices": 10,
-  "scan_duration": 8000,
-  "memory_threshold": 90
+"mqtt": {
+  "broker": "192.168.3.15",
+  "port": 1883,
+  "topic": "lzs/esp32c3",
+  "keepalive": 60,
+  "config": {
+    "reconnect_delay": 5,
+    "max_retries": 3
+  }
+}
+```
+
+#### WiFi配置 (`src/config.json:12-23`)
+```json
+"wifi": {
+  "networks": [
+    {"ssid": "zsm60p", "password": "25845600"},
+    {"ssid": "leju_software", "password": "leju123456"}
+  ],
+  "config": {
+    "timeout": 15,
+    "scan_interval": 30,
+    "retry_delay": 2,
+    "max_attempts": 3
+  }
+}
+```
+
+#### 守护进程配置 (`src/config.json:24-38`)
+```json
+"daemon": {
+  "config": {
+    "led_pins": [12, 13],
+    "timer_id": 0,
+    "monitor_interval": 5000,
+    "temp_threshold": 65,
+    "temp_hysteresis": 5,
+    "memory_threshold": 80,
+    "memory_hysteresis": 10,
+    "max_error_count": 10,
+    "safe_mode_cooldown": 60000
+  },
+  "wdt_timeout": 120000,
+  "wdt_enabled": false,
+  "gc_force_threshold": 95
+}
+```
+
+#### 系统配置 (`src/config.json:40-46`)
+```json
+"system": {
+  "debug_mode": false,
+  "log_level": "INFO",
+  "main_loop_delay": 300,
+  "status_report_interval": 30,
+  "auto_restart_enabled": false
+}
+```
+
+#### 设备配置 (`src/config.json:47-51`)
+```json
+"device": {
+  "name": "ESP32C3-IOT",
+  "location": "未知位置",
+  "firmware_version": "1.0.0"
 }
 ```
 
 ## Dependencies
 
 - **umqtt.simple**: 轻量级MQTT客户端库 (`src/lib/umqtt/simple.py`)
-- **MicroPython标准库**: network, time, machine, ntptime, bluetooth, gc
+- **MicroPython标准库**: network, time, machine, ntptime, gc
 - **第三方库**: 无，全部使用标准库确保兼容性
 
 ## Development Workflow
@@ -150,7 +173,7 @@ rshell cp src/net_mqtt.py /pyboard/net_mqtt.py
 rshell cp src/net_wifi.py /pyboard/net_wifi.py
 rshell cp src/sys_daemon.py /pyboard/sys_daemon.py
 rshell cp src/sys_error.py /pyboard/sys_error.py
-rshell cp src/ble_scanner.py /pyboard/ble_scanner.py
+rshell cp src/led_preset.py /pyboard/led_preset.py
 rshell cp src/config.json /pyboard/config.json
 rshell cp src/lib/umqtt/simple.py /pyboard/umqtt/simple.py
 ```
@@ -161,8 +184,44 @@ rshell cp src/lib/umqtt/simple.py /pyboard/umqtt/simple.py
 - MQTT连接状态
 - 内存使用报告
 - 系统日志
-- 蓝牙扫描结果
-- 设备发现通知
+- LED状态指示
+
+## LED Preset Manager
+
+### 系统状态模式
+- **normal**: 正常运行（LED1亮，LED2灭）
+- **warning**: 警告状态（LED1亮，LED2亮）
+- **error**: 错误状态（LED1灭，LED2亮）
+- **off**: 关闭状态（LED1灭，LED2灭）
+- **safe_mode**: 安全模式（SOS闪烁模式）
+
+### 预设闪烁模式
+- **快闪三下**: 快速闪烁三次
+- **一长两短**: 一个长闪加两个短闪
+- **SOS求救信号**: 标准的SOS摩尔斯电码
+- **心跳模式**: 模拟心跳节奏的闪烁
+- **警灯模式**: 双LED交替闪烁
+- **霹雳游侠**: 来回扫描效果
+- **计数闪烁**: 数字计数闪烁
+- **呼吸灯**: 渐变呼吸效果
+
+### 使用方式
+```python
+from led_preset import get_led_manager, set_system_status
+
+# 获取LED管理器实例
+led_manager = get_led_manager()
+
+# 设置系统状态
+set_system_status("normal")  # 正常运行
+set_system_status("error")   # 错误状态
+set_system_status("safe_mode")  # 安全模式
+
+# 使用预设模式
+from led_preset import sos_pattern, heartbeat
+sos_pattern(0)  # LED1 SOS模式
+heartbeat(1)    # LED2 心跳模式
+```
 
 ## Memory Management
 
@@ -171,7 +230,7 @@ rshell cp src/lib/umqtt/simple.py /pyboard/umqtt/simple.py
 - **内存监控**: 实时监控`gc.mem_free()`和使用百分比
 - **优化数据结构**: 使用bytearray进行MQTT消息拼接
 - **缓冲区限制**: 限制日志和错误历史记录大小
-- **蓝牙扫描优化**: 预分配缓冲区、设备数量限制、内存阈值监控
+- **LED状态管理**: 优化的LED控制模式，减少内存占用
 
 ### 关键内存优化技术
 - 全局变量减少实例化开销
@@ -207,46 +266,14 @@ rshell cp src/lib/umqtt/simple.py /pyboard/umqtt/simple.py
 3. **时间同步**: NTP服务器同步 + 时区设置
 4. **MQTT连接**: 连接代理 → 开始发布日志
 5. **守护进程**: 启动监控 → LED控制 → 系统健康检查
-6. **主循环**: 看门狗喂狗 → 内存管理 → 状态监控 → 蓝牙扫描
-7. **蓝牙扫描**: 定期扫描 → 设备发现 → MQTT报告
-
-## Bluetooth Features
-
-### 扫描能力
-- **BLE设备发现**: 扫描附近的蓝牙低功耗设备
-- **增强设备信息**: 显示MAC地址、设备名称、信号强度、地址类型、服务数量
-- **广告数据解析**: 解析设备名称、服务UUID、制造商数据、外观、发射功率等
-- **信号强度监控**: 记录每个发现设备的RSSI值
-- **内存优化解析**: 高效数据包解析最小化内存使用
-
-### 扫描模式
-- **交互模式**: 标准交互式设备扫描和选择
-- **调试模式**: 显示原始广告数据和详细解析过程
-- **简单模式**: 带调试输出的简单扫描
-- **解析模式**: 解析十六进制广告数据
-- **测试模式**: 测试解析功能
-
-### 设备信息显示
-扫描器以格式化表格显示设备：
-- **序号**: 设备索引号
-- **信号**: 信号强度（RSSI，dBm）
-- **地址**: 标准格式MAC地址（XX:XX:XX:XX:XX:XX）
-- **名称**: 设备名称（过长时截断）
-- **类型**: 地址类型（Public/Random）
-- **服务**: 发现的服务UUID数量
-
-### MQTT集成
-- **自动报告**: 发送扫描结果到配置的MQTT主题
-- **结构化数据**: JSON格式的设备信息和时间戳
-- **可配置报告**: 可调整扫描间隔和设备限制
-- **Home Assistant就绪**: 直接集成Home Assistant设备跟踪
+6. **主循环**: 看门狗喂狗 → 内存管理 → 状态监控 → LED状态指示
 
 ## System Workflow
 
 ### 主循环流程
 ```
 喂狗 → 内存监控 → 守护进程状态检查 → 安全模式判断 → 
-MQTT连接检查 → 蓝牙扫描 → 状态报告 → 延迟
+MQTT连接检查 → LED状态检查 → 状态报告 → 延迟
 ```
 
 ### 错误处理流程

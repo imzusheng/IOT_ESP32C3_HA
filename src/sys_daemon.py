@@ -66,8 +66,10 @@ _safe_mode_start_time = 0
 _start_time = 0
 _monitor_count = 0
 
-# 添加监控计数器上限，防止无限增长
-_MONITOR_COUNT_MAX = 10000
+# 优化监控计数器管理
+_MONITOR_COUNT_MAX = 5000  # 降低最大值，更频繁重置
+_MONITOR_RESET_INTERVAL = 1000  # 每1000次监控重置一次
+_MONITOR_GC_INTERVAL = 100  # 每100次监控执行垃圾回收
 
 # 错误处理状态
 _error_count = 0
@@ -231,7 +233,7 @@ def _check_safe_mode_recovery():
 # =============================================================================
 
 def _monitor_callback(timer):
-    """监控定时器回调函数 - 优化内存使用"""
+    """监控定时器回调函数 - 优化内存使用和垃圾回收策略"""
     global _error_count, _last_error_time, _monitor_count
     
     if not _daemon_active:
@@ -240,11 +242,15 @@ def _monitor_callback(timer):
     try:
         _monitor_count += 1
         
-        # 防止监控计数器无限增长，定期重置
+        # 优化的监控计数器管理 - 分级重置策略
         if _monitor_count >= _MONITOR_COUNT_MAX:
             _monitor_count = 0
-            print("[Daemon] 监控计数器已重置")
-            gc.collect()  # 重置时执行垃圾回收
+            print("[Daemon] 监控计数器已重置（达到最大值）")
+            _deep_cleanup()
+        elif _monitor_count % _MONITOR_RESET_INTERVAL == 0:
+            print(f"[Daemon] 监控计数器周期重置: {_monitor_count}")
+            # 只重置计数器，不执行深度清理
+            _light_cleanup()
         
         current_time = time.ticks_ms()
         
@@ -253,21 +259,18 @@ def _monitor_callback(timer):
         
         # 任务3：根据健康状态决定是否进入安全模式
         if not health['overall']:
-            # 使用预分配的字符串缓冲区构建错误消息
-            reason_parts = []
-            for k, v in health['details'].items():
-                if v:
-                    reason_parts.append(f"{k}:{v}")
-            if reason_parts:
-                reason = ",".join(reason_parts)
+            # 使用优化的错误消息构建
+            reason = _build_error_message(health['details'])
+            if reason:
                 _enter_safe_mode(f"系统异常:{reason}")
         
-        # 任务4：错误计数管理
+        # 任务4：错误计数管理 - 优化重置策略
         if _error_count > 0 and time.ticks_diff(current_time, _last_error_time) > 60000:  # 1分钟重置
             _error_count = 0
+            print("[Daemon] 错误计数器已重置")
         
-        # 任务5：系统状态记录（每30次监控一次）
-        if _monitor_count % 30 == 0:
+        # 任务5：系统状态记录（调整频率，减少MQTT负载）
+        if _monitor_count % 50 == 0:  # 从30次改为50次
             _log_system_status()
         
         # 任务6：LED状态控制
@@ -281,9 +284,9 @@ def _monitor_callback(timer):
             # 安全模式：检查恢复条件，LED控制由主循环负责
             _check_safe_mode_recovery()
         
-        # 定期垃圾回收（每50次监控，增加频率）
-        if _monitor_count % 50 == 0:
-            gc.collect()
+        # 优化的垃圾回收策略
+        if _monitor_count % _MONITOR_GC_INTERVAL == 0:
+            _scheduled_cleanup()
         
     except Exception as e:
         _error_count += 1
@@ -293,10 +296,64 @@ def _monitor_callback(timer):
         if _mqtt_client and hasattr(_mqtt_client, 'is_connected') and _mqtt_client.is_connected:
             try:
                 if hasattr(_mqtt_client, 'log'):
-                    # 使用预分配的错误消息格式
                     _mqtt_client.log("ERROR", f"监控错误:{e}")
             except Exception:
                 pass
+
+def _build_error_message(details):
+    """构建优化的错误消息"""
+    if not details:
+        return ""
+    
+    # 使用预分配的字符串列表
+    reason_parts = []
+    for k, v in details.items():
+        if v:
+            reason_parts.append(f"{k}:{v}")
+    
+    if reason_parts:
+        return ",".join(reason_parts)
+    return ""
+
+def _light_cleanup():
+    """轻量级清理 - 快速垃圾回收"""
+    try:
+        gc.collect()
+        time.sleep_ms(10)  # 短暂延迟
+    except Exception:
+        pass
+
+def _scheduled_cleanup():
+    """定时清理 - 中等强度垃圾回收"""
+    try:
+        # 执行两次垃圾回收
+        for _ in range(2):
+            gc.collect()
+            time.sleep_ms(25)
+    except Exception:
+        pass
+
+def _deep_cleanup():
+    """深度清理 - 强力垃圾回收和内存优化"""
+    try:
+        print("[Daemon] 执行深度内存清理")
+        
+        # 执行多次垃圾回收
+        for _ in range(4):
+            gc.collect()
+            time.sleep_ms(50)
+        
+        # 清理错误历史（如果有的话）
+        try:
+            import sys_error
+            if hasattr(sys_error, 'reset_error_stats'):
+                sys_error.reset_error_stats()
+        except:
+            pass
+        
+        print("[Daemon] 深度内存清理完成")
+    except Exception as e:
+        print(f"[Daemon] 深度清理失败: {e}")
 
 def _log_system_status():
     """记录系统状态 - 优化内存使用"""
@@ -316,7 +373,7 @@ def _log_system_status():
         else:
             status_msg += ",内存:未知"
         
-        status_msg += f",错误:{_error_count},安全模式:{'是' if _safe_mode_active else '否'}"
+        status_msg += f",错误:{_error_count},监控:{_monitor_count},安全模式:{'是' if _safe_mode_active else '否'}"
         
         if hasattr(_mqtt_client, 'log'):
             _mqtt_client.log("INFO", f"系统状态: {status_msg}")
