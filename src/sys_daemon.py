@@ -49,17 +49,10 @@ _daemon_config = {
 
 def set_daemon_config(config_dict=None, **kwargs):
     """设置守护进程配置"""
-    global _daemon_config, _MEMORY_CHECK_INTERVAL, _STATUS_LOG_INTERVAL, _GC_INTERVAL
+    global _daemon_config
     if config_dict:
         _daemon_config.update(config_dict)
     _daemon_config.update(kwargs)
-    
-    # 更新时间间隔变量
-    intervals = _daemon_config.get('intervals', {})
-    _MEMORY_CHECK_INTERVAL = intervals.get('memory_check', 10000)
-    _STATUS_LOG_INTERVAL = intervals.get('status_log', 30000)
-    _GC_INTERVAL = intervals.get('gc', 5000)
-    
     print("[Daemon] 守护进程配置已更新")
 
 # =============================================================================
@@ -71,16 +64,10 @@ _daemon_active = False
 _safe_mode_active = False
 _safe_mode_start_time = 0
 _start_time = 0
+_monitor_count = 0
 
-# 使用时间戳替代计数器，避免计数器无限增长
-_last_memory_check_time = 0
-_last_status_log_time = 0
-_last_gc_time = 0
-
-# 定义时间间隔（毫秒）- 这些值现在从配置文件读取
-_MEMORY_CHECK_INTERVAL = 10000    # 默认每10秒检查一次内存
-_STATUS_LOG_INTERVAL = 30000      # 默认每30秒记录一次状态
-_GC_INTERVAL = 5000               # 默认每5秒执行一次垃圾回收
+# 添加监控计数器上限，防止无限增长
+_MONITOR_COUNT_MAX = 10000
 
 # 错误处理状态
 _error_count = 0
@@ -121,12 +108,8 @@ class LEDController:
     def update_safe_mode_led(self):
         """更新安全模式LED状态 - 这个方法需要被定期调用"""
         # 使用LED预设管理器的SOS模式
-        try:
-            result = led_preset.sos_pattern(0)
-            return result if result else False
-        except Exception as e:
-            print(f"[LEDController] 更新安全模式LED失败: {e}")
-            return False
+        led_preset.sos_pattern(0)
+        return True
     
     def reset_blink_state(self):
         """重置闪烁状态，用于重新开始闪烁动画"""
@@ -145,16 +128,11 @@ def _get_temperature():
         return None
 
 def _get_memory_usage():
-    """获取内存使用情况 - 优化内存使用，使用系统时间替代计数器"""
-    global _last_memory_check_time
-    
+    """获取内存使用情况 - 优化内存使用"""
     try:
-        current_time = time.ticks_ms()
-        
-        # 基于时间间隔执行垃圾回收
-        if time.ticks_diff(current_time, _last_memory_check_time) > _MEMORY_CHECK_INTERVAL:
+        # 减少垃圾回收频率，每20次监控才执行
+        if _monitor_count % 20 == 0:
             gc.collect()
-            _last_memory_check_time = current_time
         
         alloc = gc.mem_alloc()
         free = gc.mem_free()
@@ -180,18 +158,12 @@ def _perform_health_check():
     }
     
     try:
-        # 获取配置的阈值
-        thresholds = _daemon_config.get('thresholds', {})
-        temp_warning = thresholds.get('temp_warning', 70)
-        memory_warning = thresholds.get('memory_warning', 85)
-        error_count_threshold = thresholds.get('error_count', 10)
-        
         # 检查温度
         temp = _get_temperature()
         if temp is None:
             health_status['temperature'] = False
             health_status['details']['temperature'] = '读取失败'
-        elif temp > temp_warning:  # 使用配置的温度警告阈值
+        elif temp > 70:  # ESP32C3最高85°C，70°C作为警告线
             health_status['temperature'] = False
             health_status['details']['temperature'] = f'温度过高: {temp:.1f}°C'
         
@@ -200,12 +172,12 @@ def _perform_health_check():
         if memory is None:
             health_status['memory'] = False
             health_status['details']['memory'] = '读取失败'
-        elif memory['percent'] > memory_warning:  # 使用配置的内存警告阈值
+        elif memory['percent'] > 85:
             health_status['memory'] = False
             health_status['details']['memory'] = f'内存使用过高: {memory["percent"]:.1f}%'
         
         # 检查错误计数
-        if _error_count > error_count_threshold:  # 使用配置的错误计数阈值
+        if _error_count > 10:
             health_status['errors'] = False
             health_status['details']['errors'] = f'错误过多: {_error_count}'
         
@@ -243,14 +215,10 @@ def _enter_safe_mode(reason: str):
             except Exception:
                 pass
         
-        # 执行深度垃圾回收 - 使用配置的参数
-        safe_mode = _daemon_config.get('safe_mode', {})
-        gc_count = safe_mode.get('gc_count', 2)
-        gc_delay = safe_mode.get('gc_delay', 50)
-        
-        for _ in range(gc_count):
+        # 执行深度垃圾回收
+        for _ in range(2):
             gc.collect()
-            time.sleep_ms(gc_delay)
+            time.sleep_ms(50)
 
 def _check_safe_mode_recovery():
     """检查是否可以从安全模式恢复 - 已禁用自动恢复"""
@@ -263,20 +231,27 @@ def _check_safe_mode_recovery():
 # =============================================================================
 
 def _monitor_callback(timer):
-    """监控定时器回调函数 - 优化内存使用，使用系统时间替代计数器"""
-    global _error_count, _last_error_time
-    global _last_memory_check_time, _last_status_log_time, _last_gc_time
+    """监控定时器回调函数 - 优化内存使用"""
+    global _error_count, _last_error_time, _monitor_count
     
     if not _daemon_active:
         return
     
     try:
+        _monitor_count += 1
+        
+        # 防止监控计数器无限增长，定期重置
+        if _monitor_count >= _MONITOR_COUNT_MAX:
+            _monitor_count = 0
+            print("[Daemon] 监控计数器已重置")
+            gc.collect()  # 重置时执行垃圾回收
+        
         current_time = time.ticks_ms()
         
         # 任务1：系统健康检查（看门狗喂狗已移至主循环）
         health = _perform_health_check()
         
-        # 任务2：根据健康状态决定是否进入安全模式
+        # 任务3：根据健康状态决定是否进入安全模式
         if not health['overall']:
             # 使用预分配的字符串缓冲区构建错误消息
             reason_parts = []
@@ -287,19 +262,15 @@ def _monitor_callback(timer):
                 reason = ",".join(reason_parts)
                 _enter_safe_mode(f"系统异常:{reason}")
         
-        # 任务3：错误计数管理 - 使用配置的错误重置时间
-        thresholds = _daemon_config.get('thresholds', {})
-        error_reset_time = thresholds.get('error_reset_time', 60000)
-        
-        if _error_count > 0 and time.ticks_diff(current_time, _last_error_time) > error_reset_time:
+        # 任务4：错误计数管理
+        if _error_count > 0 and time.ticks_diff(current_time, _last_error_time) > 60000:  # 1分钟重置
             _error_count = 0
         
-        # 任务4：系统状态记录（基于时间间隔）
-        if time.ticks_diff(current_time, _last_status_log_time) > _STATUS_LOG_INTERVAL:
+        # 任务5：系统状态记录（每30次监控一次）
+        if _monitor_count % 30 == 0:
             _log_system_status()
-            _last_status_log_time = current_time
         
-        # 任务5：LED状态控制
+        # 任务6：LED状态控制
         if not _safe_mode_active:
             # 正常模式：根据健康状态设置LED
             if health['overall']:
@@ -310,10 +281,9 @@ def _monitor_callback(timer):
             # 安全模式：检查恢复条件，LED控制由主循环负责
             _check_safe_mode_recovery()
         
-        # 任务6：定期垃圾回收（基于时间间隔）
-        if time.ticks_diff(current_time, _last_gc_time) > _GC_INTERVAL:
+        # 定期垃圾回收（每50次监控，增加频率）
+        if _monitor_count % 50 == 0:
             gc.collect()
-            _last_gc_time = current_time
         
     except Exception as e:
         _error_count += 1
@@ -455,7 +425,7 @@ class SystemDaemon:
         gc.collect()
     
     def get_status(self):
-        """获取守护进程状态信息 - 优化内存使用，移除监控计数器"""
+        """获取守护进程状态信息 - 优化内存使用"""
         try:
             # 只在需要时获取温度和内存信息
             return {
@@ -464,7 +434,8 @@ class SystemDaemon:
                 'temperature': _get_temperature(),
                 'memory': _get_memory_usage(),
                 'error_count': _error_count,
-                'uptime': time.ticks_diff(time.ticks_ms(), _start_time) // 1000 if _daemon_active else 0
+                'uptime': time.ticks_diff(time.ticks_ms(), _start_time) // 1000 if _daemon_active else 0,
+                'monitor_count': _monitor_count
             }
         except Exception:
             # 出错时返回基本信息
@@ -472,7 +443,8 @@ class SystemDaemon:
                 'active': _daemon_active,
                 'safe_mode': _safe_mode_active,
                 'error_count': _error_count,
-                'uptime': time.ticks_diff(time.ticks_ms(), _start_time) // 1000 if _daemon_active else 0
+                'uptime': time.ticks_diff(time.ticks_ms(), _start_time) // 1000 if _daemon_active else 0,
+                'monitor_count': _monitor_count
             }
     
     def force_memory_cleanup(self):
@@ -570,14 +542,10 @@ def force_safe_mode(reason: str = "未知错误"):
         
         print("[Daemon] 安全模式已激活，LED显示SOS模式")
         
-        # 执行深度垃圾回收 - 使用配置的参数
-        safe_mode = _daemon_config.get('safe_mode', {})
-        gc_count = safe_mode.get('gc_count', 2)
-        gc_delay = safe_mode.get('gc_delay', 50)
-        
-        for _ in range(gc_count):
+        # 执行深度垃圾回收
+        for _ in range(2):
             gc.collect()
-            time.sleep_ms(gc_delay)
+            time.sleep_ms(50)
     
     return True
 
@@ -624,11 +592,7 @@ def update_safe_mode_led():
     """更新安全模式LED状态的公共接口"""
     global _led_controller
     if _led_controller:
-        try:
-            return _led_controller.update_safe_mode_led()
-        except Exception as e:
-            print(f"[Daemon] 更新安全模式LED失败: {e}")
-            return False
+        return _led_controller.update_safe_mode_led()
     return False
 
 # =============================================================================

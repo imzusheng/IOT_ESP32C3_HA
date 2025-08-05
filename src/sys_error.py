@@ -101,17 +101,13 @@ class ErrorStats:
     
     def __init__(self):
         self._stats = {}
-        self._max_history = 10  # 减少历史记录大小以节省内存
+        self._max_history = 20  # 进一步减少历史记录大小以节省内存
         self._error_history = []
         self._last_reset_time = time.time()
-        self._total_error_count = 0  # 添加总错误计数器
     
     def record_error(self, error_type: str, message: str, context: str = "",
                     severity: str = ErrorSeverity.MEDIUM):
         """记录错误"""
-        # 更新总错误计数
-        self._total_error_count += 1
-        
         # 更新统计
         type_key = error_type
         if type_key not in self._stats:
@@ -138,9 +134,11 @@ class ErrorStats:
         # 保持历史记录在限制范围内
         if len(self._error_history) > self._max_history:
             self._error_history.pop(0)
+            # 当历史记录满时，执行垃圾回收
+            gc.collect()
         
-        # 每50个错误才执行一次垃圾回收，减少频繁回收
-        if self._total_error_count % 50 == 0:
+        # 更频繁的垃圾回收（每5条错误）
+        if len(self._error_history) % 5 == 0:
             gc.collect()
     
     def get_error_count(self, error_type: str = None):
@@ -162,30 +160,25 @@ class ErrorStats:
         """重置统计"""
         self._stats.clear()
         self._error_history.clear()
-        self._total_error_count = 0
         self._last_reset_time = time.time()
         gc.collect()
-    
-    def get_total_error_count(self):
-        """获取总错误计数"""
-        return self._total_error_count
     
     def should_trigger_recovery(self, error_type: str) -> bool:
         """检查是否应该触发恢复机制"""
         # 根据错误类型和严重程度设置不同的阈值
         thresholds = {
-            ErrorType.NETWORK: 5,
+            ErrorType.NETWORK: 8,
             ErrorType.HARDWARE: 2,
-            ErrorType.MEMORY: 3,
-            ErrorType.SYSTEM: 3,
-            ErrorType.MQTT: 4,
-            ErrorType.WIFI: 4,
-            ErrorType.DAEMON: 3,
+            ErrorType.MEMORY: 5,
+            ErrorType.SYSTEM: 5,
+            ErrorType.MQTT: 6,
+            ErrorType.WIFI: 6,
+            ErrorType.DAEMON: 4,
             ErrorType.CONFIG: 2,
             ErrorType.FATAL: 1
         }
         
-        threshold = thresholds.get(error_type, 3)
+        threshold = thresholds.get(error_type, 5)
         return self.get_error_count(error_type) >= threshold
 
 # =============================================================================
@@ -195,15 +188,12 @@ class ErrorStats:
 class LogBuffer:
     """内存友好的日志缓冲区"""
     
-    def __init__(self, max_size: int = 8):  # 减小缓冲区大小以节省内存
+    def __init__(self, max_size: int = 15):  # 进一步减小缓冲区大小以节省内存
         self._max_size = max_size
         self._buffer = []
-        self._total_log_count = 0  # 添加总日志计数器
     
     def add_log(self, level: str, message: str, module: str = ""):
         """添加日志到缓冲区"""
-        self._total_log_count += 1
-        
         log_entry = {
             'timestamp': time.time(),
             'level': level,
@@ -217,8 +207,8 @@ class LogBuffer:
         if len(self._buffer) > self._max_size:
             self._buffer.pop(0)
         
-        # 每100条日志才执行一次垃圾回收，减少频繁回收
-        if self._total_log_count % 100 == 0:
+        # 更频繁的垃圾回收（每10条日志）
+        if len(self._buffer) % 10 == 0:
             gc.collect()
     
     def get_logs(self, count: int = None):
@@ -231,12 +221,7 @@ class LogBuffer:
     def clear(self):
         """清空缓冲区"""
         self._buffer.clear()
-        self._total_log_count = 0
         gc.collect()
-    
-    def get_total_log_count(self):
-        """获取总日志计数"""
-        return self._total_log_count
     
     def get_size(self):
         """获取当前缓冲区大小"""
@@ -285,6 +270,7 @@ class UnifiedLogger:
         # 格式化日志消息
         formatted_msg = self._log_format.format(
             level=level,
+            time=time_str,
             module=module,
             message=message
         )
@@ -483,8 +469,7 @@ class ErrorHandler:
                 # 配置错误通常需要手动干预
             ],
             ErrorType.FATAL: [
-                # 致命错误进入安全模式，不再自动重启
-                # 需要人为干预才能退出
+                SystemRestartAction()
             ]
         }
     
@@ -585,18 +570,19 @@ class ErrorHandler:
         # 执行深度内存清理
         self._deep_memory_cleanup()
         
-        # 对于致命错误，不再自动重启，而是等待外部处理
-        # FATAL_ERROR 现在由主程序处理进入安全模式
+        # 对于致命错误，执行系统重启
         if error_type == ErrorType.FATAL:
-            self._logger.critical("致命错误发生，等待进入安全模式", "ErrorHandler")
+            # 默认启用自动重启
+            SystemRestartAction().execute(error_type, "致命错误恢复", "ErrorHandler")
     
     def _deep_memory_cleanup(self):
         """深度内存清理"""
         self._logger.info("执行深度内存清理", "ErrorHandler")
         
-        # 执行一次垃圾回收，减少频繁回收
-        gc.collect()
-        time.sleep_ms(100)
+        # 多次垃圾回收
+        for _ in range(3):
+            gc.collect()
+            time.sleep_ms(100)
         
         # 清理日志缓冲区
         self._logger.clear_logs()
@@ -690,8 +676,8 @@ def critical(message: str, module: str = ""):
 # 初始化
 # =============================================================================
 
-# 设置默认日志级别 - 减少日志输出量
-set_log_level(LogLevel.WARNING)
+# 设置默认日志级别
+set_log_level(LogLevel.INFO)
 
 # 执行垃圾回收
 gc.collect()
