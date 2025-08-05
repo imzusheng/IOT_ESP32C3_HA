@@ -253,8 +253,9 @@ def handle_safe_mode(mqtt_client=None):
     """处理安全模式"""
     print("[Main] 进入安全模式处理循环")
     
-    # 强制进入安全模式（这会初始化LED控制器）
-    sys_daemon.force_safe_mode("系统异常")
+    # 如果还没有进入安全模式，则强制进入
+    if not sys_daemon.is_safe_mode():
+        sys_daemon.force_safe_mode("系统异常")
     
     # 安全模式循环
     safe_mode_count = 0
@@ -263,14 +264,11 @@ def handle_safe_mode(mqtt_client=None):
             # 安全模式下也要喂狗
             feed_watchdog()
             
-            # 安全模式LED控制 - 闪烁模式
-            # 通过守护进程的LED控制器实现闪烁效果
-            daemon_status = sys_daemon.get_daemon_status()
-            if daemon_status and hasattr(sys_daemon, '_led_controller') and sys_daemon._led_controller:
-                # 使用LED控制器的闪烁功能
-                sys_daemon._led_controller.update_safe_mode_led()
+            # 安全模式LED控制 - SOS模式
+            # 使用守护进程的公共接口更新LED状态
+            sys_daemon.update_safe_mode_led()
             
-            # 短暂延迟，控制闪烁频率
+            # 短暂延迟，控制SOS闪烁频率
             time.sleep_ms(100)
             
             # 每100次循环检查一次恢复条件

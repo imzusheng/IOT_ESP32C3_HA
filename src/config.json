@@ -11,7 +11,8 @@
   },
   "wifi": {
     "networks": [
-      {"ssid": "zsm60p", "password": "25845600"}
+      {"ssid": "zsm60p", "password": "25845600"},
+      {"ssid": "leju_software", "password": "leju123456"}
     ],
     "config": {
       "timeout": 15,

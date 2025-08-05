@@ -22,6 +22,7 @@
 import time
 import machine
 import gc
+import led_preset
 
 try:
     import esp32
@@ -76,80 +77,40 @@ _mqtt_client = None
 # 看门狗已移至主循环管理，此处不再需要_wdt变量
 
 # =============================================================================
-# LED控制器类
+# LED控制器类（使用LED预设模块）
 # =============================================================================
 
 class LEDController:
-    """LED控制器类 - 负责控制两个LED的状态指示"""
+    """LED控制器类 - 使用LED预设模块控制LED状态"""
     
     def __init__(self, pin1: int, pin2: int):
         """初始化LED控制器"""
-        self.led1 = machine.Pin(pin1, machine.Pin.OUT)
-        self.led2 = machine.Pin(pin2, machine.Pin.OUT)
-        self.led1.off()
-        self.led2.off()
+        # 使用LED预设管理器
+        self.led_manager = led_preset.LEDPresetManager(pin1, pin2)
+        print(f"[Daemon] LED控制器初始化完成，使用LED预设模块")
     
     def set_status(self, status: str):
         """设置LED状态"""
-        status = status.lower()
+        status_mapping = {
+            'normal': led_preset.SYSTEM_NORMAL,
+            'warning': led_preset.SYSTEM_WARNING,
+            'error': led_preset.SYSTEM_ERROR,
+            'safe_mode': led_preset.SYSTEM_SAFE_MODE,
+            'off': led_preset.SYSTEM_OFF
+        }
         
-        if status == 'normal':
-            self.led1.on()
-            self.led2.off()
-        elif status == 'warning':
-            self.led1.on()
-            self.led2.on()
-        elif status == 'error':
-            self.led1.off()
-            self.led2.on()
-        elif status == 'safe_mode':
-            # 安全模式：开始闪烁效果
-            self._blink_safe_mode()
-        elif status == 'off':
-            self.led1.off()
-            self.led2.off()
+        led_status = status_mapping.get(status.lower(), led_preset.SYSTEM_OFF)
+        self.led_manager.set_system_status(led_status)
     
-    def _blink_safe_mode(self):
-        """安全模式LED闪烁"""
-        # 改进的闪烁逻辑：基于时间差实现真正的闪烁效果
-        current_time = time.ticks_ms()
-        blink_period = 500  # 500ms闪烁周期
-        
-        # 检查是否首次调用，初始化闪烁状态
-        if not hasattr(self, '_blink_start_time'):
-            self._blink_start_time = current_time
-            self._last_blink_state = 0
-        
-        # 计算自开始闪烁以来的时间差
-        elapsed = time.ticks_diff(current_time, self._blink_start_time)
-        
-        # 基于时间差计算当前应该的闪烁状态
-        blink_state = (elapsed // blink_period) % 2
-        
-        # 只有当状态改变时才更新LED
-        if blink_state != self._last_blink_state:
-            if blink_state == 0:
-                # 第一个状态：LED1亮，LED2灭
-                self.led1.on()
-                self.led2.off()
-            else:
-                # 第二个状态：LED1灭，LED2亮
-                self.led1.off()
-                self.led2.on()
-            
-            self._last_blink_state = blink_state
-            
-      
     def update_safe_mode_led(self):
         """更新安全模式LED状态 - 这个方法需要被定期调用"""
-        self._blink_safe_mode()
+        # 使用LED预设管理器的SOS模式
+        led_preset.sos_pattern(0)
+        return True
     
     def reset_blink_state(self):
         """重置闪烁状态，用于重新开始闪烁动画"""
-        if hasattr(self, '_blink_start_time'):
-            delattr(self, '_blink_start_time')
-        if hasattr(self, '_last_blink_state'):
-            delattr(self, '_last_blink_state')
+        self.led_manager.stop_blink()
         print("[LED] 闪烁状态已重置")
 
 # =============================================================================
@@ -293,12 +254,9 @@ def _monitor_callback(timer):
         if _monitor_count % 30 == 0:
             _log_system_status()
         
-        # 任务6：LED状态控制（仅在非安全模式下）
+        # 任务6：LED状态控制
         if not _safe_mode_active:
             # 正常模式：根据健康状态设置LED
-            # 重置闪烁状态，确保下次进入安全模式时重新开始闪烁
-            _led_controller.reset_blink_state()
-            
             if health['overall']:
                 _led_controller.set_status('normal')
             else:
@@ -544,7 +502,7 @@ def force_safe_mode(reason: str = "未知错误"):
             except Exception:
                 pass
         
-        # 确保LED控制器已初始化（主循环会使用它来显示安全模式）
+        # 确保LED控制器已初始化并设置为安全模式
         if _led_controller is None:
             try:
                 print("[Daemon] 初始化LED控制器用于安全模式")
@@ -556,8 +514,15 @@ def force_safe_mode(reason: str = "未知错误"):
                 print(f"[Daemon] LED控制器初始化失败: {e}")
                 _led_controller = None
         
-        # 注意：LED控制现在由主循环负责，这里不直接设置LED状态
-        print("[Daemon] 安全模式已激活，LED控制由主循环负责")
+        # 设置LED为安全模式（警灯闪烁）
+        if _led_controller:
+            try:
+                _led_controller.set_status('safe_mode')
+                print("[Daemon] LED已设置为安全模式（SOS模式）")
+            except Exception as e:
+                print(f"[Daemon] 设置LED安全模式失败: {e}")
+        
+        print("[Daemon] 安全模式已激活，LED显示SOS模式")
         
         # 执行深度垃圾回收
         for _ in range(2):
@@ -573,7 +538,7 @@ def check_safe_mode_recovery():
     pass
 
 def test_led_functionality():
-    """测试LED功能 - 简化版本"""
+    """测试LED功能 - 使用LED预设模块"""
     global _led_controller
     
     print("[Daemon] 开始LED功能测试...")
@@ -590,25 +555,27 @@ def test_led_functionality():
             print(f"[Daemon] LED控制器初始化失败: {e}")
             return False
     
-    # 简单测试：依次点亮LED
+    # 使用LED预设模块的测试功能
     try:
-        print("[Daemon] 测试LED1...")
-        _led_controller.led1.on()
-        _led_controller.led2.off()
-        time.sleep_ms(200)
+        print("[Daemon] 使用LED预设模块测试LED硬件...")
+        test_result = _led_controller.led_manager.test_hardware()
         
-        print("[Daemon] 测试LED2...")
-        _led_controller.led1.off()
-        _led_controller.led2.on()
-        time.sleep_ms(200)
+        if test_result:
+            print("[Daemon] LED功能测试通过")
+        else:
+            print("[Daemon] LED功能测试失败")
         
-        print("[Daemon] 测试完成")
-        _led_controller.led1.off()
-        _led_controller.led2.off()
-        return True
+        return test_result
     except Exception as e:
         print(f"[Daemon] LED测试失败: {e}")
         return False
+
+def update_safe_mode_led():
+    """更新安全模式LED状态的公共接口"""
+    global _led_controller
+    if _led_controller:
+        return _led_controller.update_safe_mode_led()
+    return False
 
 # =============================================================================
 # 初始化
