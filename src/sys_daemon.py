@@ -139,9 +139,7 @@ class LEDController:
             
             self._last_blink_state = blink_state
             
-            # 状态改变时打印调试信息
-            print(f"[LED] 安全模式闪烁状态改变: {blink_state} (LED1: {'开' if blink_state == 0 else '关'}, LED2: {'关' if blink_state == 0 else '开'})")
-    
+      
     def update_safe_mode_led(self):
         """更新安全模式LED状态 - 这个方法需要被定期调用"""
         self._blink_safe_mode()
@@ -358,47 +356,10 @@ def _enter_safe_mode(reason: str):
             time.sleep_ms(50)
 
 def _check_safe_mode_recovery():
-    """检查是否可以从安全模式恢复"""
-    global _safe_mode_active
-    
-    if not _safe_mode_active:
-        return
-    
-    try:
-        # 检查冷却时间
-        cooldown_passed = time.ticks_diff(time.ticks_ms(), _safe_mode_start_time) > _daemon_config['safe_mode_cooldown']
-        
-        if not cooldown_passed:
-            return
-        
-        # 检查温度
-        temp = _get_temperature()
-        temp_ok = temp is not None and temp < _daemon_config['temp_threshold'] - _daemon_config['temp_hysteresis']
-        
-        # 检查内存
-        memory = _get_memory_usage()
-        memory_ok = memory is not None and memory['percent'] < _daemon_config['memory_threshold'] - _daemon_config['memory_hysteresis']
-        
-        # 检查错误计数
-        errors_ok = _error_count < _daemon_config['max_error_count'] // 2
-        
-        # 如果所有条件都满足，退出安全模式
-        if temp_ok and memory_ok and errors_ok:
-            _safe_mode_active = False
-            
-            # 记录日志
-            if _mqtt_client and hasattr(_mqtt_client, 'is_connected') and _mqtt_client.is_connected:
-                try:
-                    if hasattr(_mqtt_client, 'log'):
-                        _mqtt_client.log("INFO", "退出安全模式")
-                except Exception:
-                    pass
-            
-            # 执行垃圾回收
-            gc.collect()
-    
-    except Exception:
-        pass
+    """检查是否可以从安全模式恢复 - 已禁用自动恢复"""
+    # 安全模式现在需要手动重启才能退出
+    # 移除自动恢复逻辑，确保安全模式持续到用户手动重启
+    pass
 
 # =============================================================================
 # 监控回调函数
@@ -695,47 +656,10 @@ def force_safe_mode(reason: str = "未知错误"):
     return True
 
 def check_safe_mode_recovery():
-    """检查是否可以从安全模式恢复 - 公共接口"""
-    global _safe_mode_active
-    
-    if not _safe_mode_active:
-        return
-    
-    try:
-        # 检查冷却时间
-        cooldown_passed = time.ticks_diff(time.ticks_ms(), _safe_mode_start_time) > _daemon_config['safe_mode_cooldown']
-        
-        if not cooldown_passed:
-            return
-        
-        # 检查温度
-        temp = _get_temperature()
-        temp_ok = temp is not None and temp < _daemon_config['temp_threshold'] - _daemon_config['temp_hysteresis']
-        
-        # 检查内存
-        memory = _get_memory_usage()
-        memory_ok = memory is not None and memory['percent'] < _daemon_config['memory_threshold'] - _daemon_config['memory_hysteresis']
-        
-        # 检查错误计数
-        errors_ok = _error_count < _daemon_config['max_error_count'] // 2
-        
-        # 如果所有条件都满足，退出安全模式
-        if temp_ok and memory_ok and errors_ok:
-            _safe_mode_active = False
-            
-            # 记录日志
-            if _mqtt_client and hasattr(_mqtt_client, 'is_connected') and _mqtt_client.is_connected:
-                try:
-                    if hasattr(_mqtt_client, 'log'):
-                        _mqtt_client.log("INFO", "退出安全模式")
-                except Exception:
-                    pass
-            
-            # 执行垃圾回收
-            gc.collect()
-    
-    except Exception:
-        pass
+    """检查是否可以从安全模式恢复 - 公共接口（已禁用）"""
+    # 安全模式现在需要手动重启才能退出
+    # 移除自动恢复逻辑，确保安全模式持续到用户手动重启
+    pass
 
 def test_led_functionality():
     """测试LED功能"""
