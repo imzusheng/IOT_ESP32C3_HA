@@ -115,9 +115,13 @@ def get_led_manager():
     global _led_preset_manager, _led_manager_initialized
     
     if _led_preset_manager is None:
-        _led_preset_manager = LEDPresetManager()
-        _led_manager_initialized = True
-        print("[LED] LED预设管理器单例实例已创建")
+        try:
+            _led_preset_manager = LEDPresetManager()
+            _led_manager_initialized = True
+            print("[LED] LED预设管理器单例实例已创建")
+        except Exception as e:
+            print(f"[LED] LED预设管理器创建失败: {e}")
+            return None
     
     return _led_preset_manager
 
@@ -159,7 +163,16 @@ def cleanup_led_manager():
 def set_system_status(status: str):
     """设置系统状态的便捷函数"""
     manager = get_led_manager()
-    manager.set_system_status(status)
+    if manager is None:
+        print("[LED] LED管理器未初始化，无法设置系统状态")
+        return False
+    
+    try:
+        manager.set_system_status(status)
+        return True
+    except Exception as e:
+        print(f"[LED] 设置系统状态失败: {e}")
+        return False
 
 # =============================================================================
 # 从led_preset_temp_data.py移植的便捷函数
@@ -168,19 +181,28 @@ def set_system_status(status: str):
 def quick_flash_three(led_index=0):
     """快闪三下模式的便捷函数"""
     manager = get_led_manager()
-    # print(f"[LED] LED {led_index} 快闪三下模式")
-    for _ in range(3):
-        if led_index == 0:
-            manager.led1.on()
-            time.sleep(0.1)
-            manager.led1.off()
-            time.sleep(0.1)
-        else:
-            manager.led2.on()
-            time.sleep(0.1)
-            manager.led2.off()
-            time.sleep(0.1)
-    time.sleep(0.3)
+    if manager is None:
+        print("[LED] LED管理器未初始化，无法执行快闪三下模式")
+        return False
+    
+    try:
+        # print(f"[LED] LED {led_index} 快闪三下模式")
+        for _ in range(3):
+            if led_index == 0:
+                manager.led1.on()
+                time.sleep(0.1)
+                manager.led1.off()
+                time.sleep(0.1)
+            else:
+                manager.led2.on()
+                time.sleep(0.1)
+                manager.led2.off()
+                time.sleep(0.1)
+        time.sleep(0.3)
+        return True
+    except Exception as e:
+        print(f"[LED] 快闪三下模式执行失败: {e}")
+        return False
 
 def one_long_two_short(led_index=0):
     """一长两短模式的便捷函数"""
@@ -211,31 +233,40 @@ def one_long_two_short(led_index=0):
 def sos_pattern(led_index=0):
     """SOS求救信号模式的便捷函数 (··· --- ···) - 优化内存使用"""
     manager = get_led_manager()
+    if manager is None:
+        print("[LED] LED管理器未初始化，无法执行SOS模式")
+        return False
+    
     # print(f"[LED] LED {led_index} SOS模式")
     led = manager.led1 if led_index == 0 else manager.led2
     
-    # 使用毫秒级延迟，提高响应性并减少内存占用
-    # 三短
-    for _ in range(3):
-        led.on()
-        time.sleep_ms(200)
-        led.off()
-        time.sleep_ms(200)
-    time.sleep_ms(300)
-    # 三长
-    for _ in range(3):
-        led.on()
-        time.sleep_ms(600)
-        led.off()
-        time.sleep_ms(200)
-    time.sleep_ms(300)
-    # 三短
-    for _ in range(3):
-        led.on()
-        time.sleep_ms(200)
-        led.off()
-        time.sleep_ms(200)
-    time.sleep_ms(500)
+    try:
+        # 使用毫秒级延迟，提高响应性并减少内存占用
+        # 三短
+        for _ in range(3):
+            led.on()
+            time.sleep_ms(200)
+            led.off()
+            time.sleep_ms(200)
+        time.sleep_ms(300)
+        # 三长
+        for _ in range(3):
+            led.on()
+            time.sleep_ms(600)
+            led.off()
+            time.sleep_ms(200)
+        time.sleep_ms(300)
+        # 三短
+        for _ in range(3):
+            led.on()
+            time.sleep_ms(200)
+            led.off()
+            time.sleep_ms(200)
+        time.sleep_ms(500)
+        return True
+    except Exception as e:
+        print(f"[LED] SOS模式执行失败: {e}")
+        return False
 
 def heartbeat(led_index=0, cycles=3):
     """心跳模式的便捷函数"""

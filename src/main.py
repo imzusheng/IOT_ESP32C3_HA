@@ -53,51 +53,79 @@ def initialize_system():
     """系统初始化"""
     print("[Main] 开始系统初始化...")
     
-    # 加载配置
-    config = load_config()
-    if not config:
-        print("[Main] 配置加载失败，使用默认配置")
-        config = {}
-    
-    # 生成客户端ID
-    client_id = f"esp32c3-client-{machine.unique_id().hex()}"
-    
-    # 获取配置参数
-    mqtt_broker = get_config_value(config, 'mqtt', 'broker', '192.168.1.2')
-    mqtt_port = get_config_value(config, 'mqtt', 'port', 1883)
-    mqtt_topic = get_config_value(config, 'mqtt', 'topic', 'lzs/esp32c3')
-    mqtt_keepalive = get_config_value(config, 'mqtt', 'keepalive', 60)
-    loop_delay = get_config_value(config, 'system', 'main_loop_delay', 300)
-    status_interval = get_config_value(config, 'system', 'status_report_interval', 30)
-    
-    # 设置WiFi网络
-    wifi_networks = get_config_value(config, 'wifi', 'networks', [])
-    if wifi_networks:
-        net_wifi.set_wifi_networks(wifi_networks)
-        wifi_config = get_config_value(config, 'wifi', 'config', {})
-        if wifi_config:
-            net_wifi.set_wifi_config(**wifi_config)
-    
-    # 设置守护进程配置
-    daemon_config = get_config_value(config, 'daemon', 'config', {})
-    if daemon_config:
-        sys_daemon.set_daemon_config(**daemon_config)
-    
-    # 初始化看门狗
-    initialize_watchdog(config)
-    
-    print("[Main] 系统初始化完成")
-    
-    return {
-        'config': config,
-        'client_id': client_id,
-        'mqtt_broker': mqtt_broker,
-        'mqtt_port': mqtt_port,
-        'mqtt_topic': mqtt_topic,
-        'mqtt_keepalive': mqtt_keepalive,
-        'loop_delay': loop_delay,
-        'status_interval': status_interval
-    }
+    try:
+        # 加载配置
+        config = load_config()
+        if not config:
+            print("[Main] 配置加载失败，使用默认配置")
+            config = {}
+        
+        # 生成客户端ID
+        client_id = f"esp32c3-client-{machine.unique_id().hex()}"
+        
+        # 获取配置参数
+        mqtt_broker = get_config_value(config, 'mqtt', 'broker', '192.168.1.2')
+        mqtt_port = get_config_value(config, 'mqtt', 'port', 1883)
+        mqtt_topic = get_config_value(config, 'mqtt', 'topic', 'lzs/esp32c3')
+        mqtt_keepalive = get_config_value(config, 'mqtt', 'keepalive', 60)
+        loop_delay = get_config_value(config, 'system', 'main_loop_delay', 300)
+        status_interval = get_config_value(config, 'system', 'status_report_interval', 30)
+        
+        # 设置WiFi网络
+        wifi_networks = get_config_value(config, 'wifi', 'networks', [])
+        if wifi_networks:
+            net_wifi.set_wifi_networks(wifi_networks)
+            
+            # 获取WiFi配置参数
+            wifi_config = get_config_value(config, 'wifi', 'config', {})
+            timeout = wifi_config.get('timeout', 15)
+            scan_interval = wifi_config.get('scan_interval', 30)
+            retry_delay = wifi_config.get('retry_delay', 2)
+            max_attempts = wifi_config.get('max_attempts', 3)
+            
+            # 获取NTP配置参数
+            ntp_config = get_config_value(config, 'wifi', 'ntp', {})
+            ntp_retry_count = ntp_config.get('retry_count', 3)
+            ntp_retry_delay = ntp_config.get('retry_delay', 3)
+            
+            # 设置WiFi配置，使用正确的参数名
+            net_wifi.set_wifi_config(
+                timeout=timeout,
+                scan_interval=scan_interval,
+                retry_delay=retry_delay,
+                max_attempts=max_attempts,
+                ntp_retry_count=ntp_retry_count,
+                ntp_retry_delay=ntp_retry_delay
+            )
+        
+        # 设置守护进程配置
+        daemon_config = get_config_value(config, 'daemon', 'config', {})
+        if daemon_config:
+            sys_daemon.set_daemon_config(**daemon_config)
+        
+        # 初始化看门狗
+        initialize_watchdog(config)
+        
+        print("[Main] 系统初始化完成")
+        
+        return {
+            'config': config,
+            'client_id': client_id,
+            'mqtt_broker': mqtt_broker,
+            'mqtt_port': mqtt_port,
+            'mqtt_topic': mqtt_topic,
+            'mqtt_keepalive': mqtt_keepalive,
+            'loop_delay': loop_delay,
+            'status_interval': status_interval
+        }
+        
+    except Exception as e:
+        print(f"[Main] 系统初始化失败: {e}")
+        # 系统初始化失败，直接进入安全模式
+        print("[Main] 系统初始化失败，进入安全模式")
+        sys_daemon.force_safe_mode("系统初始化失败")
+        # 返回None表示初始化失败
+        return None
 
 # =============================================================================
 # 网络连接
@@ -181,13 +209,14 @@ def feed_watchdog():
     except Exception as e:
         print(f"[Main] 喂狗失败: {e}")
 
-def check_watchdog():
+def check_watchdog(config):
     """检查看门狗状态"""
     global _wdt_last_feed
     
     if _wdt:
+        watchdog_check_interval = get_config_value(config, 'system', 'watchdog', 'check_interval', 60000)
         elapsed = time.ticks_diff(time.ticks_ms(), _wdt_last_feed)
-        if elapsed > 60000:  # 超过1分钟未喂狗
+        if elapsed > watchdog_check_interval:  # 超过配置的时间未喂狗
             print(f"[Main] 警告：看门狗超过{elapsed}ms未喂狗")
             return False
     return True
@@ -196,19 +225,22 @@ def check_watchdog():
 # 系统监控
 # =============================================================================
 
-def monitor_system_memory():
+def monitor_system_memory(config):
     """监控系统内存"""
     try:
         free_memory = gc.mem_free()
-        total_memory = 264192  # ESP32C3总内存约264KB
+        total_memory = get_config_value(config, 'system', 'memory', 'total', 264192)  # ESP32C3总内存约264KB
+        gc_force_threshold = get_config_value(config, 'daemon', 'gc_force_threshold', 95)
+        gc_force_count = get_config_value(config, 'system', 'memory', 'gc_force_count', 2)
+        gc_delay = get_config_value(config, 'system', 'memory', 'gc_delay', 50)
         memory_usage_percent = ((total_memory - free_memory) / total_memory) * 100
         
         # 智能垃圾回收
-        if memory_usage_percent > 95:
+        if memory_usage_percent > gc_force_threshold:
             print("[Main] 内存使用过高，执行强制垃圾回收")
-            for _ in range(2):
+            for _ in range(gc_force_count):
                 gc.collect()
-                time.sleep_ms(50)
+                time.sleep_ms(gc_delay)
         elif memory_usage_percent > 85:
             print("[Main] 内存使用较高，执行预防性垃圾回收")
             gc.collect()
@@ -223,14 +255,14 @@ def monitor_system_memory():
         print(f"[Main] 内存监控失败: {e}")
         return None
 
-def check_system_health():
+def check_system_health(config):
     """检查系统健康状态 - 优化内存使用"""
     try:
         # 检查守护进程状态
         daemon_status = sys_daemon.get_daemon_status()
         
         # 检查内存状态
-        memory_status = monitor_system_memory()
+        memory_status = monitor_system_memory(config)
         
         # 检查错误统计
         error_stats = sys_error.get_error_stats()
@@ -300,6 +332,7 @@ def main_loop(sys_config, mqtt_client):
     loop_count = 0
     status_interval = sys_config['status_interval']
     loop_delay = sys_config['loop_delay']
+    config = sys_config['config']
     
     # 预分配字典对象，避免频繁创建
     health_cache = {}
@@ -310,8 +343,9 @@ def main_loop(sys_config, mqtt_client):
         'disabled_str': '禁用'
     }
     
-    # 深度内存清理间隔
-    DEEP_CLEANUP_INTERVAL = 100  # 每100次循环执行一次深度清理
+    # 从配置文件获取清理间隔
+    deep_cleanup_interval = get_config_value(config, 'system', 'loop', 'deep_cleanup_interval', 100)
+    health_cache_cleanup_interval = get_config_value(config, 'system', 'loop', 'health_cache_cleanup_interval', 25)
     
     while True:
         try:
@@ -319,12 +353,12 @@ def main_loop(sys_config, mqtt_client):
             feed_watchdog()
             
             # 检查看门狗状态
-            if not check_watchdog():
+            if not check_watchdog(config):
                 print("[Main] 看门狗状态异常，尝试恢复...")
                 feed_watchdog()
             
             # 系统监控 - 重用字典对象
-            health = check_system_health()
+            health = check_system_health(config)
             if health:
                 health_cache.update(health)
             
@@ -354,21 +388,21 @@ def main_loop(sys_config, mqtt_client):
                     # 打印到串口
                     print(f"[Main] {status_msg}")
             
-            # 深度内存清理 - 定期执行
-            if loop_count % DEEP_CLEANUP_INTERVAL == 0:
-                print("[Main] 执行深度内存清理...")
-                # 执行多次垃圾回收
-                for _ in range(3):
-                    gc.collect()
-                    time.sleep_ms(50)
-                
-                # 清理健康缓存
-                health_cache.clear()
-                
-                # 清理错误历史
-                sys_error.reset_error_stats()
-                
-                print(f"[Main] 深度内存清理完成，当前内存使用: {gc.mem_free()}/{gc.mem_alloc() + gc.mem_free()} bytes")
+            # # 健康缓存清理
+            # if loop_count % health_cache_cleanup_interval == 0:
+            #     # 清理健康缓存
+            #     health_cache.clear()
+            #     # 执行一次垃圾回收
+            #     gc.collect()
+            #     print(f"[Main] 健康缓存清理完成，当前内存使用: {gc.mem_free()}/{gc.mem_alloc() + gc.mem_free()} bytes")
+            
+            # # 深度内存清理
+            # if loop_count % deep_cleanup_interval == 0:
+            #     print("[Main] 执行深度内存清理...")
+            #     gc.collect()
+            #     health_cache.clear()
+            #     sys_error.reset_error_stats()
+            #     print(f"[Main] 深度内存清理完成，当前内存使用: {gc.mem_free()}/{gc.mem_alloc() + gc.mem_free()} bytes")
             
             loop_count += 1
             time.sleep_ms(loop_delay)
@@ -393,6 +427,12 @@ def main():
         # 系统初始化
         sys_config = initialize_system()
         
+        # 检查系统初始化是否成功
+        if sys_config is None:
+            print("[Main] 系统初始化失败，直接进入安全模式")
+            handle_safe_mode()
+            return
+        
         # 网络连接
         wifi_connected, error_msg = connect_networks()
         if not wifi_connected:
@@ -402,13 +442,17 @@ def main():
             return
         
         # 创建MQTT客户端
-        mqtt_client = create_mqtt_client(
-            sys_config['client_id'],
-            sys_config['mqtt_broker'],
-            sys_config['mqtt_port'],
-            sys_config['mqtt_topic'],
-            sys_config['mqtt_keepalive']
-        )
+        try:
+            mqtt_client = create_mqtt_client(
+                sys_config['client_id'],
+                sys_config['mqtt_broker'],
+                sys_config['mqtt_port'],
+                sys_config['mqtt_topic'],
+                sys_config['mqtt_keepalive']
+            )
+        except Exception as e:
+            print(f"[Main] MQTT客户端创建失败: {e}")
+            mqtt_client = None
         
         if mqtt_client:
             # 设置MQTT客户端给其他模块
@@ -437,7 +481,8 @@ def main():
         print(f"[Main] 主程序异常: {e}")
         sys_error.handle_error("FATAL_ERROR", e, "Main")
         
-        # 进入安全模式
+        # 进入安全模式 - 等待人为干预
+        print("[Main] 致命错误发生，进入安全模式等待人为干预...")
         sys_daemon.force_safe_mode("主程序异常")
         handle_safe_mode()
 

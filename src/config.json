@@ -19,13 +19,17 @@
       "scan_interval": 30,
       "retry_delay": 2,
       "max_attempts": 3
+    },
+    "ntp": {
+      "retry_count": 3,
+      "retry_delay": 3
     }
   },
   "daemon": {
     "config": {
       "led_pins": [12, 13],
       "timer_id": 0,
-      "monitor_interval": 5000,
+      "monitor_interval": 10000,
       "temp_threshold": 65,
       "temp_hysteresis": 5,
       "memory_threshold": 80,
@@ -35,14 +39,41 @@
     },
     "wdt_timeout": 120000,
     "wdt_enabled": false,
-    "gc_force_threshold": 95
+    "gc_force_threshold": 95,
+    "intervals": {
+      "memory_check": 10000,
+      "status_log": 30000,
+      "gc": 5000
+    },
+    "thresholds": {
+      "temp_warning": 70,
+      "memory_warning": 85,
+      "error_count": 10,
+      "error_reset_time": 60000
+    },
+    "safe_mode": {
+      "gc_count": 2,
+      "gc_delay": 50
+    }
   },
   "system": {
     "debug_mode": false,
     "log_level": "INFO",
-    "main_loop_delay": 300,
+    "main_loop_delay": 1000,
     "status_report_interval": 30,
-    "auto_restart_enabled": false
+    "auto_restart_enabled": false,
+    "memory": {
+      "total": 264192,
+      "gc_force_count": 2,
+      "gc_delay": 50
+    },
+    "loop": {
+      "deep_cleanup_interval": 100,
+      "health_cache_cleanup_interval": 25
+    },
+    "watchdog": {
+      "check_interval": 60000
+    }
   },
   "device": {
     "name": "ESP32C3-IOT",

@@ -18,6 +18,8 @@ _wifi_timeout = 15
 _wifi_scan_interval = 30
 _wifi_connection_retry_delay = 2
 _wifi_max_connection_attempts = 3
+_wifi_ntp_retry_count = 3
+_wifi_ntp_retry_delay = 3
 
 def set_wifi_networks(networks):
     """设置WiFi网络配置"""
@@ -25,13 +27,15 @@ def set_wifi_networks(networks):
     _wifi_networks = networks
     print(f"[WiFi] 已设置 {len(networks)} 个WiFi网络配置")
 
-def set_wifi_config(timeout=15, scan_interval=30, retry_delay=2, max_attempts=3):
+def set_wifi_config(timeout=15, scan_interval=30, retry_delay=2, max_attempts=3, ntp_retry_count=3, ntp_retry_delay=3):
     """设置WiFi连接参数"""
-    global _wifi_timeout, _wifi_scan_interval, _wifi_connection_retry_delay, _wifi_max_connection_attempts
+    global _wifi_timeout, _wifi_scan_interval, _wifi_connection_retry_delay, _wifi_max_connection_attempts, _wifi_ntp_retry_count, _wifi_ntp_retry_delay
     _wifi_timeout = timeout
     _wifi_scan_interval = scan_interval
     _wifi_connection_retry_delay = retry_delay
     _wifi_max_connection_attempts = max_attempts
+    _wifi_ntp_retry_count = ntp_retry_count
+    _wifi_ntp_retry_delay = ntp_retry_delay
     print(f"[WiFi] 已设置WiFi连接参数")
 
 
@@ -116,7 +120,7 @@ def sync_and_set_time():
     
     # 看门狗已移至主循环统一管理，NTP模块不再需要单独处理
     
-    for i in range(3):  # 最多重试3次
+    for i in range(_wifi_ntp_retry_count):  # 使用配置的重试次数
         try:
             
             ntptime.settime()
@@ -131,9 +135,9 @@ def sync_and_set_time():
             return True
             
         except Exception as e:
-            print(f"[NTP] 重试 {i+1}/3: {e}")
-            # 等待重试
-            time.sleep(3)
+            print(f"[NTP] 重试 {i+1}/{_wifi_ntp_retry_count}: {e}")
+            # 等待重试 - 使用配置的延迟时间
+            time.sleep(_wifi_ntp_retry_delay)
     
     print("\033[1;31m[NTP] 时间同步失败\033[0m")
     gc.collect()
