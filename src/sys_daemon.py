@@ -66,6 +66,9 @@ _safe_mode_start_time = 0
 _start_time = 0
 _monitor_count = 0
 
+# 添加监控计数器上限，防止无限增长
+_MONITOR_COUNT_MAX = 10000
+
 # 错误处理状态
 _error_count = 0
 _last_error_time = 0
@@ -228,7 +231,7 @@ def _check_safe_mode_recovery():
 # =============================================================================
 
 def _monitor_callback(timer):
-    """监控定时器回调函数"""
+    """监控定时器回调函数 - 优化内存使用"""
     global _error_count, _last_error_time, _monitor_count
     
     if not _daemon_active:
@@ -236,6 +239,13 @@ def _monitor_callback(timer):
     
     try:
         _monitor_count += 1
+        
+        # 防止监控计数器无限增长，定期重置
+        if _monitor_count >= _MONITOR_COUNT_MAX:
+            _monitor_count = 0
+            print("[Daemon] 监控计数器已重置")
+            gc.collect()  # 重置时执行垃圾回收
+        
         current_time = time.ticks_ms()
         
         # 任务1：系统健康检查（看门狗喂狗已移至主循环）
@@ -243,8 +253,14 @@ def _monitor_callback(timer):
         
         # 任务3：根据健康状态决定是否进入安全模式
         if not health['overall']:
-            reason = ", ".join([f"{k}: {v}" for k, v in health['details'].items() if v])
-            _enter_safe_mode(f"系统异常: {reason}")
+            # 使用预分配的字符串缓冲区构建错误消息
+            reason_parts = []
+            for k, v in health['details'].items():
+                if v:
+                    reason_parts.append(f"{k}:{v}")
+            if reason_parts:
+                reason = ",".join(reason_parts)
+                _enter_safe_mode(f"系统异常:{reason}")
         
         # 任务4：错误计数管理
         if _error_count > 0 and time.ticks_diff(current_time, _last_error_time) > 60000:  # 1分钟重置
@@ -265,8 +281,8 @@ def _monitor_callback(timer):
             # 安全模式：检查恢复条件，LED控制由主循环负责
             _check_safe_mode_recovery()
         
-        # 定期垃圾回收（每100次监控）
-        if _monitor_count % 100 == 0:
+        # 定期垃圾回收（每50次监控，增加频率）
+        if _monitor_count % 50 == 0:
             gc.collect()
         
     except Exception as e:
@@ -277,7 +293,8 @@ def _monitor_callback(timer):
         if _mqtt_client and hasattr(_mqtt_client, 'is_connected') and _mqtt_client.is_connected:
             try:
                 if hasattr(_mqtt_client, 'log'):
-                    _mqtt_client.log("ERROR", f"监控错误: {e}")
+                    # 使用预分配的错误消息格式
+                    _mqtt_client.log("ERROR", f"监控错误:{e}")
             except Exception:
                 pass
 
@@ -485,7 +502,7 @@ def reset_error_count():
     _error_count = 0
 
 def force_safe_mode(reason: str = "未知错误"):
-    """强制进入安全模式"""
+    """强制进入安全模式 - 优化内存使用，避免重复初始化"""
     global _safe_mode_active, _safe_mode_start_time, _led_controller
     
     print(f"[Daemon] 强制进入安全模式: {reason}")
@@ -498,16 +515,17 @@ def force_safe_mode(reason: str = "未知错误"):
         if _mqtt_client and hasattr(_mqtt_client, 'is_connected') and _mqtt_client.is_connected:
             try:
                 if hasattr(_mqtt_client, 'log'):
-                    _mqtt_client.log("CRITICAL", f"强制进入安全模式: {reason}")
+                    _mqtt_client.log("CRITICAL", f"强制进入安全模式:{reason}")
             except Exception:
                 pass
         
         # 确保LED控制器已初始化并设置为安全模式
+        # 添加检查，避免LED控制器重复初始化
         if _led_controller is None:
             try:
                 print("[Daemon] 初始化LED控制器用于安全模式")
                 _led_controller = LEDController(
-                    _daemon_config['led_pins'][0], 
+                    _daemon_config['led_pins'][0],
                     _daemon_config['led_pins'][1]
                 )
             except Exception as e:

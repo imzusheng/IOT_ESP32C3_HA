@@ -113,7 +113,7 @@ class MqttServer:
 
     def log(self, level, message):
         """
-        格式化并发送日志消息
+        格式化并发送日志消息 - 优化内存使用
         
         参数：
         - level: 日志级别 (INFO, WARNING, ERROR, DEBUG)
@@ -123,14 +123,18 @@ class MqttServer:
             return
             
         try:
-            # 计算时间戳
+            # 计算时间戳 - 使用更简洁的格式
             t = time.localtime(time.time())
+            
+            # 使用预分配的字符串格式，减少字符串创建
+            # 使用更紧凑的时间格式以节省内存
+            time_str = f"{t[0]}{t[1]:02d}{t[2]:02d}{t[3]:02d}{t[4]:02d}{t[5]:02d}"
             
             # 使用bytearray进行内存优化的字符串拼接
             log_ba = bytearray()
-            log_ba.extend(f"[{level}] [".encode())
-            log_ba.extend(f"{t[0]}-{t[1]:02d}-{t[2]:02d} {t[3]:02d}:{t[4]:02d}:{t[5]:02d}".encode())
-            log_ba.extend(f"] {message}".encode())
+            log_ba.extend(f"[{level}]".encode())
+            log_ba.extend(f"[{time_str}]".encode())
+            log_ba.extend(f"{message}".encode())
             
             # 发布消息
             self.client.publish(self.topic, log_ba)

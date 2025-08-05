@@ -101,7 +101,7 @@ class ErrorStats:
     
     def __init__(self):
         self._stats = {}
-        self._max_history = 50  # 减少历史记录大小以节省内存
+        self._max_history = 20  # 进一步减少历史记录大小以节省内存
         self._error_history = []
         self._last_reset_time = time.time()
     
@@ -134,9 +134,11 @@ class ErrorStats:
         # 保持历史记录在限制范围内
         if len(self._error_history) > self._max_history:
             self._error_history.pop(0)
+            # 当历史记录满时，执行垃圾回收
+            gc.collect()
         
-        # 执行垃圾回收
-        if len(self._error_history) % 10 == 0:
+        # 更频繁的垃圾回收（每5条错误）
+        if len(self._error_history) % 5 == 0:
             gc.collect()
     
     def get_error_count(self, error_type: str = None):
@@ -186,7 +188,7 @@ class ErrorStats:
 class LogBuffer:
     """内存友好的日志缓冲区"""
     
-    def __init__(self, max_size: int = 30):  # 减小缓冲区大小
+    def __init__(self, max_size: int = 15):  # 进一步减小缓冲区大小以节省内存
         self._max_size = max_size
         self._buffer = []
     
@@ -205,8 +207,8 @@ class LogBuffer:
         if len(self._buffer) > self._max_size:
             self._buffer.pop(0)
         
-        # 定期垃圾回收
-        if len(self._buffer) % 15 == 0:
+        # 更频繁的垃圾回收（每10条日志）
+        if len(self._buffer) % 10 == 0:
             gc.collect()
     
     def get_logs(self, count: int = None):

@@ -84,9 +84,10 @@ class LEDPresetManager:
             # print("[LED] 系统状态：关闭")
             
         elif status == SYSTEM_SAFE_MODE:
-            # 安全模式：SOS模式
-            sos_pattern(0)
+            # 安全模式：SOS模式 - 优化为非阻塞方式
+            # 不直接调用sos_pattern，而是设置状态标志，由外部控制
             # print("[LED] 系统状态：安全模式（SOS模式）")
+            pass
             
         else:
             print(f"[LED] 未知状态: {status}")
@@ -107,19 +108,49 @@ class LEDPresetManager:
 
 # 全局LED预设管理器实例
 _led_preset_manager = None
+_led_manager_initialized = False
 
 def get_led_manager():
-    """获取全局LED预设管理器实例"""
-    global _led_preset_manager
+    """获取全局LED预设管理器实例 - 实现真正的单例模式"""
+    global _led_preset_manager, _led_manager_initialized
+    
     if _led_preset_manager is None:
         _led_preset_manager = LEDPresetManager()
+        _led_manager_initialized = True
+        print("[LED] LED预设管理器单例实例已创建")
+    
     return _led_preset_manager
 
 def init_led_manager(pin1: int = 12, pin2: int = 13):
-    """初始化全局LED预设管理器"""
-    global _led_preset_manager
-    _led_preset_manager = LEDPresetManager(pin1, pin2)
+    """初始化全局LED预设管理器 - 单例模式，避免重复创建"""
+    global _led_preset_manager, _led_manager_initialized
+    
+    if _led_preset_manager is None:
+        _led_preset_manager = LEDPresetManager(pin1, pin2)
+        _led_manager_initialized = True
+        print(f"[LED] LED预设管理器已初始化，引脚: {pin1}, {pin2}")
+    elif not _led_manager_initialized:
+        # 如果实例存在但未正确初始化，重新初始化
+        _led_preset_manager = LEDPresetManager(pin1, pin2)
+        _led_manager_initialized = True
+        print(f"[LED] LED预设管理器已重新初始化，引脚: {pin1}, {pin2}")
+    else:
+        print(f"[LED] LED预设管理器已存在，跳过重复初始化")
+    
     return _led_preset_manager
+
+def cleanup_led_manager():
+    """清理LED管理器实例 - 释放内存"""
+    global _led_preset_manager, _led_manager_initialized
+    
+    if _led_preset_manager is not None:
+        _led_preset_manager = None
+        _led_manager_initialized = False
+        print("[LED] LED预设管理器实例已清理")
+        
+        # 执行垃圾回收
+        import gc
+        gc.collect()
 
 # =============================================================================
 # 便捷函数
@@ -178,31 +209,33 @@ def one_long_two_short(led_index=0):
     time.sleep(0.3)
 
 def sos_pattern(led_index=0):
-    """SOS求救信号模式的便捷函数 (··· --- ···)"""
+    """SOS求救信号模式的便捷函数 (··· --- ···) - 优化内存使用"""
     manager = get_led_manager()
     # print(f"[LED] LED {led_index} SOS模式")
     led = manager.led1 if led_index == 0 else manager.led2
+    
+    # 使用毫秒级延迟，提高响应性并减少内存占用
     # 三短
     for _ in range(3):
         led.on()
-        time.sleep(0.2)
+        time.sleep_ms(200)
         led.off()
-        time.sleep(0.2)
-    time.sleep(0.3)
+        time.sleep_ms(200)
+    time.sleep_ms(300)
     # 三长
     for _ in range(3):
         led.on()
-        time.sleep(0.6)
+        time.sleep_ms(600)
         led.off()
-        time.sleep(0.2)
-    time.sleep(0.3)
+        time.sleep_ms(200)
+    time.sleep_ms(300)
     # 三短
     for _ in range(3):
         led.on()
-        time.sleep(0.2)
+        time.sleep_ms(200)
         led.off()
-        time.sleep(0.2)
-    time.sleep(0.5)
+        time.sleep_ms(200)
+    time.sleep_ms(500)
 
 def heartbeat(led_index=0, cycles=3):
     """心跳模式的便捷函数"""

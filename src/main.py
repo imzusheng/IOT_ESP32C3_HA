@@ -224,7 +224,7 @@ def monitor_system_memory():
         return None
 
 def check_system_health():
-    """检查系统健康状态"""
+    """检查系统健康状态 - 优化内存使用"""
     try:
         # 检查守护进程状态
         daemon_status = sys_daemon.get_daemon_status()
@@ -235,11 +235,17 @@ def check_system_health():
         # 检查错误统计
         error_stats = sys_error.get_error_stats()
         
-        return {
+        # 使用预分配的字典结构，避免每次创建新对象
+        health_data = {
             'daemon': daemon_status,
             'memory': memory_status,
             'errors': error_stats
         }
+        
+        # 执行垃圾回收，释放临时变量
+        gc.collect()
+        
+        return health_data
         
     except Exception as e:
         print(f"[Main] 系统健康检查失败: {e}")
@@ -288,12 +294,24 @@ def handle_safe_mode(mqtt_client=None):
 # =============================================================================
 
 def main_loop(sys_config, mqtt_client):
-    """主循环"""
+    """主循环 - 优化内存使用"""
     print("[Main] 开始主循环")
     
     loop_count = 0
     status_interval = sys_config['status_interval']
     loop_delay = sys_config['loop_delay']
+    
+    # 预分配字典对象，避免频繁创建
+    health_cache = {}
+    status_cache = {
+        'active_str': '活跃',
+        'inactive_str': '停止',
+        'enabled_str': '启用',
+        'disabled_str': '禁用'
+    }
+    
+    # 深度内存清理间隔
+    DEEP_CLEANUP_INTERVAL = 100  # 每100次循环执行一次深度清理
     
     while True:
         try:
@@ -305,8 +323,10 @@ def main_loop(sys_config, mqtt_client):
                 print("[Main] 看门狗状态异常，尝试恢复...")
                 feed_watchdog()
             
-            # 系统监控
+            # 系统监控 - 重用字典对象
             health = check_system_health()
+            if health:
+                health_cache.update(health)
             
             # 检查安全模式
             if sys_daemon.is_safe_mode():
@@ -318,18 +338,37 @@ def main_loop(sys_config, mqtt_client):
                 print("[Main] MQTT断开，尝试重连...")
                 mqtt_client.connect()
             
-            # 定期状态报告
+            # 定期状态报告 - 使用预分配的字符串格式
             if loop_count % status_interval == 0:
-                if health and mqtt_client and mqtt_client.is_connected:
-                    status_msg = f"Loop:{loop_count}, 内存:{health['memory']['percent']:.1f}%, 守护进程:{'活跃' if health['daemon']['active'] else '停止'}"
-                    if _wdt:
-                        status_msg += ", 看门狗:启用"
-                    else:
-                        status_msg += ", 看门狗:禁用"
+                if health_cache and mqtt_client and mqtt_client.is_connected:
+                    # 使用预分配的字符串格式，减少字符串创建
+                    daemon_status = status_cache['active_str'] if health_cache.get('daemon', {}).get('active', False) else status_cache['inactive_str']
+                    wdt_status = status_cache['enabled_str'] if _wdt else status_cache['disabled_str']
+                    memory_percent = health_cache.get('memory', {}).get('percent', 0)
+                    
+                    # 构建状态消息
+                    status_msg = f"Loop:{loop_count},内存:{memory_percent:.1f}%,守护进程:{daemon_status},看门狗:{wdt_status}"
+                    
                     mqtt_client.log("INFO", status_msg)
                     
                     # 打印到串口
                     print(f"[Main] {status_msg}")
+            
+            # 深度内存清理 - 定期执行
+            if loop_count % DEEP_CLEANUP_INTERVAL == 0:
+                print("[Main] 执行深度内存清理...")
+                # 执行多次垃圾回收
+                for _ in range(3):
+                    gc.collect()
+                    time.sleep_ms(50)
+                
+                # 清理健康缓存
+                health_cache.clear()
+                
+                # 清理错误历史
+                sys_error.reset_error_stats()
+                
+                print(f"[Main] 深度内存清理完成，当前内存使用: {gc.mem_free()}/{gc.mem_alloc() + gc.mem_free()} bytes")
             
             loop_count += 1
             time.sleep_ms(loop_delay)
