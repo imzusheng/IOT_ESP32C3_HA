@@ -83,6 +83,9 @@ def initialize_system():
     if daemon_config:
         sys_daemon.set_daemon_config(**daemon_config)
     
+    # 初始化看门狗
+    initialize_watchdog(config)
+    
     print("[Main] 系统初始化完成")
     
     return {
@@ -136,6 +139,58 @@ def create_mqtt_client(client_id, broker, port=1883, topic='lzs/esp32c3', keepal
     except Exception as e:
         print(f"[Main] MQTT客户端创建失败: {e}")
         return None
+
+# =============================================================================
+# 看门狗管理
+# =============================================================================
+
+_wdt = None
+_wdt_last_feed = 0
+
+def initialize_watchdog(config):
+    """初始化硬件看门狗"""
+    global _wdt, _wdt_last_feed
+    
+    try:
+        wdt_enabled = get_config_value(config, 'daemon', 'wdt_enabled', False)
+        wdt_timeout = get_config_value(config, 'daemon', 'wdt_timeout', 120000)
+        
+        if wdt_enabled:
+            print(f"[Main] 启用硬件看门狗，超时时间: {wdt_timeout}ms")
+            _wdt = machine.WDT(timeout=wdt_timeout)
+            _wdt_last_feed = time.ticks_ms()
+            return True
+        else:
+            print("[Main] 硬件看门狗已禁用")
+            _wdt = None
+            return False
+            
+    except Exception as e:
+        print(f"[Main] 看门狗初始化失败: {e}")
+        _wdt = None
+        return False
+
+def feed_watchdog():
+    """喂狗操作"""
+    global _wdt, _wdt_last_feed
+    
+    try:
+        if _wdt:
+            _wdt.feed()
+            _wdt_last_feed = time.ticks_ms()
+    except Exception as e:
+        print(f"[Main] 喂狗失败: {e}")
+
+def check_watchdog():
+    """检查看门狗状态"""
+    global _wdt_last_feed
+    
+    if _wdt:
+        elapsed = time.ticks_diff(time.ticks_ms(), _wdt_last_feed)
+        if elapsed > 60000:  # 超过1分钟未喂狗
+            print(f"[Main] 警告：看门狗超过{elapsed}ms未喂狗")
+            return False
+    return True
 
 # =============================================================================
 # 系统监控
@@ -205,6 +260,9 @@ def handle_safe_mode(mqtt_client=None):
     safe_mode_count = 0
     while sys_daemon.is_safe_mode():
         try:
+            # 安全模式下也要喂狗
+            feed_watchdog()
+            
             # 安全模式LED控制 - 闪烁模式
             # 通过守护进程的LED控制器实现闪烁效果
             daemon_status = sys_daemon.get_daemon_status()
@@ -241,6 +299,14 @@ def main_loop(sys_config, mqtt_client):
     
     while True:
         try:
+            # 喂狗 - 放在循环开始确保及时喂狗
+            feed_watchdog()
+            
+            # 检查看门狗状态
+            if not check_watchdog():
+                print("[Main] 看门狗状态异常，尝试恢复...")
+                feed_watchdog()
+            
             # 系统监控
             health = check_system_health()
             
@@ -258,6 +324,10 @@ def main_loop(sys_config, mqtt_client):
             if loop_count % status_interval == 0:
                 if health and mqtt_client and mqtt_client.is_connected:
                     status_msg = f"Loop:{loop_count}, 内存:{health['memory']['percent']:.1f}%, 守护进程:{'活跃' if health['daemon']['active'] else '停止'}"
+                    if _wdt:
+                        status_msg += ", 看门狗:启用"
+                    else:
+                        status_msg += ", 看门狗:禁用"
                     mqtt_client.log("INFO", status_msg)
                     
                     # 打印到串口
@@ -313,13 +383,15 @@ def main():
         if not daemon_started:
             print("[Main] 守护进程启动失败")
         
-        # LED功能测试
-        print("[Main] 测试LED功能...")
-        led_test_result = sys_daemon.test_led_functionality()
-        if led_test_result:
-            print("[Main] LED功能测试通过")
-        else:
-            print("[Main] LED功能测试失败")
+        # LED功能测试（仅调试模式）
+        debug_mode = get_config_value(sys_config['config'], 'system', 'debug_mode', False)
+        if debug_mode:
+            print("[Main] 测试LED功能...")
+            led_test_result = sys_daemon.test_led_functionality()
+            if led_test_result:
+                print("[Main] LED功能测试通过")
+            else:
+                print("[Main] LED功能测试失败")
         
         # 进入主循环
         main_loop(sys_config, mqtt_client)

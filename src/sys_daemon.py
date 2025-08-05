@@ -150,105 +150,7 @@ class LEDController:
             delattr(self, '_blink_start_time')
         if hasattr(self, '_last_blink_state'):
             delattr(self, '_last_blink_state')
-        if hasattr(self, '_blink_debug_count'):
-            delattr(self, '_blink_debug_count')
         print("[LED] 闪烁状态已重置")
-    
-    def test_simple_blink(self):
-        """简单的LED测试闪烁 - 用于测试LED硬件"""
-        print("[LED] 开始简单LED测试...")
-        
-        # 测试1：依次点亮每个LED
-        print("[LED] 测试1：依次点亮LED")
-        self.led1.on()
-        self.led2.off()
-        time.sleep_ms(500)
-        print("[LED] LED1亮，LED2灭")
-        
-        self.led1.off()
-        self.led2.on()
-        time.sleep_ms(500)
-        print("[LED] LED1灭，LED2亮")
-        
-        # 测试2：两个LED都亮
-        print("[LED] 测试2：两个LED都亮")
-        self.led1.on()
-        self.led2.on()
-        time.sleep_ms(500)
-        
-        # 测试3：两个LED都灭
-        print("[LED] 测试3：两个LED都灭")
-        self.led1.off()
-        self.led2.off()
-        time.sleep_ms(500)
-        
-        print("[LED] 简单LED测试完成")
-    
-    def test_alternating_blink(self):
-        """测试交替闪烁功能"""
-        print("[LED] 开始交替闪烁测试...")
-        
-        # 重置闪烁状态
-        self.reset_blink_state()
-        
-        # 记录测试开始时间
-        self._blink_test_start = time.ticks_ms()
-        self._blink_test_duration = 3000  # 测试3秒
-        self._blink_test_active = True
-        
-        print("[LED] 交替闪烁测试已启动，将在3秒后自动完成")
-    
-    def update_blink_test(self):
-        """更新闪烁测试状态"""
-        if hasattr(self, '_blink_test_active') and self._blink_test_active:
-            # 检查测试是否完成
-            if time.ticks_diff(time.ticks_ms(), self._blink_test_start) >= self._blink_test_duration:
-                self._blink_test_active = False
-                self.reset_blink_state()
-                print("[LED] 交替闪烁测试完成")
-                self.led1.off()
-                self.led2.off()
-                return True  # 测试完成
-            
-            # 继续闪烁测试 - 使用更简单的逻辑
-            current_time = time.ticks_ms()
-            blink_period = 500  # 500ms闪烁周期
-            
-            # 计算当前闪烁状态
-            blink_state = (current_time // blink_period) % 2
-            
-            if blink_state == 0:
-                self.led1.on()
-                self.led2.off()
-            else:
-                self.led1.off()
-                self.led2.on()
-            
-            return False  # 测试仍在进行
-        
-        return True  # 没有测试在进行
-    
-    def simple_blink_test(self, duration_ms=5000):
-        """极简闪烁测试 - 用于验证LED硬件"""
-        print(f"[LED] 开始极简闪烁测试，持续{duration_ms}ms...")
-        
-        start_time = time.ticks_ms()
-        end_time = start_time + duration_ms
-        
-        while time.ticks_ms() < end_time:
-            # 简单的交替闪烁
-            self.led1.on()
-            self.led2.off()
-            time.sleep_ms(250)
-            
-            self.led1.off()
-            self.led2.on()
-            time.sleep_ms(250)
-        
-        # 测试完成，关闭LED
-        self.led1.off()
-        self.led2.off()
-        print("[LED] 极简闪烁测试完成")
 
 # =============================================================================
 # 系统监控函数
@@ -262,10 +164,10 @@ def _get_temperature():
         return None
 
 def _get_memory_usage():
-    """获取内存使用情况"""
+    """获取内存使用情况 - 优化内存使用"""
     try:
-        # 每10次监控才执行垃圾回收，优化性能
-        if _monitor_count % 10 == 0:
+        # 减少垃圾回收频率，每20次监控才执行
+        if _monitor_count % 20 == 0:
             gc.collect()
         
         alloc = gc.mem_alloc()
@@ -273,11 +175,10 @@ def _get_memory_usage():
         total = alloc + free
         percent = (alloc / total) * 100 if total > 0 else 0
         
+        # 返回更简洁的数据结构
         return {
-            'alloc': alloc,
-            'free': free,
-            'total': total,
-            'percent': percent
+            'percent': percent,
+            'free': free
         }
     except Exception:
         return None
@@ -423,25 +324,24 @@ def _monitor_callback(timer):
                 pass
 
 def _log_system_status():
-    """记录系统状态"""
+    """记录系统状态 - 优化内存使用"""
     if not _mqtt_client or not hasattr(_mqtt_client, 'is_connected') or not _mqtt_client.is_connected:
         return
     
     try:
+        # 减少变量创建，直接构建消息
         uptime = time.ticks_diff(time.ticks_ms(), _start_time) // 1000
         temp = _get_temperature()
         memory = _get_memory_usage()
         
-        # 构建状态消息
-        status_parts = [
-            f"运行时间:{uptime}s",
-            f"温度:{temp:.1f}°C" if temp else "温度:未知",
-            f"内存:{memory['percent']:.1f}%" if memory else "内存:未知",
-            f"错误:{_error_count}",
-            f"安全模式:{'是' if _safe_mode_active else '否'}"
-        ]
+        # 使用更紧凑的消息构建方式
+        status_msg = f"运行时间:{uptime}s,温度:{temp:.1f}°C" if temp else f"运行时间:{uptime}s,温度:未知"
+        if memory:
+            status_msg += f",内存:{memory['percent']:.1f}%"
+        else:
+            status_msg += ",内存:未知"
         
-        status_msg = ", ".join(status_parts)
+        status_msg += f",错误:{_error_count},安全模式:{'是' if _safe_mode_active else '否'}"
         
         if hasattr(_mqtt_client, 'log'):
             _mqtt_client.log("INFO", f"系统状态: {status_msg}")
@@ -550,16 +450,27 @@ class SystemDaemon:
         gc.collect()
     
     def get_status(self):
-        """获取守护进程状态信息"""
-        return {
-            'active': _daemon_active,
-            'safe_mode': _safe_mode_active,
-            'temperature': _get_temperature(),
-            'memory': _get_memory_usage(),
-            'error_count': _error_count,
-            'uptime': time.ticks_diff(time.ticks_ms(), _start_time) // 1000 if _daemon_active else 0,
-            'monitor_count': _monitor_count
-        }
+        """获取守护进程状态信息 - 优化内存使用"""
+        try:
+            # 只在需要时获取温度和内存信息
+            return {
+                'active': _daemon_active,
+                'safe_mode': _safe_mode_active,
+                'temperature': _get_temperature(),
+                'memory': _get_memory_usage(),
+                'error_count': _error_count,
+                'uptime': time.ticks_diff(time.ticks_ms(), _start_time) // 1000 if _daemon_active else 0,
+                'monitor_count': _monitor_count
+            }
+        except Exception:
+            # 出错时返回基本信息
+            return {
+                'active': _daemon_active,
+                'safe_mode': _safe_mode_active,
+                'error_count': _error_count,
+                'uptime': time.ticks_diff(time.ticks_ms(), _start_time) // 1000 if _daemon_active else 0,
+                'monitor_count': _monitor_count
+            }
     
     def force_memory_cleanup(self):
         """强制内存清理"""
@@ -662,7 +573,7 @@ def check_safe_mode_recovery():
     pass
 
 def test_led_functionality():
-    """测试LED功能"""
+    """测试LED功能 - 简化版本"""
     global _led_controller
     
     print("[Daemon] 开始LED功能测试...")
@@ -679,72 +590,24 @@ def test_led_functionality():
             print(f"[Daemon] LED控制器初始化失败: {e}")
             return False
     
-    # 执行简单LED测试
+    # 简单测试：依次点亮LED
     try:
-        _led_controller.test_simple_blink()
+        print("[Daemon] 测试LED1...")
+        _led_controller.led1.on()
+        _led_controller.led2.off()
+        time.sleep_ms(200)
+        
+        print("[Daemon] 测试LED2...")
+        _led_controller.led1.off()
+        _led_controller.led2.on()
+        time.sleep_ms(200)
+        
+        print("[Daemon] 测试完成")
+        _led_controller.led1.off()
+        _led_controller.led2.off()
         return True
     except Exception as e:
         print(f"[Daemon] LED测试失败: {e}")
-        return False
-
-def test_led_blinking():
-    """测试LED闪烁功能"""
-    global _led_controller
-    
-    print("[Daemon] 开始LED闪烁测试...")
-    
-    # 确保LED控制器已初始化
-    if _led_controller is None:
-        try:
-            print("[Daemon] 初始化LED控制器用于测试")
-            _led_controller = LEDController(
-                _daemon_config['led_pins'][0], 
-                _daemon_config['led_pins'][1]
-            )
-        except Exception as e:
-            print(f"[Daemon] LED控制器初始化失败: {e}")
-            return False
-    
-    # 启动闪烁测试
-    try:
-        _led_controller.test_alternating_blink()
-        return True
-    except Exception as e:
-        print(f"[Daemon] LED闪烁测试失败: {e}")
-        return False
-
-def update_led_tests():
-    """更新LED测试状态"""
-    global _led_controller
-    
-    if _led_controller:
-        return _led_controller.update_blink_test()
-    return True
-
-def test_simple_blink(duration_ms=5000):
-    """执行极简LED闪烁测试"""
-    global _led_controller
-    
-    print("[Daemon] 开始极简LED闪烁测试...")
-    
-    # 确保LED控制器已初始化
-    if _led_controller is None:
-        try:
-            print("[Daemon] 初始化LED控制器用于测试")
-            _led_controller = LEDController(
-                _daemon_config['led_pins'][0], 
-                _daemon_config['led_pins'][1]
-            )
-        except Exception as e:
-            print(f"[Daemon] LED控制器初始化失败: {e}")
-            return False
-    
-    # 执行极简闪烁测试
-    try:
-        _led_controller.simple_blink_test(duration_ms)
-        return True
-    except Exception as e:
-        print(f"[Daemon] 极简LED闪烁测试失败: {e}")
         return False
 
 # =============================================================================

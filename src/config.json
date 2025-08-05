@@ -32,7 +32,8 @@
       "max_error_count": 10,
       "safe_mode_cooldown": 60000
     },
-    "wdt_timeout": 300000,
+    "wdt_timeout": 120000,
+    "wdt_enabled": false,
     "gc_force_threshold": 95
   },
   "system": {
