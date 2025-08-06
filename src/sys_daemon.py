@@ -289,7 +289,9 @@ def _monitor_callback(timer):
             else:
                 _led_controller.set_status('warning')
         else:
-            # 安全模式：检查恢复条件，LED控制由主循环负责
+            # 安全模式：执行SOS闪烁并检查恢复条件
+            if _led_controller:
+                _led_controller.update_safe_mode_led()
             _check_safe_mode_recovery()
         
         # 优化的垃圾回收策略

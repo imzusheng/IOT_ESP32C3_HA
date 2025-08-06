@@ -103,7 +103,10 @@ def _scan_for_ssids(wlan):
                 else:
                     # 检查是否有相似的SSID（用于调试）
                     for target_ssid in target_ssids:
-                        if target_ssid.lower() in ssid.lower() or ssid.lower() in target_ssid.lower():
+                        # 避免空字符串匹配和过短的字符串匹配
+                        if (ssid and target_ssid and len(ssid.strip()) > 0 and len(target_ssid.strip()) > 0 and 
+                            len(ssid) >= 3 and len(target_ssid) >= 3 and
+                            (target_ssid.lower() in ssid.lower() or ssid.lower() in target_ssid.lower())):
                             print(f"[WiFi] ! 发现相似网络: '{ssid}' (目标: '{target_ssid}')")
                     
             except UnicodeError:
