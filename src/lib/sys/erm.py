@@ -19,10 +19,10 @@
 import time
 import gc
 import machine
-import sys.logger as logger
+from lib.sys import logger as logger
 import sys_daemon
-import sys.fsm as fsm
-import sys.memo as object_pool
+from lib.sys import fsm as fsm
+from lib.sys import memo as object_pool
 import utils
 
 # =============================================================================
@@ -189,7 +189,7 @@ class MemoryRecoveryAction(EnhancedRecoveryAction):
             object_pool.clear_all_pools()
             
             # 重新初始化核心对象池
-            import sys.memo as op_module
+            from lib.sys import memo as op_module
             op_module._dict_pool = op_module.DictPool(pool_size=3)
             op_module._string_cache = op_module.StringCache(max_size=30)
             op_module._buffer_manager = op_module.BufferManager()
@@ -262,11 +262,11 @@ class SystemRecoveryAction(EnhancedRecoveryAction):
             if error_type in ["MEMORY_ERROR", "CRITICAL_ERROR"]:
                 # 强制进入安全模式
                 sys_daemon.force_safe_mode(f"系统恢复: {error_type}")
-                sm.handle_state_event(fsm.StateEvent.MEMORY_CRITICAL)
+                fsm.handle_event(fsm.StateEvent.MEMORY_CRITICAL)
                 return True
             else:
                 # 尝试正常恢复
-                sm.handle_state_event(fsm.StateEvent.RECOVERY_SUCCESS)
+                fsm.handle_event(fsm.StateEvent.RECOVERY_SUCCESS)
                 return True
                 
         except Exception as e:

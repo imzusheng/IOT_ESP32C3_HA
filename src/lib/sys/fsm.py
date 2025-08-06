@@ -20,20 +20,20 @@ def run_main_loop():
     # 应用程序初始化代码...
     # ...
     # 初始化完成后，触发第一个事件
-    sm.handle_state_event(sm.StateEvent.INIT_COMPLETE)
+    state_machine.handle_event(state_machine.StateEvent.INIT_COMPLETE)
 
     # 主循环
     while True:
         # 1. 必须周期性调用 update，以驱动内部定时器和状态处理
-        sm.update_state_machine()
+        state_machine.update_state_machine()
 
         # 2. 获取当前状态，并执行该状态下的业务逻辑
-        current_state = sm.get_current_state()
+        current_state = state_machine.get_current_state()
 
-        if current_state == sm.SystemState.RUNNING:
+        if current_state == state_machine.SystemState.RUNNING:
             # do_my_iot_work() # 执行正常的业务逻辑
             print(".", end="")
-        elif current_state == sm.SystemState.ERROR:
+        elif current_state == state_machine.SystemState.ERROR:
             # 3. 监控错误状态，并执行处理
             print("检测到系统错误，准备重启...")
             # machine.reset() # 重启设备
@@ -41,7 +41,7 @@ def run_main_loop():
         
         # 4. 在其他地方，可以根据需要触发事件
         # if not is_network_ok():
-        #     sm.handle_state_event(sm.StateEvent.NETWORK_FAILED)
+        #     state_machine.handle_event(state_machine.StateEvent.NETWORK_FAILED)
 
         time.sleep(1)
 
@@ -52,7 +52,7 @@ if __name__ == "__main__":
 
 import time
 import gc
-import sys.memo as mem_opt
+from lib.sys import memo as mem_opt
 
 # =============================================================================
 # Section: 系统状态常量
@@ -294,7 +294,7 @@ def get_current_state():
     """便捷函数：获取当前状态。"""
     return _state_machine.get_current_state()
 
-def handle_state_event(event, data=None):
+def handle_event(event, data=None):
     """便捷函数：处理状态事件。"""
     return _state_machine.handle_event(event, data)
 

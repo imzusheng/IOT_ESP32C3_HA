@@ -17,11 +17,11 @@ import ujson
 import net_wifi
 import net_mqtt
 import sys_daemon
-import sys.logger as sys_error
-import sys.memo as object_pool
-import utils
-import sys.fsm as state_machine
-import sys.erm as recovery_manager
+from lib.sys import logger as sys_error
+from lib.sys import memo as object_pool
+from lib import utils
+from lib.sys import fsm as state_machine
+from lib.sys import erm as recovery_manager
 import config
 
 # =============================================================================
@@ -363,7 +363,7 @@ def main_loop(sys_config, mqtt_client):
             recovery_manager.handle_error_with_recovery(
                 "SYSTEM_ERROR", e, "MainLoop", "HIGH", error_data
             )
-            state_machine.handle_state_event(state_machine.StateEvent.SYSTEM_ERROR)
+            state_machine.handle_event(state_machine.StateEvent.SYSTEM_ERROR)
             time.sleep_ms(1000)
         
         finally:
@@ -380,7 +380,7 @@ def _perform_system_maintenance():
     if not check_watchdog():
         print("[Main] 看门狗状态异常，尝试恢复...")
         feed_watchdog()
-        state_machine.handle_state_event(state_machine.StateEvent.WATCHDOG_TIMEOUT)
+        state_machine.handle_event(state_machine.StateEvent.WATCHDOG_TIMEOUT)
 
 def _handle_state_specific_tasks(current_state, sys_config, mqtt_client, health_cache, status_cache):
     """根据状态执行特定任务"""
@@ -406,7 +406,7 @@ def _handle_running_state(sys_config, mqtt_client, health_cache, status_cache):
     
     # 检查系统健康状态
     if health_cache.get('memory', {}).get('percent', 0) > 90:
-        state_machine.handle_state_event(state_machine.StateEvent.MEMORY_CRITICAL)
+        state_machine.handle_event(state_machine.StateEvent.MEMORY_CRITICAL)
     
     # MQTT连接检查
     if mqtt_client and not mqtt_client.is_connected:
@@ -414,19 +414,19 @@ def _handle_running_state(sys_config, mqtt_client, health_cache, status_cache):
         if mqtt_client.connect():
             print("[Main] MQTT重连成功")
         else:
-            state_machine.handle_state_event(state_machine.StateEvent.NETWORK_FAILED)
+            state_machine.handle_event(state_machine.StateEvent.NETWORK_FAILED)
 
 def _handle_networking_state(sys_config, mqtt_client):
     """处理网络连接状态"""
     # 网络连接已在初始化时完成，这里主要监控
     wifi_connected = net_wifi.get_wifi_status().get('connected', False)
     if not wifi_connected:
-        state_machine.handle_state_event(state_machine.StateEvent.NETWORK_FAILED)
+        state_machine.handle_event(state_machine.StateEvent.NETWORK_FAILED)
     else:
         # 网络连接成功，尝试创建MQTT客户端
         if mqtt_client and not mqtt_client.is_connected:
             if mqtt_client.connect():
-                state_machine.handle_state_event(state_machine.StateEvent.NETWORK_SUCCESS)
+                state_machine.handle_event(state_machine.StateEvent.NETWORK_SUCCESS)
 
 def _handle_safe_mode_state(mqtt_client):
     """处理安全模式状态"""
@@ -444,7 +444,7 @@ def _handle_warning_state(sys_config, mqtt_client, health_cache):
     # 检查是否恢复正常
     if health_cache.get('daemon', {}).get('active', False):
         if health_cache.get('memory', {}).get('percent', 0) < 70:
-            state_machine.handle_state_event(state_machine.StateEvent.RECOVERY_SUCCESS)
+            state_machine.handle_event(state_machine.StateEvent.RECOVERY_SUCCESS)
 
 def _handle_error_state(mqtt_client):
     """处理错误状态"""
@@ -461,10 +461,10 @@ def _handle_recovery_state(sys_config, mqtt_client):
     wifi_connected = net_wifi.connect_wifi()
     if wifi_connected:
         print("[Main] 网络恢复成功")
-        state_machine.handle_state_event(state_machine.StateEvent.RECOVERY_SUCCESS)
+        state_machine.handle_event(state_machine.StateEvent.RECOVERY_SUCCESS)
     else:
         print("[Main] 网络恢复失败")
-        state_machine.handle_state_event(state_machine.StateEvent.RECOVERY_FAILED)
+        state_machine.handle_event(state_machine.StateEvent.RECOVERY_FAILED)
 
 def _perform_status_report(loop_count, mqtt_client, health_cache, status_cache):
     """执行状态报告"""
@@ -532,18 +532,18 @@ def main():
         sys_config = initialize_system()
         
         # 初始化完成，转换到网络连接状态
-        if sm.handle_state_event(state_machine.StateEvent.INIT_COMPLETE):
+        if state_machine.handle_event(state_machine.StateEvent.INIT_COMPLETE):
             print("[Main] 状态转换: 网络连接")
         
         # 网络连接
         wifi_connected, error_msg = connect_networks()
         if not wifi_connected:
             print("[Main] 网络连接失败，进入警告状态")
-            sm.handle_state_event(state_machine.StateEvent.NETWORK_FAILED)
+            state_machine.handle_event(state_machine.StateEvent.NETWORK_FAILED)
             sys_daemon.force_safe_mode("网络连接失败")
         else:
             print("[Main] 网络连接成功")
-            sm.handle_state_event(state_machine.StateEvent.NETWORK_SUCCESS)
+            state_machine.handle_event(state_machine.StateEvent.NETWORK_SUCCESS)
         
         # 创建MQTT客户端
         mqtt_client = create_mqtt_client(
@@ -561,13 +561,13 @@ def main():
             print("[Main] MQTT客户端配置完成")
         else:
             print("[Main] MQTT客户端创建失败")
-            sm.handle_state_event(state_machine.StateEvent.SYSTEM_ERROR)
+            state_machine.handle_event(state_machine.StateEvent.SYSTEM_ERROR)
         
         # 启动守护进程
         daemon_started = sys_daemon.start_daemon()
         if not daemon_started:
             print("[Main] 守护进程启动失败")
-            sm.handle_state_event(state_machine.StateEvent.SYSTEM_ERROR)
+            state_machine.handle_event(state_machine.StateEvent.SYSTEM_ERROR)
         else:
             print("[Main] 守护进程启动成功")
         
@@ -587,7 +587,7 @@ def main():
         
         # 如果处于正常运行状态，转换到运行状态
         if final_state == state_machine.SystemState.NETWORKING and wifi_connected:
-            sm.handle_state_event(state_machine.StateEvent.NETWORK_SUCCESS)
+            state_machine.handle_event(state_machine.StateEvent.NETWORK_SUCCESS)
         
         # 进入主循环
         main_loop(sys_config, mqtt_client)

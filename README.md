@@ -1,19 +1,11 @@
-# ESP32C3-IOT 物联网设备
+# ESP32-C3 MicroPython IoT 项目
 
-## 📋 项目简介
+## 📋 项目概述
 
 这是一个基于ESP32-C3的MicroPython物联网设备项目，专为Home Assistant智能家居系统设计。项目采用模块化架构，提供WiFi连接、MQTT通信、系统监控、LED状态指示和错误恢复等功能，确保设备在资源受限的嵌入式环境中稳定运行。
 
-### 🎯 项目目标
+## ✨ 主要特性
 
-- 为Home Assistant提供稳定可靠的物联网设备接入
-- 实现低内存占用的优化设计（ESP32C3仅有264KB内存）
-- 提供完整的设备监控和错误恢复机制
-- 支持Web蓝牙配置界面，简化设备设置流程
-
-## ✨ 功能特性
-
-### 🔧 核心功能
 - **多网络WiFi支持**: 自动扫描并连接信号最强的配置网络
 - **MQTT通信**: 高效的MQTT客户端，支持自动重连和内存优化
 - **系统监控**: 实时监控温度、内存使用和系统健康状态
@@ -22,282 +14,328 @@
 - **看门狗保护**: 防止系统死锁，确保设备稳定运行
 - **LED状态指示**: 通过LED显示设备运行状态，支持多种预设模式
 - **配置管理**: 灵活的配置系统，支持运行时验证
+- **Web配置界面**: 基于Web Bluetooth的配置工具，支持Apple设计风格
 
-### 🚀 高级功能
-- **状态机管理**: 清晰的系统状态管理和事件驱动的状态转换
-- **对象池系统**: 高效的对象池和缓存管理，减少内存分配开销
-- **恢复管理器**: 集中化的错误恢复策略管理，支持分级恢复
-- **Web配置界面**: 基于Web Bluetooth的现代化配置界面
-- **内存优化器**: 智能内存监控和优化策略
+## 🏗️ 项目架构
 
-## 🛠️ 技术栈和硬件要求
+### 核心组件
 
-### 硬件要求
-- **主控芯片**: ESP32-C3
-- **内存**: 264KB SRAM
-- **存储**: 4MB Flash
-- **处理器**: RISC-V 双核 32位
-- **无线**: WiFi 802.11b/g/n
-- **GPIO**: 22个数字IO引脚
-- **接口**: SPI, I2C, UART, ADC
+1. **主应用程序** ([`src/main.py`](src/main.py))
+   - 系统主控制中心，协调各模块运行
+   - 实现主循环、内存管理和看门狗喂狗
+   - 集成配置管理器、WiFi连接、MQTT通信和守护进程
+   - LED状态指示和系统监控功能
 
-### 引脚分配
-- **LED1**: GPIO 12
-- **LED2**: GPIO 13
-- **看门狗**: 软件实现
+2. **配置管理** ([`src/config.py`](src/config.py))
+   - 集中式配置管理，使用Python字典定义所有参数
+   - 详细的配置说明和推荐值
+   - 分模块配置：MQTT、WiFi、守护进程、系统、设备配置
+   - 内存优化：避免JSON文件，减少I/O操作
 
-### 软件技术栈
-- **编程语言**: MicroPython
-- **网络协议**: WiFi 802.11b/g/n, MQTT
-- **依赖库**:
-  - `umqtt.simple`: 轻量级MQTT客户端库
-  - MicroPython标准库: network, time, machine, ntptime, gc
-- **Web技术**: HTML5, CSS3, JavaScript ES6+, Web Bluetooth API
+3. **WiFi管理器** ([`src/lib/net_wifi.py`](src/lib/net_wifi.py))
+   - 健壮的WiFi连接管理，支持多网络选择
+   - 自动网络扫描和RSSI-based排序
+   - NTP时间同步和时区设置
+   - 连接超时处理和错误恢复
 
-## 📁 项目结构
+4. **MQTT客户端** ([`src/lib/net_mqtt.py`](src/lib/net_mqtt.py))
+   - 基于umqtt.simple的自定义MQTT包装器
+   - 连接管理和自动重连机制
+   - 内存优化的日志发送（使用bytearray）
+   - 心跳监控和连接状态跟踪
 
-```
-IOT_ESP32C3/
-├── src/                          # 源代码目录
-│   ├── boot.py                   # 启动脚本
-│   ├── main.py                   # 主应用程序
-│   ├── config_manager.py         # 配置管理器
-│   ├── config.json               # 运行时配置文件
-│   ├── sys_daemon.py             # 系统守护进程
-│   └── lib/                      # 库文件目录
-│       ├── net_wifi.py           # WiFi网络管理
-│       ├── net_mqtt.py           # MQTT客户端
-│       ├── sys_error.py          # 错误处理系统
-│       ├── led_preset.py         # LED预设管理
-│       ├── state_machine.py      # 状态机管理
-│       ├── mem_optimizer.py      # 内存优化器和对象池
-│       ├── recovery_manager.py   # 恢复管理器
-│       ├── utils.py              # 工具函数
-│       └── umqtt/
-│           └── simple.py         # MQTT客户端库
-├── web/                          # Web配置界面
-│   ├── index.html                # 主页面
-│   └── README_WEB.md             # Web界面文档
-├── public/                       # 公共文件
-│   └── mosquitto-2.0.22-install-windows-x64.exe
-├── .gitignore                    # Git忽略文件
-├── CLAUDE.md                     # 项目分析文档
-└── README.md                     # 项目说明文档（本文件）
-```
+5. **系统守护进程** ([`src/sys_daemon.py`](src/sys_daemon.py))
+   - 系统监控和安全保护功能
+   - LED状态指示控制
+   - 温度监控和安全模式
+   - 内存监控和垃圾回收
+   - 系统健康检查和错误恢复
 
-## 🚀 安装和设置指南
+6. **错误恢复管理器** ([`src/lib/sys/erm.py`](src/lib/sys/erm.py))
+   - 统一错误处理和恢复策略管理
+   - 分级恢复动作：网络、内存、服务、系统、硬件恢复
+   - 恢复成功率统计和冷却时间管理
+   - 智能恢复调度和错误处理
 
-### 1. 环境准备
+7. **状态机系统** ([`src/lib/sys/fsm.py`](src/lib/sys/fsm.py))
+   - 清晰的系统状态管理
+   - 事件驱动的状态转换
+   - 支持INIT、NETWORKING、RUNNING、WARNING、ERROR、SAFE_MODE、RECOVERY、SHUTDOWN状态
+   - 状态历史记录和监控
 
-#### 硬件准备
-- ESP32-C3开发板
-- LED指示灯（可选）
-- USB数据线
+8. **内存优化器** ([`src/lib/sys/memo.py`](src/lib/sys/memo.py))
+   - 高效的对象池和缓存管理
+   - 字典对象池、字符串缓存、缓冲区管理
+   - 减少内存分配和垃圾回收开销
+   - 智能内存管理功能
 
-#### 软件准备
-- MicroPython固件（ESP32-C3版本）
-- rshell或其他文件传输工具
-- 支持Web Bluetooth API的现代浏览器（Chrome、Edge、Opera）
+9. **日志系统** ([`src/lib/sys/logger.py`](src/lib/sys/logger.py))
+   - 统一的日志管理
+   - 错误分类和统计
+   - MQTT日志发送
+   - 内存友好的日志缓冲
 
-### 2. 固件烧录
+10. **LED控制** ([`src/lib/sys/led.py`](src/lib/sys/led.py))
+    - 统一的LED状态指示管理
+    - 多种预设闪烁模式
+    - 系统状态可视化
+    - 单例模式设计，避免重复初始化
 
-1. 下载ESP32-C3的MicroPython固件
-2. 使用esptool工具烧录固件：
-   ```bash
-   esptool.py --chip esp32c3 --port COMx erase_flash
-   esptool.py --chip esp32c3 --port COMx --baud 460800 write_flash -z 0x0 firmware.bin
-   ```
+11. **工具函数** ([`src/lib/utils.py`](src/lib/utils.py))
+    - 通用工具函数库
+    - 内存检查和格式化
+    - 字符串处理
+    - 系统信息获取
 
-### 3. 文件部署
+12. **启动序列** ([`src/boot.py`](src/boot.py))
+    - 垃圾回收初始化
+    - 最小化的MicroPython启动脚本
 
-使用rshell部署项目文件：
+## ⚙️ 配置说明
 
-```bash
-# 连接设备
-rshell --port COMx
+### 配置文件结构
 
-# 部署文件
-cp src/boot.py /pyboard/boot.py
-cp src/config_manager.py /pyboard/config_manager.py
-cp src/main.py /pyboard/main.py
-cp src/config.json /pyboard/config.json
-cp src/sys_daemon.py /pyboard/sys_daemon.py
-cp -r src/lib/ /pyboard/lib/
-```
+项目使用纯Python配置系统：
+- [`src/config.py`](src/config.py): Python字典配置（主要配置和验证规则）
 
-### 4. 初始配置
+### 主要配置项
 
-#### 方法一：通过Web界面配置
-1. 在支持的浏览器中打开 `web/index.html`
-2. 通过蓝牙连接ESP32-C3设备
-3. 配置WiFi网络和MQTT服务器参数
-4. 保存配置并重启设备
-
-#### 方法二：直接编辑配置文件
-编辑 `src/config.json` 文件，配置以下参数：
-
-```json
-{
-  "mqtt": {
-    "broker": "192.168.1.2",
-    "port": 1883,
-    "topic": "lzs/esp32c3",
-    "keepalive": 60
-  },
-  "wifi": {
-    "networks": [
-      {"ssid": "your_wifi_ssid", "password": "your_wifi_password"}
-    ]
-  },
-  "device": {
-    "name": "ESP32C3-IOT",
-    "location": "客厅",
-    "firmware_version": "1.0.0"
-  }
+#### MQTT配置
+```python
+"mqtt": {
+    "broker": "192.168.3.15",        # MQTT服务器地址
+    "port": 1883,                   # MQTT端口
+    "topic": "lzs/esp32c3",         # MQTT主题
+    "keepalive": 60,                # 心跳间隔(秒)
+    "config": {
+        "reconnect_delay": 5,        # 重连延迟(秒)
+        "max_retries": 3            # 最大重试次数
+    }
 }
 ```
 
-## 📖 使用说明
+#### WiFi配置
+```python
+"wifi": {
+    "networks": [                   # WiFi网络列表
+        {"ssid": "zsm60p", "password": "25845600"},
+        {"ssid": "leju_software", "password": "leju123456"}
+    ],
+    "config": {
+        "timeout": 15,              # 连接超时(秒)
+        "scan_interval": 30,        # 扫描间隔(秒)
+        "retry_delay": 2,           # 重试延迟(秒)
+        "max_attempts": 3           # 最大尝试次数
+    }
+}
+```
 
-### 1. 设备启动流程
+#### 守护进程配置
+```python
+"daemon": {
+    "config": {
+        "led_pins": [12, 13],       # LED引脚
+        "timer_id": 0,              # 定时器ID
+        "monitor_interval": 5000,    # 监控间隔(毫秒)
+        "temp_threshold": 65,       # 温度阈值(°C)
+        "temp_hysteresis": 5,       # 温度迟滞(°C)
+        "memory_threshold": 80,     # 内存阈值(%)
+        "memory_hysteresis": 10,    # 内存迟滞(%)
+        "max_error_count": 10,      # 最大错误数
+        "safe_mode_cooldown": 60000 # 安全模式冷却(毫秒)
+    },
+    "wdt_timeout": 120000,          # 看门狗超时(毫秒)
+    "wdt_enabled": False,           # 看门狗开关
+    "gc_force_threshold": 95        # 强制GC阈值(%)
+}
+```
 
-设备启动后会按照以下流程运行：
-1. **初始化**: 加载配置，初始化系统模块
-2. **网络连接**: 扫描并连接最优WiFi网络
-3. **时间同步**: 通过NTP同步系统时间
-4. **MQTT连接**: 连接到MQTT代理服务器
-5. **系统监控**: 启动守护进程，开始系统监控
-6. **主循环**: 进入正常运行状态
+#### 系统配置
+```python
+"system": {
+    "debug_mode": False,            # 调试模式
+    "log_level": "INFO",            # 日志级别
+    "main_loop_delay": 300,         # 主循环延迟(毫秒)
+    "status_report_interval": 30,   # 状态报告间隔(秒)
+    "auto_restart_enabled": False   # 自动重启开关
+}
+```
 
-### 2. 状态指示
+#### 设备配置
+```python
+"device": {
+    "name": "ESP32C3-IOT",          # 设备名称
+    "location": "未知位置",         # 设备位置
+    "firmware_version": "1.0.0"     # 固件版本
+}
+```
 
-设备通过LED指示当前运行状态：
-- **正常模式**: LED稳定亮起或缓慢闪烁
-- **警告模式**: LED中等频率闪烁
-- **错误模式**: LED快速闪烁
-- **安全模式**: LED特定模式闪烁（如SOS模式）
+## 🚀 快速开始
 
-### 3. Web配置界面使用
+### 硬件要求
 
-#### 浏览器要求
-- ✅ Google Chrome（推荐）
-- ✅ Microsoft Edge
-- ✅ Opera
-- ❌ Firefox（不支持Web Bluetooth API）
-- ❌ Safari（iOS版不支持Web Bluetooth API）
+- ESP32-C3开发板
+- LED指示灯（连接到GPIO 12和13）
+- USB数据线
 
-#### 使用步骤
-1. 打开 `web/index.html`
-2. 点击"连接设备"按钮，选择ESP32-C3设备
-3. 配置WiFi网络和MQTT参数
-4. 设置设备基本信息
-5. 保存配置并重启设备
+### 软件依赖
 
-### 4. 系统监控
+- **MicroPython固件**: ESP32-C3支持的MicroPython版本
+- **umqtt.simple**: 轻量级MQTT客户端库 ([`src/lib/umqtt/simple.py`](src/lib/umqtt/simple.py))
+- **MicroPython标准库**: network, time, machine, ntptime, gc
 
-设备会定期向MQTT主题发送系统状态信息：
-- 内存使用情况
-- 温度监控
+### 安装步骤
+
+1. **刷写MicroPython固件**
+   ```bash
+   # 使用esptool刷写固件
+   esptool.py --chip esp32c3 --port COMx erase_flash
+   esptool.py --chip esp32c3 --port COMx write_flash -z 0x0 firmware.bin
+   ```
+
+2. **上传项目文件**
+   ```bash
+   # 使用rshell或类似工具
+   rshell cp src/boot.py /pyboard/boot.py
+   rshell cp src/config.py /pyboard/config.py
+   rshell cp src/main.py /pyboard/main.py
+   rshell cp src/lib/ /pyboard/lib/ -r
+   ```
+
+3. **配置设备**
+   - 修改 [`src/config.py`](src/config.py) 中的配置项
+   - 或使用Web配置界面进行配置
+
+4. **重启设备**
+   ```bash
+   # 重启设备
+   rshell repl ~ import machine ~ machine.reset()
+   ```
+
+### Web配置界面
+
+项目包含基于Web Bluetooth的配置界面：
+
+- **位置**: [`web/index.html`](web/index.html)
+- **功能**: 蓝牙连接、WiFi配置、MQTT配置、设备配置
+- **设计**: Apple设计风格，响应式布局
+- **浏览器要求**: 支持Web Bluetooth API的现代浏览器
+
+#### 使用Web配置界面
+
+1. **打开页面**
+   ```bash
+   # 在支持Web Bluetooth API的浏览器中打开
+   # file:///path/to/your/project/web/index.html
+   ```
+
+2. **连接设备**
+   - 点击"连接设备"按钮
+   - 选择ESP32C3设备
+   - 等待连接完成
+
+3. **配置参数**
+   - **WiFi配置**: 扫描并添加WiFi网络
+   - **MQTT配置**: 设置MQTT服务器参数
+   - **设备配置**: 设置设备基本信息
+
+4. **应用配置**
+   - 保存配置后重启设备
+   - 设备将使用新配置运行
+
+## 📊 系统状态
+
+### 状态机系统
+
+系统支持以下状态：
+- **INIT**: 系统初始化
+- **NETWORKING**: 网络连接
+- **RUNNING**: 正常运行
+- **WARNING**: 警告状态
+- **ERROR**: 错误状态
+- **SAFE_MODE**: 安全模式
+- **RECOVERY**: 恢复模式
+- **SHUTDOWN**: 关机状态
+
+### LED状态指示
+
+- **normal**: 正常运行（LED1亮，LED2灭）
+- **warning**: 警告状态（LED1亮，LED2亮）
+- **error**: 错误状态（LED1灭，LED2亮）
+- **off**: 关闭状态（LED1灭，LED2灭）
+- **safe_mode**: 安全模式（SOS闪烁模式）
+
+### 预设闪烁模式
+
+- **快闪三下**: 快速闪烁三次
+- **一长两短**: 一个长闪加两个短闪
+- **SOS求救信号**: 标准的SOS摩尔斯电码
+- **心跳模式**: 模拟心跳节奏的闪烁
+- **警灯模式**: 双LED交替闪烁
+- **霹雳游侠**: 来回扫描效果
+- **计数闪烁**: 数字计数闪烁
+- **呼吸灯**: 渐变呼吸效果
+
+## 🔧 开发和构建
+
+### 构建脚本
+
+使用 [`build.py`](build.py) 脚本构建项目：
+
+```bash
+# 构建项目（排除测试文件）
+python build.py
+
+# 构建项目（包含测试文件）
+python build.py --test
+```
+
+构建脚本会：
+1. 编译Python文件为.mpy格式（除boot.py和main.py）
+2. 复制所有文件到dist目录
+3. 保持目录结构
+
+### 测试
+
+测试文件位于 [`src/tests/`](src/tests/) 目录：
+
+```bash
+# 运行内存优化测试
+python -m src.tests.test_mem_optimizer
+```
+
+## 📱 监控和调试
+
+### 系统监控指标
+
+- 内存使用率（实时监控）
+- 温度监控（MCU内部温度）
+- 错误计数和统计
 - 网络连接状态
 - MQTT连接状态
 - 系统运行时间
 
-## 🏗️ 系统架构概述
+### 调试技巧
 
-### 核心架构设计
+- 通过串口查看详细日志
+- 监控内存使用情况
+- 检查LED状态指示
+- 查看错误统计信息
+- 使用状态机监控系统状态
 
-项目采用模块化架构设计，各模块职责明确，相互协作：
+### 串口日志
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    主应用程序 (main.py)                      │
-├─────────────────────────────────────────────────────────────┤
-│  配置管理  │  网络管理  │  系统监控  │  错误处理  │  状态管理  │
-├─────────────────────────────────────────────────────────────┤
-│  WiFi连接  │  MQTT通信  │  LED控制  │  内存管理  │  恢复管理  │
-├─────────────────────────────────────────────────────────────┤
-│                    硬件抽象层 (MicroPython)                 │
-└─────────────────────────────────────────────────────────────┘
-```
+设备通过串口输出详细日志：
+- WiFi连接状态
+- MQTT连接状态
+- 内存使用报告
+- 系统日志
+- LED状态指示
 
-### 系统状态机
+## 🛡️ 错误处理
 
-设备运行状态通过状态机管理：
-- **INIT**: 初始化状态
-- **NETWORKING**: 网络连接状态
-- **RUNNING**: 正常运行状态
-- **WARNING**: 警告状态
-- **ERROR**: 错误状态
-- **SAFE_MODE**: 安全模式
-- **RECOVERY**: 恢复状态
-- **SHUTDOWN**: 关机状态
+### 错误类型分类
 
-### 主循环流程
-
-```
-喂狗 → 内存监控 → 守护进程状态检查 → 安全模式判断 → 
-MQTT连接检查 → LED状态检查 → 状态报告 → 延迟
-```
-
-## 🔧 模块说明
-
-### 1. 主应用程序 (main.py)
-
-**功能**: 系统主控制中心，协调各模块运行
-
-**主要职责**:
-- 实现主循环、内存管理和看门狗喂狗
-- 集成配置管理器、WiFi连接、MQTT通信和守护进程
-- LED状态指示和系统监控功能
-- 状态机管理和错误恢复协调
-
-### 2. 配置管理器 (config_manager.py)
-
-**功能**: 集中式配置管理，使用类常量定义所有参数
-
-**主要特性**:
-- 配置验证器，启动时自动验证配置有效性
-- 分模块配置：MQTTConfig、WiFiConfig、DaemonConfig、SystemConfig
-- 内存优化：避免JSON文件，减少I/O操作
-
-### 3. WiFi管理器 (lib/net_wifi.py)
-
-**功能**: 健壮的WiFi连接管理，支持多网络选择
-
-**主要特性**:
-- 自动网络扫描和RSSI-based排序
-- NTP时间同步和时区设置
-- 连接超时处理和错误恢复
-
-### 4. MQTT客户端 (lib/net_mqtt.py)
-
-**功能**: 基于umqtt.simple的自定义MQTT包装器
-
-**主要特性**:
-- 连接管理和自动重连机制
-- 内存优化的日志发送（使用bytearray）
-- 心跳监控和连接状态跟踪
-
-### 5. 系统守护进程 (sys_daemon.py)
-
-**功能**: 系统监控和安全保护功能
-
-**主要特性**:
-- LED状态指示控制
-- 温度监控和安全模式
-- 内存监控和垃圾回收
-- 系统健康检查和错误恢复
-
-### 6. 错误处理器 (lib/sys_error.py)
-
-**功能**: 统一错误处理和日志管理
-
-**主要特性**:
-- 智能错误分类和恢复机制
-- 内存友好的日志缓冲
-- 自动错误恢复和系统重启
-
-**错误类型分类**:
 - **NETWORK**: 网络连接错误
 - **HARDWARE**: 硬件故障
 - **MEMORY**: 内存不足
@@ -308,246 +346,129 @@ MQTT连接检查 → LED状态检查 → 状态报告 → 延迟
 - **DAEMON**: 守护进程错误
 - **FATAL**: 致命错误
 
-### 7. LED预设管理器 (lib/led_preset.py)
+### 错误恢复策略
 
-**功能**: 统一的LED状态指示管理
+- **重试机制**: 自动重试失败操作
+- **内存清理**: 深度垃圾回收
+- **连接重置**: 重置网络连接
+- **安全模式**: 进入降级运行模式
+- **系统重启**: 致命错误时自动重启
 
-**主要特性**:
-- 多种预设闪烁模式（快闪三下、SOS、心跳等）
-- 系统状态可视化（正常、警告、错误、安全模式）
-- 单例模式设计，避免重复初始化
+### 恢复管理器
 
-### 8. 状态机 (lib/state_machine.py)
-
-**功能**: 清晰的系统状态管理
-
-**主要特性**:
-- 事件驱动的状态转换
-- 支持多种系统状态
-- 状态历史记录和监控
-
-### 9. 内存优化器 (lib/mem_optimizer.py)
-
-**功能**: 高效的内存优化和对象池管理
-
-**主要特性**:
-- 字典对象池、字符串缓存、缓冲区管理
-- 内存监控和智能清理策略
-- 减少内存分配和垃圾回收开销
-
-### 10. 工具函数 (lib/utils.py)
-
-**功能**: 通用工具函数集合
-
-**主要特性**:
-- 系统信息获取（温度、内存使用情况）
-- 配置值获取和格式化
-- 内存检查和优化功能
-
-### 11. 恢复管理器 (lib/recovery_manager.py)
-
-**功能**: 集中化的错误恢复策略管理
-
-**主要特性**:
-- 分级恢复动作：网络、内存、服务、系统、硬件恢复
-- 恢复成功率统计和冷却时间管理
-- 智能恢复调度和错误处理
-
-**恢复策略**:
 - **网络恢复**: WiFi重连 + MQTT重连
 - **内存恢复**: 深度清理 + 对象池重建
 - **服务恢复**: 守护进程重启
 - **系统恢复**: 状态机管理 + 安全模式
 - **硬件恢复**: 系统重启
 
-## 🌐 Web配置界面说明
+## 📖 硬件资源
 
-### 概述
+### ESP32-C3 规格
 
-Web配置界面采用Apple设计风格，提供简洁、优雅的用户体验。通过蓝牙连接设备，支持WiFi、MQTT和设备配置的完整管理。
+- **内存**: 264KB SRAM
+- **存储**: 4MB Flash
+- **处理器**: RISC-V 双核 32位
+- **无线**: WiFi 802.11b/g/n
+- **GPIO**: 22个数字IO引脚
+- **接口**: SPI, I2C, UART, ADC
 
-### 主要功能
+### 引脚分配
 
-#### 1. 蓝牙连接管理
-- **自动检测功能**: 页面加载时自动检测蓝牙支持情况
-- **实时状态监控**: 监听蓝牙可用性变化，自动更新连接状态
-- **连接状态显示**: 固定状态指示器显示连接状态
-  - 🟢 绿色：已连接
-  - 🔴 红色：未连接
-  - 🟠 橙色：扫描中
+- **LED1**: GPIO 12
+- **LED2**: GPIO 13
+- **看门狗**: 软件实现
 
-#### 2. WiFi配置
-- **网络扫描**: 自动扫描可用WiFi网络
-- **网络信息显示**: 显示网络名称、加密类型、信号强度等
-- **网络管理**: 添加、删除和选择WiFi网络
+## 💡 内存管理
 
-#### 3. MQTT配置
-- **服务器配置**: 设置MQTT broker地址、端口、主题等
-- **连接参数**: 配置心跳间隔、重连延迟等
-- **配置验证**: 自动验证配置参数的有效性
+项目实现精细的内存管理：
 
-#### 4. 设备配置
-- **基本信息**: 设置设备名称、位置等
-- **系统设置**: 配置日志级别、调试模式等
-- **系统操作**: 重启设备、恢复出厂设置
+- **垃圾回收策略**: 定期`gc.collect()`和深度清理
+- **内存监控**: 实时监控`gc.mem_free()`和使用百分比
+- **优化数据结构**: 使用bytearray进行MQTT消息拼接
+- **缓冲区限制**: 限制日志和错误历史记录大小
+- **LED状态管理**: 优化的LED控制模式，减少内存占用
 
-### 技术特性
+### 关键内存优化技术
 
-- **Web Bluetooth API**: 使用现代Web蓝牙技术
-- **实时通信**: 支持双向数据交换和状态更新
-- **安全连接**: 加密的蓝牙通信
-- **自动重连**: 蓝牙状态变化时的自动处理
+- 全局变量减少实例化开销
+- 智能垃圾回收（根据内存使用动态调整）
+- 轻量级数据结构
+- 避免复杂对象创建
+- 定期内存清理和监控
 
-### 蓝牙服务配置
+### 对象池系统
 
-```javascript
-// 蓝牙服务UUID
-const SERVICE_UUID = '00001234-0000-1000-8000-00805f9b34fb';
+- **字典对象池**: 避免频繁创建销毁字典对象
+- **字符串缓存**: 缓存常用字符串减少内存分配
+- **缓冲区管理**: 预分配缓冲区管理器
+- **内存优化器**: 提供内存监控和优化功能
 
-// 特征值UUID
-const CHAR_CONFIG_UUID = '00001235-0000-1000-8000-00805f9b34fb';    // 配置读写
-const CHAR_STATUS_UUID = '00001236-0000-1000-8000-00805f9b34fb';     // 状态通知
-const CHAR_WIFI_SCAN_UUID = '00001237-0000-1000-8000-00805f9b34fb';  // WiFi扫描
-const CHAR_WIFI_LIST_UUID = '00001238-0000-1000-8000-00805f9b34fb'; // WiFi列表
-const CHAR_DEVICE_INFO_UUID = '00001239-0000-1000-8000-00805f9b34fb'; // 设备信息
+## 🌐 网络行为
+
+1. **启动流程**: boot.py → main.py → 配置验证 → WiFi连接
+2. **WiFi选择**: 扫描网络 → RSSI排序 → 连接最优网络
+3. **时间同步**: NTP服务器同步 + 时区设置
+4. **MQTT连接**: 连接代理 → 开始发布日志
+5. **守护进程启动**: 开始系统监控 → LED控制 → 系统健康检查
+6. **主循环**: 看门狗喂狗 → 内存管理 → 状态监控 → LED状态指示
+
+## 🔄 系统工作流程
+
+### 主循环流程
+
+```
+喂狗 → 内存监控 → 守护进程状态检查 → 安全模式判断 → 
+MQTT连接检查 → LED状态检查 → 状态报告 → 延迟
 ```
 
-## 🔍 故障排除
+### 错误处理流程
 
-### 常见问题
-
-#### 1. 设备无法启动
-**可能原因**:
-- 固件烧录失败
-- 配置文件错误
-- 硬件连接问题
-
-**解决方案**:
-1. 检查串口连接是否正常
-2. 重新烧录MicroPython固件
-3. 验证配置文件格式是否正确
-4. 查看串口日志获取详细错误信息
-
-#### 2. WiFi连接失败
-**可能原因**:
-- WiFi网络不可用
-- 配置的WiFi信息错误
-- 信号强度不足
-
-**解决方案**:
-1. 确认WiFi网络正常工作
-2. 检查WiFi配置是否正确
-3. 尝试靠近路由器增强信号
-4. 通过Web界面重新配置WiFi
-
-#### 3. MQTT连接失败
-**可能原因**:
-- MQTT服务器不可达
-- 配置参数错误
-- 网络连接问题
-
-**解决方案**:
-1. 检查MQTT服务器是否正常运行
-2. 验证MQTT配置参数（地址、端口、主题）
-3. 确认网络连接正常
-4. 查看设备日志获取MQTT连接状态
-
-#### 4. Web蓝牙连接失败
-**可能原因**:
-- 浏览器不支持Web Bluetooth API
-- 设备蓝牙未开启或不可被发现
-- 蓝牙服务配置错误
-
-**解决方案**:
-1. 使用支持的浏览器（Chrome、Edge、Opera）
-2. 确认设备蓝牙功能正常
-3. 检查设备蓝牙服务是否正确广播
-4. 尝试重启设备和浏览器
-
-#### 5. 内存不足问题
-**可能原因**:
-- 内存泄漏
-- 配置过于复杂
-- 系统运行时间过长
-
-**解决方案**:
-1. 监控内存使用情况（通过串口日志）
-2. 简化配置，减少不必要的功能
-3. 重启设备释放内存
-4. 检查代码是否有内存泄漏
-
-### 调试技巧
-
-#### 1. 串口调试
-通过串口连接设备，查看详细日志信息：
-```bash
-# 使用rshell连接
-rshell --port COMx
-# 查看REPL
-repl
+```
+错误发生 → 错误分类 → 严重程度判断 → 执行恢复动作 → 
+记录日志 → 继续运行/进入安全模式/重启
 ```
 
-#### 2. 内存监控
-设备会定期输出内存使用情况：
+### 内存管理流程
+
 ```
-[INFO] 内存使用: 45% (可用: 145KB)
-[INFO] 温度: 52.3°C
-```
-
-#### 3. LED状态指示
-观察LED闪烁模式，判断设备当前状态：
-- 稳定亮起：正常运行
-- 慢速闪烁：警告状态
-- 快速闪烁：错误状态
-- SOS模式：安全模式
-
-#### 4. Web界面调试
-使用浏览器开发者工具调试Web界面：
-1. 按F12打开开发者工具
-2. 查看Console标签页的错误信息
-3. 使用Network标签页监控蓝牙通信
-4. 检查Application标签页的本地存储
-
-### 系统恢复
-
-#### 1. 软重启
-通过Web界面或串口发送重启命令：
-```javascript
-// Web界面重启
-const command = JSON.stringify({ cmd: 'device_restart' });
-await configCharacteristic.writeValue(new TextEncoder().encode(command));
+内存监控 → 阈值检查 → 垃圾回收 → 深度清理 → 
+状态报告 → 继续监控
 ```
 
-#### 2. 恢复出厂设置
-清除所有配置并重启：
-```javascript
-// 恢复出厂设置
-const command = JSON.stringify({ cmd: 'factory_reset' });
-await configCharacteristic.writeValue(new TextEncoder().encode(command));
-```
+## ⚠️ 重要说明
 
-#### 3. 手动重置
-1. 断开设备电源
-2. 按住BOOT按钮
-3. 连接电源
-4. 释放BOOT按钮，设备将恢复到初始状态
+- **内存限制**: ESP32C3只有264KB内存，必须时刻注意内存使用
+- **文件位置**: 主要代码位于 `./src` 目录
+- **配置管理**: 所有配置项都在 `src/config.py` 中定义
+- **语言**: 代码注释和文档使用中文
 
-## 📄 许可证信息
+## 🤝 贡献
 
-本项目采用MIT许可证。详情请参阅LICENSE文件。
+欢迎贡献代码、报告问题或提出改进建议！
 
-### MIT许可证
+### 贡献方式
 
-版权所有 (c) 2024 ESP32C3-IOT项目
+1. Fork 本项目
+2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 创建Pull Request
 
-特此免费授予任何获得本软件及相关文档文件（"软件"）副本的人不受限制地处理软件的权利，包括但不限于使用、复制、修改、合并、发布、分发、再许可和/或销售软件副本的权利，并允许获得软件的人这样做，但须符合以下条件：
+## 📄 许可证
 
-上述版权声明和本许可声明应包含在软件的所有副本或实质性部分中。
+本项目采用 MIT 许可证。
 
-本软件按"原样"提供，不提供任何形式的明示或暗示的保证，包括但不限于适销性、特定用途的适用性和非侵权性的保证。在任何情况下，作者或版权持有人均不对因软件或软件的使用或其他交易而产生的任何索赔、损害或其他责任承担责任，无论是在合同、侵权还是其他方面。
+## 📞 支持
+
+如果您在使用过程中遇到任何问题，请通过以下方式获取支持：
+
+- 📧 **邮件支持**: [your-email@example.com](mailto:your-email@example.com)
+- 🐛 **问题报告**: [GitHub Issues](https://github.com/your-username/IOT_ESP32C3_HA/issues)
+- 📖 **文档**: [项目 Wiki](https://github.com/your-username/IOT_ESP32C3_HA/wiki)
 
 ---
 
-**项目维护者**: ESP32C3-IOT开发团队  
 **最后更新**: 2025-08-06  
-**版本**: v2.0.0
+**版本**: 1.0.0  
+**维护者**: ESP32C3 开发团队

@@ -22,7 +22,7 @@
 import time
 import machine
 import gc
-import sys.led as led_preset
+from lib.sys import led as led_preset
 import utils
 
 try:
@@ -357,7 +357,7 @@ def _deep_cleanup():
         
         # 清理错误历史（如果有的话）
         try:
-            import sys.logger as sys_error
+            from lib.sys import logger as sys_error
             if hasattr(sys_error, 'reset_error_stats'):
                 sys_error.reset_error_stats()
         except:
