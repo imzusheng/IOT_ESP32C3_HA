@@ -28,6 +28,7 @@
 - **对象池系统**: 高效的对象池和缓存管理，减少内存分配开销
 - **恢复管理器**: 集中化的错误恢复策略管理，支持分级恢复
 - **Web配置界面**: 基于Web Bluetooth的现代化配置界面
+- **内存优化器**: 智能内存监控和优化策略
 
 ## 🛠️ 技术栈和硬件要求
 
@@ -62,15 +63,16 @@ IOT_ESP32C3/
 │   ├── main.py                   # 主应用程序
 │   ├── config_manager.py         # 配置管理器
 │   ├── config.json               # 运行时配置文件
-│   ├── net_wifi.py               # WiFi网络管理
-│   ├── net_mqtt.py               # MQTT客户端
 │   ├── sys_daemon.py             # 系统守护进程
-│   ├── sys_error.py              # 错误处理系统
-│   ├── led_preset.py             # LED预设管理
-│   ├── state_machine.py          # 状态机管理
-│   ├── object_pool.py            # 对象池管理
-│   ├── recovery_manager.py       # 恢复管理器
-│   └── lib/
+│   └── lib/                      # 库文件目录
+│       ├── net_wifi.py           # WiFi网络管理
+│       ├── net_mqtt.py           # MQTT客户端
+│       ├── sys_error.py          # 错误处理系统
+│       ├── led_preset.py         # LED预设管理
+│       ├── state_machine.py      # 状态机管理
+│       ├── mem_optimizer.py      # 内存优化器和对象池
+│       ├── recovery_manager.py   # 恢复管理器
+│       ├── utils.py              # 工具函数
 │       └── umqtt/
 │           └── simple.py         # MQTT客户端库
 ├── web/                          # Web配置界面
@@ -119,15 +121,8 @@ cp src/boot.py /pyboard/boot.py
 cp src/config_manager.py /pyboard/config_manager.py
 cp src/main.py /pyboard/main.py
 cp src/config.json /pyboard/config.json
-cp src/net_mqtt.py /pyboard/net_mqtt.py
-cp src/net_wifi.py /pyboard/net_wifi.py
 cp src/sys_daemon.py /pyboard/sys_daemon.py
-cp src/sys_error.py /pyboard/sys_error.py
-cp src/led_preset.py /pyboard/led_preset.py
-cp src/state_machine.py /pyboard/state_machine.py
-cp src/object_pool.py /pyboard/object_pool.py
-cp src/recovery_manager.py /pyboard/recovery_manager.py
-cp src/lib/umqtt/simple.py /pyboard/umqtt/simple.py
+cp -r src/lib/ /pyboard/lib/
 ```
 
 ### 4. 初始配置
@@ -265,7 +260,7 @@ MQTT连接检查 → LED状态检查 → 状态报告 → 延迟
 - 分模块配置：MQTTConfig、WiFiConfig、DaemonConfig、SystemConfig
 - 内存优化：避免JSON文件，减少I/O操作
 
-### 3. WiFi管理器 (net_wifi.py)
+### 3. WiFi管理器 (lib/net_wifi.py)
 
 **功能**: 健壮的WiFi连接管理，支持多网络选择
 
@@ -274,7 +269,7 @@ MQTT连接检查 → LED状态检查 → 状态报告 → 延迟
 - NTP时间同步和时区设置
 - 连接超时处理和错误恢复
 
-### 4. MQTT客户端 (net_mqtt.py)
+### 4. MQTT客户端 (lib/net_mqtt.py)
 
 **功能**: 基于umqtt.simple的自定义MQTT包装器
 
@@ -293,7 +288,7 @@ MQTT连接检查 → LED状态检查 → 状态报告 → 延迟
 - 内存监控和垃圾回收
 - 系统健康检查和错误恢复
 
-### 6. 错误处理器 (sys_error.py)
+### 6. 错误处理器 (lib/sys_error.py)
 
 **功能**: 统一错误处理和日志管理
 
@@ -313,7 +308,7 @@ MQTT连接检查 → LED状态检查 → 状态报告 → 延迟
 - **DAEMON**: 守护进程错误
 - **FATAL**: 致命错误
 
-### 7. LED预设管理器 (led_preset.py)
+### 7. LED预设管理器 (lib/led_preset.py)
 
 **功能**: 统一的LED状态指示管理
 
@@ -322,7 +317,7 @@ MQTT连接检查 → LED状态检查 → 状态报告 → 延迟
 - 系统状态可视化（正常、警告、错误、安全模式）
 - 单例模式设计，避免重复初始化
 
-### 8. 状态机 (state_machine.py)
+### 8. 状态机 (lib/state_machine.py)
 
 **功能**: 清晰的系统状态管理
 
@@ -331,16 +326,25 @@ MQTT连接检查 → LED状态检查 → 状态报告 → 延迟
 - 支持多种系统状态
 - 状态历史记录和监控
 
-### 9. 对象池 (object_pool.py)
+### 9. 内存优化器 (lib/mem_optimizer.py)
 
-**功能**: 高效的对象池和缓存管理
+**功能**: 高效的内存优化和对象池管理
 
 **主要特性**:
 - 字典对象池、字符串缓存、缓冲区管理
+- 内存监控和智能清理策略
 - 减少内存分配和垃圾回收开销
-- 内存优化器提供智能内存管理
 
-### 10. 恢复管理器 (recovery_manager.py)
+### 10. 工具函数 (lib/utils.py)
+
+**功能**: 通用工具函数集合
+
+**主要特性**:
+- 系统信息获取（温度、内存使用情况）
+- 配置值获取和格式化
+- 内存检查和优化功能
+
+### 11. 恢复管理器 (lib/recovery_manager.py)
 
 **功能**: 集中化的错误恢复策略管理
 
@@ -545,5 +549,5 @@ await configCharacteristic.writeValue(new TextEncoder().encode(command));
 ---
 
 **项目维护者**: ESP32C3-IOT开发团队  
-**最后更新**: 2024-01-15  
-**版本**: v1.0.0
+**最后更新**: 2025-08-06  
+**版本**: v2.0.0

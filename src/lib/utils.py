@@ -84,20 +84,6 @@ def format_string(template, *args):
     except Exception:
         return template
 
-def format_log_message(level, module, message):
-    """
-    格式化日志消息
-    
-    参数:
-        level: 日志级别 (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-        module: 模块名称
-        message: 日志消息
-        
-    返回:
-        格式化后的日志消息
-    """
-    return format_string("[{level}] [{module}] {message}", level, module, message)
-
 # =============================================================================
 # 时间处理工具函数
 # =============================================================================
@@ -148,18 +134,6 @@ def format_elapsed_time(milliseconds):
             return f"{seconds}s"
     except Exception:
         return f"{milliseconds}ms"
-
-def get_uptime_seconds(start_time):
-    """
-    获取系统运行时间（秒）
-    
-    参数:
-        start_time: 系统启动时间的时间戳
-        
-    返回:
-        系统运行时间（秒）
-    """
-    return get_elapsed_time(start_time) // 1000
 
 # =============================================================================
 # 系统工具函数
@@ -305,21 +279,6 @@ def check_watchdog_status(last_feed_time, timeout_ms=60000):
     except Exception:
         return False
 
-def get_system_uptime(start_time):
-    """
-    获取系统运行时间（秒）
-    
-    参数:
-        start_time: 系统启动时间的时间戳
-        
-    返回:
-        系统运行时间（秒）
-    """
-    try:
-        return time.ticks_diff(time.ticks_ms(), start_time) // 1000
-    except Exception:
-        return 0
-
 # =============================================================================
 # 状态管理工具函数
 # =============================================================================
@@ -410,6 +369,51 @@ def retry_operation(func, max_retries=3, delay_ms=1000, *args, **kwargs):
             time.sleep_ms(delay_ms)
     
     return False, last_error
+
+# =============================================================================
+# 系统信息工具函数
+# =============================================================================
+
+def get_temperature():
+    """
+    获取MCU内部温度
+    
+    返回:
+        MCU内部温度（摄氏度），如果无法获取则返回None
+    """
+    try:
+        import esp32
+        return esp32.mcu_temperature()
+    except Exception:
+        return None
+
+def get_memory_usage():
+    """
+    获取内存使用情况 - 优化内存使用
+    
+    返回:
+        包含内存使用信息的字典，包括：
+        - percent: 内存使用百分比
+        - free: 空闲内存字节数
+        如果无法获取内存信息，则返回None
+    """
+    try:
+        # 减少垃圾回收频率，每20次监控才执行
+        # if _monitor_count % 20 == 0:
+        #     gc.collect()
+        
+        alloc = gc.mem_alloc()
+        free = gc.mem_free()
+        total = alloc + free
+        percent = (alloc / total) * 100 if total > 0 else 0
+        
+        # 返回更简洁的数据结构
+        return {
+            'percent': percent,
+            'free': free
+        }
+    except Exception:
+        return None
 
 # =============================================================================
 # 初始化

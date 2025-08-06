@@ -17,11 +17,11 @@ import ujson
 import net_wifi
 import net_mqtt
 import sys_daemon
-import sys_error
-import lib.mem_optimizer as object_pool
-import lib.utils as utils
-import lib.state_machine as state_machine
-import recovery_manager
+import sys.logger as sys_error
+import sys.memo as object_pool
+import utils
+import sys.fsm as state_machine
+import sys.erm as recovery_manager
 import config
 
 # =============================================================================
@@ -209,25 +209,23 @@ def check_watchdog():
 def monitor_system_memory():
     """监控系统内存"""
     try:
-        free_memory = gc.mem_free()
-        total_memory = 264192  # ESP32C3总内存约264KB
-        memory_usage_percent = ((total_memory - free_memory) / total_memory) * 100
+        # 使用utils模块的内存检查函数
+        memory_status = utils.check_memory()
         
-        # 智能垃圾回收
-        if memory_usage_percent > 95:
-            print("[Main] 内存使用过高，执行强制垃圾回收")
-            for _ in range(2):
+        if memory_status:
+            # 智能垃圾回收
+            if memory_status['percent'] > 95:
+                print("[Main] 内存使用过高，执行强制垃圾回收")
+                for _ in range(2):
+                    gc.collect()
+                    time.sleep_ms(50)
+            elif memory_status['percent'] > 85:
+                print("[Main] 内存使用较高，执行预防性垃圾回收")
                 gc.collect()
-                time.sleep_ms(50)
-        elif memory_usage_percent > 85:
-            print("[Main] 内存使用较高，执行预防性垃圾回收")
-            gc.collect()
+            
+            return memory_status
         
-        return {
-            'free': free_memory,
-            'total': total_memory,
-            'percent': memory_usage_percent
-        }
+        return None
         
     except Exception as e:
         print(f"[Main] 内存监控失败: {e}")

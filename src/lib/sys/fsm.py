@@ -52,7 +52,7 @@ if __name__ == "__main__":
 
 import time
 import gc
-import mem_optimizer as mem_opt
+import sys.memo as mem_opt
 
 # =============================================================================
 # Section: 系统状态常量

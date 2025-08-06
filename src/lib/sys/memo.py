@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-MicroPython 高效内存优化模块 (v2.2 - 优化版)
+MicroPython 高效内存优化模块 Memory Optimization (v2.2)
 
 为资源受限的 MicroPython 设备 (如 ESP32-C3) 提供一套事件驱动的内存优化方案。
 核心目标是通过对象池和静态缓存，在不引入运行时开销的前提下，最大程度地减少

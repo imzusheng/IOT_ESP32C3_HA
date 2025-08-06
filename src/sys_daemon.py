@@ -22,7 +22,8 @@
 import time
 import machine
 import gc
-import led_preset
+import sys.led as led_preset
+import utils
 
 try:
     import esp32
@@ -160,33 +161,6 @@ class LEDController:
 # 系统监控函数
 # =============================================================================
 
-def _get_temperature():
-    """获取MCU内部温度"""
-    try:
-        return esp32.mcu_temperature()
-    except Exception:
-        return None
-
-def _get_memory_usage():
-    """获取内存使用情况 - 优化内存使用"""
-    try:
-        # 减少垃圾回收频率，每20次监控才执行
-        if _monitor_count % 20 == 0:
-            gc.collect()
-        
-        alloc = gc.mem_alloc()
-        free = gc.mem_free()
-        total = alloc + free
-        percent = (alloc / total) * 100 if total > 0 else 0
-        
-        # 返回更简洁的数据结构
-        return {
-            'percent': percent,
-            'free': free
-        }
-    except Exception:
-        return None
-
 def _perform_health_check():
     """执行系统健康检查"""
     health_status = {
@@ -198,8 +172,8 @@ def _perform_health_check():
     }
     
     try:
-        # 检查温度
-        temp = _get_temperature()
+        # 检查温度 - 使用utils模块的函数
+        temp = utils.get_temperature()
         if temp is None:
             health_status['temperature'] = False
             health_status['details']['temperature'] = '读取失败'
@@ -207,8 +181,8 @@ def _perform_health_check():
             health_status['temperature'] = False
             health_status['details']['temperature'] = f'温度过高: {temp:.1f}°C'
         
-        # 检查内存
-        memory = _get_memory_usage()
+        # 检查内存 - 使用utils模块的函数
+        memory = utils.get_memory_usage()
         if memory is None:
             health_status['memory'] = False
             health_status['details']['memory'] = '读取失败'
@@ -383,7 +357,7 @@ def _deep_cleanup():
         
         # 清理错误历史（如果有的话）
         try:
-            import sys_error
+            import sys.logger as sys_error
             if hasattr(sys_error, 'reset_error_stats'):
                 sys_error.reset_error_stats()
         except:
@@ -401,8 +375,8 @@ def _log_system_status():
     try:
         # 减少变量创建，直接构建消息
         uptime = time.ticks_diff(time.ticks_ms(), _start_time) // 1000
-        temp = _get_temperature()
-        memory = _get_memory_usage()
+        temp = utils.get_temperature()
+        memory = utils.get_memory_usage()
         
         # 使用更紧凑的消息构建方式
         status_msg = f"运行时间:{uptime}s,温度:{temp:.1f}°C" if temp else f"运行时间:{uptime}s,温度:未知"
@@ -522,12 +496,12 @@ class SystemDaemon:
     def get_status(self):
         """获取守护进程状态信息 - 优化内存使用"""
         try:
-            # 只在需要时获取温度和内存信息
+            # 使用utils模块的函数获取温度和内存信息
             return {
                 'active': _daemon_active,
                 'safe_mode': _safe_mode_active,
-                'temperature': _get_temperature(),
-                'memory': _get_memory_usage(),
+                'temperature': utils.get_temperature(),
+                'memory': utils.get_memory_usage(),
                 'error_count': _error_count,
                 'uptime': time.ticks_diff(time.ticks_ms(), _start_time) // 1000 if _daemon_active else 0,
                 'monitor_count': _monitor_count

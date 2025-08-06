@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-错误恢复管理模块
+错误恢复管理模块 Error Recovery Module
 
 为ESP32C3设备提供集中化的错误处理和恢复策略管理：
 - 错误恢复策略统一管理
@@ -19,11 +19,11 @@
 import time
 import gc
 import machine
-import sys_error
+import sys.logger as logger
 import sys_daemon
-import lib.state_machine as state_machine
-import lib.mem_optimizer as object_pool
-import lib.utils as utils
+import sys.fsm as fsm
+import sys.memo as object_pool
+import utils
 
 # =============================================================================
 # 恢复策略配置
@@ -189,14 +189,14 @@ class MemoryRecoveryAction(EnhancedRecoveryAction):
             object_pool.clear_all_pools()
             
             # 重新初始化核心对象池
-            import lib.mem_optimizer as op_module
+            import sys.memo as op_module
             op_module._dict_pool = op_module.DictPool(pool_size=3)
             op_module._string_cache = op_module.StringCache(max_size=30)
             op_module._buffer_manager = op_module.BufferManager()
             
             # 清理错误历史
             try:
-                sys_error.reset_error_stats()
+                logger.reset_error_stats()
             except:
                 pass
             
@@ -256,17 +256,17 @@ class SystemRecoveryAction(EnhancedRecoveryAction):
         
         try:
             # 尝试状态机恢复
-            sm = state_machine.get_state_machine()
+            sm = fsm.get_state_machine()
             
             # 根据错误类型选择恢复策略
             if error_type in ["MEMORY_ERROR", "CRITICAL_ERROR"]:
                 # 强制进入安全模式
                 sys_daemon.force_safe_mode(f"系统恢复: {error_type}")
-                sm.handle_state_event(state_machine.StateEvent.MEMORY_CRITICAL)
+                sm.handle_state_event(fsm.StateEvent.MEMORY_CRITICAL)
                 return True
             else:
                 # 尝试正常恢复
-                sm.handle_state_event(state_machine.StateEvent.RECOVERY_SUCCESS)
+                sm.handle_state_event(fsm.StateEvent.RECOVERY_SUCCESS)
                 return True
                 
         except Exception as e:
@@ -373,7 +373,7 @@ class RecoveryManager:
         """处理错误并执行恢复"""
         try:
             # 记录错误
-            sys_error.handle_error(error_type, error, context, severity)
+            logger.handle_error(error_type, error, context, severity)
             
             # 准备恢复数据
             recovery_data = error_data or {}

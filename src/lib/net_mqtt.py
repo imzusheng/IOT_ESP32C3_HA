@@ -11,9 +11,9 @@ import sys
 # MicroPython兼容的路径处理
 current_dir = __file__.rpartition('/')[0] if '/' in __file__ else ''
 if current_dir:
-    sys.path.append(current_dir + '/lib')
+    sys.path.append(current_dir + '/umqtt')
 else:
-    sys.path.append('./lib')
+    sys.path.append('./umqtt')
 
 from umqtt.simple import MQTTClient
 import time
