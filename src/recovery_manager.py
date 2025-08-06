@@ -21,8 +21,9 @@ import gc
 import machine
 import sys_error
 import sys_daemon
-import state_machine
-import object_pool
+import lib.state_machine as state_machine
+import lib.mem_optimizer as object_pool
+import lib.utils as utils
 
 # =============================================================================
 # 恢复策略配置
@@ -175,7 +176,7 @@ class MemoryRecoveryAction(EnhancedRecoveryAction):
         
         try:
             # 使用对象池的内存优化器
-            memory_info = object_pool.check_memory()
+            memory_info = utils.check_memory()
             if memory_info:
                 print(f"[Recovery] 当前内存使用: {memory_info['percent']:.1f}%")
             
@@ -188,7 +189,7 @@ class MemoryRecoveryAction(EnhancedRecoveryAction):
             object_pool.clear_all_pools()
             
             # 重新初始化核心对象池
-            import object_pool as op_module
+            import lib.mem_optimizer as op_module
             op_module._dict_pool = op_module.DictPool(pool_size=3)
             op_module._string_cache = op_module.StringCache(max_size=30)
             op_module._buffer_manager = op_module.BufferManager()
@@ -200,7 +201,7 @@ class MemoryRecoveryAction(EnhancedRecoveryAction):
                 pass
             
             # 验证恢复效果
-            final_memory = object_pool.check_memory()
+            final_memory = utils.check_memory()
             if final_memory:
                 print(f"[Recovery] 内存恢复完成，使用率: {final_memory['percent']:.1f}%")
                 return final_memory['percent'] < 85  # 内存使用率低于85%认为恢复成功

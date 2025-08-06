@@ -18,8 +18,9 @@ import net_wifi
 import net_mqtt
 import sys_daemon
 import sys_error
-import object_pool
-import state_machine
+import lib.mem_optimizer as object_pool
+import lib.utils as utils
+import lib.state_machine as state_machine
 import recovery_manager
 import config
 
@@ -480,8 +481,8 @@ def _perform_status_report(loop_count, mqtt_client, health_cache, status_cache):
         current_state = state_machine.get_current_state()
         
         # 构建状态消息
-        status_msg = object_pool.get_cached_string(
-            "Loop:{},状态:{},内存:{:.1f}%,守护进程:{},看门狗:{}", 
+        status_msg = utils.format_string(
+            "Loop:{},状态:{},内存:{:.1f}%,守护进程:{},看门狗:{}",
             loop_count, current_state, memory_percent, daemon_status, wdt_status
         )
         
@@ -495,7 +496,7 @@ def _perform_memory_optimization(health_cache):
     """执行内存优化"""
     try:
         # 使用内存优化器检查内存
-        memory_info = object_pool.check_memory()
+        memory_info = utils.check_memory()
         
         if memory_info and memory_info['percent'] > 85:
             print(f"[Main] 执行内存优化，当前使用率: {memory_info['percent']:.1f}%")
@@ -507,11 +508,12 @@ def _perform_memory_optimization(health_cache):
             gc.collect()
             
             # 获取内存统计
-            stats = object_pool.get_memory_stats()
+            stats = object_pool.get_all_stats()
             print(f"[Main] 内存优化完成: {stats}")
         
     except Exception as e:
         print(f"[Main] 内存优化失败: {e}")
+
 
 # =============================================================================
 # 主程序入口
