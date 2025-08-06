@@ -8,6 +8,7 @@ LED预设模块
 
 import machine
 import time
+import config
 
 # =============================================================================
 # LED预设模式常量
@@ -27,13 +28,13 @@ SYSTEM_SAFE_MODE = "safe_mode"    # 安全模式：SOS模式
 class LEDPresetManager:
     """LED预设管理器 - 统一管理所有LED状态显示"""
     
-    def __init__(self, pin1: int = 12, pin2: int = 13):
+    def __init__(self, pin1: int = None, pin2: int = None):
         """
         初始化LED预设管理器
         
         Args:
-            pin1: 第一个LED引脚，默认12
-            pin2: 第二个LED引脚，默认13
+            pin1: 第一个LED引脚（从config.py获取）
+            pin2: 第二个LED引脚（从config.py获取）
         """
         self.pin1 = pin1
         self.pin2 = pin2
@@ -137,7 +138,7 @@ class LEDPresetManager:
 # 全局LED预设管理器实例 - 优化单例模式
 _led_preset_manager = None
 _led_manager_initialized = False
-_led_manager_pins = [12, 13]  # 默认引脚配置
+_led_manager_pins = config.get_config('daemon', 'led_pins', [12, 13])  # 默认引脚配置
 _led_manager_lock = False  # 防止并发初始化
 
 def get_led_manager():
@@ -155,8 +156,8 @@ def get_led_manager():
     
     return _led_preset_manager
 
-def init_led_manager(pin1: int = 12, pin2: int = 13):
-    """初始化全局LED预设管理器 - 优化的单例模式"""
+def init_led_manager(pin1: int = None, pin2: int = None):
+    """初始化全局LED预设管理器 - 优化的单例模式（从config.py获取）"""
     global _led_preset_manager, _led_manager_initialized, _led_manager_pins, _led_manager_lock
     
     if _led_manager_lock:
@@ -270,7 +271,7 @@ def reset_led_manager():
         cleanup_led_manager()
         
         # 重置配置
-        _led_manager_pins = [12, 13]
+        _led_manager_pins = config.get_config('daemon', 'led_pins', [12, 13])
         
         # 短暂延迟
         import time

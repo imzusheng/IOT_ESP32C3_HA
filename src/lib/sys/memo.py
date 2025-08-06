@@ -9,6 +9,23 @@ MicroPython 高效内存优化模块 Memory Optimization (v2.2)
 
 import gc
 from micropython import const
+try:
+    from src.config import get_config
+except ImportError:
+    # 如果无法导入，使用默认值
+    def get_config(section=None, key=None, default=None):
+        defaults = {
+            'daemon': {
+                'memory_threshold': 80,
+                'memory_hysteresis': 10,
+                'gc_force_threshold': 95
+            }
+        }
+        if section is None:
+            return defaults
+        if key is None:
+            return defaults.get(section, {})
+        return defaults.get(section, {}).get(key, default)
 
 # --- 模块常量定义 ---
 _DICT_POOL_INITIAL_SIZE = const(10)
@@ -16,9 +33,7 @@ _STRING_CACHE_MAX_SIZE = const(50)
 _BUFFER_POOL_SIZE_PER_TYPE = const(3)
 _BUFFER_SIZES = (64, 128, 256, 512, 1024)
 
-_MEM_WARN_THRESHOLD = const(80)    # 80% 内存使用警告
-_MEM_CRIT_THRESHOLD = const(90)    # 90% 内存使用严重
-_MEM_EMERG_THRESHOLD = const(95)   # 95% 内存使用紧急
+# 内存阈值配置从config.py中获取
 
 # =============================================================================
 # 内存监控与优化器 (被动触发)
@@ -29,10 +44,16 @@ class MemoryOptimizer:
     """
     def __init__(self):
         """初始化内存优化器，设定清理阈值。"""
+        # 从配置中获取内存阈值
+        memory_threshold = get_config('daemon', 'memory_threshold', 80)
+        memory_hysteresis = get_config('daemon', 'memory_hysteresis', 10)
+        gc_force_threshold = get_config('daemon', 'gc_force_threshold', 95)
+        
+        # 计算各级阈值
         self._thresholds = {
-            'warning': _MEM_WARN_THRESHOLD,
-            'critical': _MEM_CRIT_THRESHOLD,
-            'emergency': _MEM_EMERG_THRESHOLD
+            'warning': memory_threshold,
+            'critical': memory_threshold + memory_hysteresis,
+            'emergency': gc_force_threshold
         }
 
     def run_cleanup_if_needed(self):

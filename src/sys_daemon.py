@@ -24,32 +24,28 @@ import machine
 import gc
 from lib.sys import led as led_preset
 import utils
+import config
 
-try:
-    import esp32
-except ImportError:
-    # 模拟esp32模块用于测试
-    class MockESP32:
-        @staticmethod
-        def mcu_temperature():
-            return 45.0
-    esp32 = MockESP32()
+# 守护进程配置从config.py中获取
 
-# 全局配置变量
+# 全局守护进程配置变量
 _daemon_config = {
-    'led_pins': [12, 13],
-    'timer_id': 0,
-    'monitor_interval': 5000,
-    'temp_threshold': 65,
-    'temp_hysteresis': 5,
-    'memory_threshold': 80,
-    'memory_hysteresis': 10,
-    'max_error_count': 10,
-    'safe_mode_cooldown': 60000
+    'led_pins': config.get_config('daemon', 'led_pins', [12, 13]),
+    'timer_id': config.get_config('daemon', 'timer_id', 0),
+    'monitor_interval': config.get_config('daemon', 'monitor_interval', 5000),
+    'temp_threshold': config.get_config('daemon', 'temp_threshold', 65),
+    'temp_hysteresis': config.get_config('daemon', 'temp_hysteresis', 5),
+    'memory_threshold': config.get_config('daemon', 'memory_threshold', 80),
+    'memory_hysteresis': config.get_config('daemon', 'memory_hysteresis', 10),
+    'max_error_count': config.get_config('daemon', 'max_error_count', 10),
+    'safe_mode_cooldown': config.get_config('daemon', 'safe_mode_cooldown', 60000),
+    'wdt_timeout': config.get_config('daemon', 'wdt_timeout', 120000),
+    'wdt_enabled': config.get_config('daemon', 'wdt_enabled', False),
+    'gc_force_threshold': config.get_config('daemon', 'gc_force_threshold', 95)
 }
 
 def set_daemon_config(config_dict=None, **kwargs):
-    """设置守护进程配置"""
+    """设置守护进程配置（从config.py获取）"""
     global _daemon_config
     if config_dict:
         _daemon_config.update(config_dict)
@@ -57,7 +53,7 @@ def set_daemon_config(config_dict=None, **kwargs):
     print("[Daemon] 守护进程配置已更新")
 
 def load_daemon_config_from_main(config_data):
-    """从主配置文件加载守护进程配置"""
+    """从主配置文件加载守护进程配置（config.py）"""
     global _daemon_config
     
     try:

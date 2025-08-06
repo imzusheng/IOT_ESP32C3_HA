@@ -155,15 +155,18 @@ def is_memory_critical(threshold=90):
     
     return memory_info['percent'] > threshold
 
-def is_memory_warning(threshold=80):
+def is_memory_warning(threshold=None):
     """
     检查内存是否处于警告状态
     
     参数:
-        threshold: 内存使用百分比阈值，默认为80%
+        threshold: 内存使用百分比阈值，从config.py中的daemon.memory_threshold获取
         
     返回:
         如果内存使用超过阈值则返回True，否则返回False
+        
+    注意:
+        如果threshold为None，则使用配置文件中的默认阈值
     """
     memory_info = check_memory()
     if not memory_info:
@@ -259,13 +262,13 @@ def deep_memory_cleanup():
     except Exception:
         return False
 
-def check_watchdog_status(last_feed_time, timeout_ms=60000):
+def check_watchdog_status(last_feed_time, timeout_ms=120000):
     """
     检查看门狗状态
     
     参数:
         last_feed_time: 上次喂狗时间的时间戳
-        timeout_ms: 超时时间（毫秒），默认为60秒
+        timeout_ms: 超时时间（毫秒），从config.py中的daemon.wdt_timeout获取
         
     返回:
         如果看门狗状态正常则返回True，否则返回False

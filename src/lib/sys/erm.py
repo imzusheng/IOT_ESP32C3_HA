@@ -24,25 +24,18 @@ import sys_daemon
 from lib.sys import fsm as fsm
 from lib.sys import memo as object_pool
 import utils
+import config
 
 # =============================================================================
 # 恢复策略配置
 # =============================================================================
 
 class RecoveryConfig:
-    """恢复配置常量"""
-    # 重试配置
-    MAX_RETRY_ATTEMPTS = 3
-    RETRY_DELAY_BASE = 1000  # 基础延迟1秒
-    
-    # 超时配置
-    NETWORK_TIMEOUT = 30000  # 网络重连超时30秒
-    MEMORY_CLEANUP_TIMEOUT = 10000  # 内存清理超时10秒
-    SERVICE_RESTART_TIMEOUT = 15000  # 服务重启超时15秒
-    
-    # 冷却时间
-    RECOVERY_COOLDOWN = 30000  # 恢复操作冷却时间30秒
-    ERROR_RESET_COOLDOWN = 60000  # 错误计数重置冷却时间60秒
+    """恢复配置常量 - 从config.py中获取"""
+    # 恢复配置从config.py中获取
+    RECOVERY_COOLDOWN = config.get_config('daemon', 'safe_mode_cooldown', 60000)
+    MAX_RETRY_ATTEMPTS = config.get_config('wifi', 'max_attempts', 3)
+    RETRY_DELAY_BASE = config.get_config('wifi', 'retry_delay', 2) * 1000
 
 # =============================================================================
 # 恢复动作类

@@ -28,7 +28,7 @@ import config
 # 配置管理
 # =============================================================================
 
-def load_configuration(config_path='config.json'):
+def load_configuration():
     """加载配置文件 - 使用配置管理器"""
     try:
         # 直接使用已导入的config模块获取配置
@@ -69,7 +69,7 @@ def initialize_system():
     client_id = f"esp32c3-client-{machine.unique_id().hex()}"
     
     # 获取配置参数
-    mqtt_broker = get_config_value(config, 'mqtt', 'broker', '192.168.1.2')
+    mqtt_broker = get_config_value(config, 'mqtt', 'broker', '192.168.3.15')
     mqtt_port = get_config_value(config, 'mqtt', 'port', 1883)
     mqtt_topic = get_config_value(config, 'mqtt', 'topic', 'lzs/esp32c3')
     mqtt_keepalive = get_config_value(config, 'mqtt', 'keepalive', 60)
@@ -131,7 +131,7 @@ def connect_networks():
 # =============================================================================
 
 def create_mqtt_client(client_id, broker, port=1883, topic='lzs/esp32c3', keepalive=60):
-    """创建MQTT客户端"""
+    """创建MQTT客户端（所有参数从config.py获取）"""
     try:
         mqtt_client = net_mqtt.MqttServer(
             client_id, broker, port=port, 
@@ -163,7 +163,7 @@ def initialize_watchdog(config_data):
     
     try:
         wdt_enabled = get_config_value(config_data, 'daemon', 'wdt_enabled', False)
-        wdt_timeout = get_config_value(config_data, 'daemon', 'wdt_timeout', 120000)
+        wdt_timeout = get_config_value(config_data, 'daemon', 'wdt_timeout', config.get_config('daemon', 'wdt_timeout', 120000))
         
         if wdt_enabled:
             print(f"[Main] 启用硬件看门狗，超时时间: {wdt_timeout}ms")
@@ -197,7 +197,7 @@ def check_watchdog():
     
     if _wdt:
         elapsed = time.ticks_diff(time.ticks_ms(), _wdt_last_feed)
-        if elapsed > 60000:  # 超过1分钟未喂狗
+        if elapsed > config.get_config('daemon', 'safe_mode_cooldown', 60000):  # 超过安全模式冷却时间未喂狗
             print(f"[Main] 警告：看门狗超过{elapsed}ms未喂狗")
             return False
     return True

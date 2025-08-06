@@ -16,19 +16,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - 集成配置管理器、WiFi连接、MQTT通信和守护进程
    - LED状态指示和系统监控功能
 
-2. **Configuration Manager** (`src/config_manager.py`)
-   - 集中式配置管理，使用类常量定义所有参数
-   - 配置验证器，启动时自动验证配置有效性
-   - 分模块配置：MQTTConfig、WiFiConfig、DaemonConfig、SystemConfig
+2. **Configuration Manager** (`src/config.py`)
+   - 集中式配置管理，使用Python字典定义所有参数
+   - 详细的配置说明和推荐值
+   - 分模块配置：MQTT、WiFi、守护进程、系统、设备配置
    - 内存优化：避免JSON文件，减少I/O操作
 
-3. **WiFi Manager** (`src/net_wifi.py`)
+3. **WiFi Manager** (`src/lib/net_wifi.py`)
    - 健壮的WiFi连接管理，支持多网络选择
    - 自动网络扫描和RSSI-based排序
    - NTP时间同步和时区设置
    - 连接超时处理和错误恢复
 
-4. **MQTT Client** (`src/net_mqtt.py`)
+4. **MQTT Client** (`src/lib/net_mqtt.py`)
    - 基于umqtt.simple的自定义MQTT包装器
    - 连接管理和自动重连机制
    - 内存优化的日志发送（使用bytearray）
@@ -41,13 +41,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - 内存监控和垃圾回收
    - 系统健康检查和错误恢复
 
-6. **Error Handler** (`src/sys_error.py`)
+6. **Error Handler** (`src/lib/sys/logger.py`)
    - 统一错误处理和日志管理
    - 智能错误分类和恢复机制
    - 内存友好的日志缓冲
    - 自动错误恢复和系统重启
 
-7. **LED Preset Manager** (`src/led_preset.py`)
+7. **LED Preset Manager** (`src/lib/sys/led.py`)
    - 统一的LED状态指示管理
    - 多种预设闪烁模式（快闪三下、SOS、心跳等）
    - 系统状态可视化（正常、警告、错误、安全模式）
@@ -59,19 +59,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Advanced Features
 
-9. **State Machine** (`src/state_machine.py`)
+9. **State Machine** (`src/lib/sys/fsm.py`)
    - 清晰的系统状态管理
    - 事件驱动的状态转换
    - 支持INIT、NETWORKING、RUNNING、WARNING、ERROR、SAFE_MODE、RECOVERY、SHUTDOWN状态
    - 状态历史记录和监控
 
-10. **Object Pool** (`src/object_pool.py`)
+10. **Object Pool** (`src/lib/sys/memo.py`)
     - 高效的对象池和缓存管理
     - 字典对象池、字符串缓存、缓冲区管理
     - 减少内存分配和垃圾回收开销
     - 内存优化器提供智能内存管理
 
-11. **Recovery Manager** (`src/recovery_manager.py`)
+11. **Recovery Manager** (`src/lib/sys/erm.py`)
     - 集中化的错误恢复策略管理
     - 分级恢复动作：网络、内存、服务、系统、硬件恢复
     - 恢复成功率统计和冷却时间管理
@@ -91,14 +91,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Configuration
 
 ### 配置文件结构
-项目使用双重配置系统：
-- `src/config.json`: JSON运行时配置（动态参数和设备设置）
-- `src/config_manager.py`: Python类常量配置（主要配置和验证规则）
+项目使用纯Python配置系统：
+- `src/config.py`: Python字典配置（主要配置和验证规则）
+
+### 配置管理原则
+- **统一配置源**: 所有配置参数都从`src/config.py`中获取
+- **避免硬编码**: 任何模块中不应有硬编码的配置值
+- **配置一致性**: 确保所有模块使用相同的配置参数
+- **运行时验证**: 配置加载时进行参数验证和类型检查
 
 ### 主要配置类
 
-#### MQTT配置 (`src/config.json:2-11`)
-```json
+#### MQTT配置 (`src/config.py:18-50`)
+```python
 "mqtt": {
   "broker": "192.168.3.15",
   "port": 1883,
@@ -111,8 +116,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 }
 ```
 
-#### WiFi配置 (`src/config.json:12-23`)
-```json
+#### WiFi配置 (`src/config.py:51-80`)
+```python
 "wifi": {
   "networks": [
     {"ssid": "zsm60p", "password": "25845600"},
@@ -127,8 +132,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 }
 ```
 
-#### 守护进程配置 (`src/config.json:24-38`)
-```json
+#### 守护进程配置 (`src/config.py:81-142`)
+```python
 "daemon": {
   "config": {
     "led_pins": [12, 13],
@@ -142,24 +147,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
     "safe_mode_cooldown": 60000
   },
   "wdt_timeout": 120000,
-  "wdt_enabled": false,
+  "wdt_enabled": False,
   "gc_force_threshold": 95
 }
 ```
 
-#### 系统配置 (`src/config.json:40-46`)
-```json
+#### 系统配置 (`src/config.py:143-168`)
+```python
 "system": {
-  "debug_mode": false,
+  "debug_mode": False,
   "log_level": "INFO",
   "main_loop_delay": 300,
   "status_report_interval": 30,
-  "auto_restart_enabled": false
+  "auto_restart_enabled": False
 }
 ```
 
-#### 设备配置 (`src/config.json:47-51`)
-```json
+#### 设备配置 (`src/config.py:169-184`)
+```python
 "device": {
   "name": "ESP32C3-IOT",
   "location": "未知位置",
@@ -175,23 +180,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Development Workflow
 
+### 构建和部署
+
+使用构建脚本编译和部署项目：
+
+```bash
+# 构建项目（排除测试文件）
+python build.py
+
+# 构建项目（包含测试文件）
+python build.py --test
+
+# 部署到设备（使用rshell）
+rshell cp dist/* /pyboard/ -r
+```
+
 ### 文件上传到设备
 使用MicroPython工具上传文件到ESP32C3：
 ```bash
 # 使用rshell或类似工具
 rshell cp src/boot.py /pyboard/boot.py
-rshell cp src/config_manager.py /pyboard/config_manager.py
+rshell cp src/config.py /pyboard/config.py
 rshell cp src/main.py /pyboard/main.py
-rshell cp src/config.json /pyboard/config.json
-rshell cp src/net_mqtt.py /pyboard/net_mqtt.py
-rshell cp src/net_wifi.py /pyboard/net_wifi.py
-rshell cp src/sys_daemon.py /pyboard/sys_daemon.py
-rshell cp src/sys_error.py /pyboard/sys_error.py
-rshell cp src/led_preset.py /pyboard/led_preset.py
-rshell cp src/state_machine.py /pyboard/state_machine.py
-rshell cp src/object_pool.py /pyboard/object_pool.py
-rshell cp src/recovery_manager.py /pyboard/recovery_manager.py
-rshell cp src/lib/umqtt/simple.py /pyboard/umqtt/simple.py
+rshell cp src/lib/ /pyboard/lib/ -r
 ```
 
 ### 设备测试
@@ -223,20 +234,19 @@ rshell cp src/lib/umqtt/simple.py /pyboard/umqtt/simple.py
 
 ### 使用方式
 ```python
-from led_preset import get_led_manager, set_system_status
+from lib.sys import led as led_preset
 
 # 获取LED管理器实例
-led_manager = get_led_manager()
+led_manager = led_preset.LEDPresetManager(12, 13)
 
 # 设置系统状态
-set_system_status("normal")  # 正常运行
-set_system_status("error")   # 错误状态
-set_system_status("safe_mode")  # 安全模式
+led_manager.set_system_status(led_preset.SYSTEM_NORMAL)  # 正常运行
+led_manager.set_system_status(led_preset.SYSTEM_ERROR)   # 错误状态
+led_manager.set_system_status(led_preset.SYSTEM_SAFE_MODE)  # 安全模式
 
 # 使用预设模式
-from led_preset import sos_pattern, heartbeat
-sos_pattern(0)  # LED1 SOS模式
-heartbeat(1)    # LED2 心跳模式
+led_preset.sos_pattern(0)  # LED1 SOS模式
+led_preset.heartbeat(1)    # LED2 心跳模式
 ```
 
 ## State Machine System
@@ -279,12 +289,14 @@ heartbeat(1)    # LED2 心跳模式
 - 轻量级数据结构
 - 避免复杂对象创建
 - 定期内存清理和监控
+- **配置驱动的内存管理**: 内存阈值和垃圾回收策略从配置文件获取
 
 ### 对象池系统
 - **字典对象池**: 避免频繁创建销毁字典对象
 - **字符串缓存**: 缓存常用字符串减少内存分配
 - **缓冲区管理**: 预分配缓冲区管理器
 - **内存优化器**: 提供内存监控和优化功能
+- **配置化参数**: 对象池大小和缓存策略从配置文件获取
 
 ## Error Handling
 
@@ -312,6 +324,7 @@ heartbeat(1)    # LED2 心跳模式
 - **服务恢复**: 守护进程重启
 - **系统恢复**: 状态机管理 + 安全模式
 - **硬件恢复**: 系统重启
+- **配置驱动的恢复策略**: 所有恢复参数和超时时间从配置文件获取
 
 ## Network Behavior
 
@@ -338,9 +351,77 @@ MQTT连接检查 → LED状态检查 → 状态报告 → 延迟
 
 ### 内存管理流程
 ```
-内存监控 → 阈值检查 → 垃圾回收 → 深度清理 → 
+内存监控 → 配置阈值检查 → 垃圾回收 → 深度清理 → 
 状态报告 → 继续监控
 ```
+
+## Configuration Usage Guidelines
+
+### 配置参数访问方式
+所有模块应使用统一的配置访问方式：
+
+```python
+from config import get_config_value
+
+# 获取配置参数
+mqtt_broker = get_config_value(config, 'mqtt', 'broker')
+wifi_timeout = get_config_value(config, 'wifi', 'config', 'timeout')
+led_pins = get_config_value(config, 'daemon', 'config', 'led_pins')
+```
+
+### 配置参数命名规范
+- 使用小写字母和下划线分隔单词
+- 配置键名应具有描述性和一致性
+- 布尔值配置使用`enabled`/`disabled`而不是`true`/`false`
+- 时间配置统一使用毫秒为单位
+
+### 配置验证规则
+- **必需参数**: MQTT broker、WiFi网络列表、LED引脚
+- **类型验证**: 数字、字符串、布尔值、列表类型检查
+- **范围验证**: 端口号、超时时间、阈值参数的范围检查
+- **格式验证**: IP地址、SSID、主题名称的格式验证
+
+### 配置错误处理
+- **缺失配置**: 使用默认值并记录警告日志
+- **无效配置**: 抛出ConfigurationError异常
+- **类型错误**: 自动类型转换或记录错误
+- **范围错误**: 限制在有效范围内并记录警告
+
+### 配置加载流程
+1. **配置解析**: 读取config.py文件并解析配置字典
+2. **参数验证**: 验证必需参数和参数类型
+3. **默认值填充**: 为可选参数设置默认值
+4. **范围检查**: 确保数值参数在有效范围内
+5. **格式验证**: 验证IP地址、SSID等格式
+6. **配置分发**: 将配置传递给各个模块
+7. **运行时监控**: 监控配置变更和有效性
+
+## Configuration Best Practices
+
+### 配置文件维护
+- **版本控制**: 配置文件变更应纳入版本控制
+- **变更测试**: 配置变更后应在测试环境中验证
+- **文档同步**: 配置变更后及时更新相关文档
+- **回滚机制**: 保留配置备份以便快速回滚
+
+### 配置使用最佳实践
+- **延迟加载**: 只在需要时加载配置，减少启动时间
+- **缓存机制**: 缓存频繁使用的配置参数
+- **配置验证**: 在使用配置前进行有效性验证
+- **错误处理**: 优雅处理配置缺失或无效的情况
+- **日志记录**: 记录配置加载和使用情况
+
+### 配置优化建议
+- **内存优化**: 避免在配置中存储大量数据
+- **访问优化**: 减少配置参数的频繁访问
+- **初始化优化**: 简化配置加载和验证流程
+- **维护优化**: 保持配置结构清晰和一致
+
+### 配置调试技巧
+- **配置检查**: 使用`get_config_value`函数检查配置是否正确加载
+- **配置验证**: 使用配置验证函数确保参数有效性
+- **配置测试**: 在不同场景下测试配置变更的影响
+- **配置监控**: 监控配置使用情况和性能影响
 
 ## Hardware Resources
 

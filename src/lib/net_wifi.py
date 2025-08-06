@@ -14,6 +14,10 @@ import ntptime
 
 # 全局WiFi网络配置
 _wifi_networks = []
+# WiFi配置从config.py中获取
+import config
+
+# 全局WiFi配置变量
 _wifi_timeout = 15
 _wifi_scan_interval = 30
 _wifi_connection_retry_delay = 2
@@ -25,8 +29,8 @@ def set_wifi_networks(networks):
     _wifi_networks = networks
     print(f"[WiFi] 已设置 {len(networks)} 个WiFi网络配置")
 
-def set_wifi_config(timeout=15, scan_interval=30, retry_delay=2, max_attempts=3):
-    """设置WiFi连接参数"""
+def set_wifi_config(timeout=None, scan_interval=None, retry_delay=None, max_attempts=None):
+    """设置WiFi连接参数（从config.py获取）"""
     global _wifi_timeout, _wifi_scan_interval, _wifi_connection_retry_delay, _wifi_max_connection_attempts
     _wifi_timeout = timeout
     _wifi_scan_interval = scan_interval
@@ -46,10 +50,10 @@ def load_wifi_config_from_main(config_data):
         wifi_subconfig = wifi_config.get('config', {})
         
         # 更新全局配置
-        _wifi_timeout = wifi_subconfig.get('timeout', 15)
-        _wifi_scan_interval = wifi_subconfig.get('scan_interval', 30)
-        _wifi_connection_retry_delay = wifi_subconfig.get('retry_delay', 2)
-        _wifi_max_connection_attempts = wifi_subconfig.get('max_attempts', 3)
+        _wifi_timeout = wifi_subconfig.get('timeout', config.get_config('wifi', 'timeout', 15))
+        _wifi_scan_interval = wifi_subconfig.get('scan_interval', config.get_config('wifi', 'scan_interval', 30))
+        _wifi_connection_retry_delay = wifi_subconfig.get('retry_delay', config.get_config('wifi', 'retry_delay', 2))
+        _wifi_max_connection_attempts = wifi_subconfig.get('max_attempts', config.get_config('wifi', 'max_attempts', 3))
         
         print(f"[WiFi] 从主配置文件加载WiFi配置完成")
         return True

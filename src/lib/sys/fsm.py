@@ -53,6 +53,7 @@ if __name__ == "__main__":
 import time
 import gc
 from lib.sys import memo as mem_opt
+import config
 
 # =============================================================================
 # Section: 系统状态常量
@@ -233,29 +234,29 @@ class SystemStateMachine:
     
     def _handle_networking_state(self):
         """处理网络连接状态，包含一个30秒的超时逻辑。"""
-        if self._state_duration > 30000: # 30秒
+        if self._state_duration > config.get_config('daemon', 'safe_mode_cooldown', 30000): # 从config.py中获取
             self.handle_event(StateEvent.NETWORK_FAILED)
     
     def _handle_running_state(self): pass
     
     def _handle_warning_state(self):
         """处理警告状态，如果1分钟内没有解决，则尝试自动恢复。"""
-        if self._state_duration > 60000: # 1分钟
+        if self._state_duration > config.get_config('daemon', 'safe_mode_cooldown', 60000): # 从config.py中获取
             self.handle_event(StateEvent.RECOVERY_SUCCESS)
     
     def _handle_error_state(self):
         """处理错误状态，如果30秒内没有解决，则尝试自动恢复。"""
-        if self._state_duration > 30000: # 30秒
+        if self._state_duration > config.get_config('daemon', 'safe_mode_cooldown', 30000): # 从config.py中获取
             self.handle_event(StateEvent.RECOVERY_SUCCESS)
     
     def _handle_safe_mode_state(self):
         """处理安全模式，如果5分钟没有解决，则尝试自动恢复。"""
-        if self._state_duration > 300000: # 5分钟
+        if self._state_duration > config.get_config('daemon', 'safe_mode_cooldown', 300000): # 从config.py中获取
             self.handle_event(StateEvent.RECOVERY_SUCCESS)
     
     def _handle_recovery_state(self):
         """处理恢复模式，1分钟后默认恢复成功（实际应用中应有更复杂的逻辑）。"""
-        if self._state_duration > 60000: # 1分钟
+        if self._state_duration > config.get_config('daemon', 'safe_mode_cooldown', 60000): # 从config.py中获取
             self.handle_event(StateEvent.RECOVERY_SUCCESS)
     
     def _handle_shutdown_state(self): pass

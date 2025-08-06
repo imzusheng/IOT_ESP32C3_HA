@@ -18,11 +18,14 @@ else:
 from umqtt.simple import MQTTClient
 import time
 import gc
+import config
+
+# MQTT配置从config.py中获取
 
 # 全局MQTT配置变量
 _mqtt_config = {
-    'reconnect_delay': 5,
-    'max_retries': 3
+    'reconnect_delay': config.get_config('mqtt', 'reconnect_delay', 5),
+    'max_retries': config.get_config('mqtt', 'max_retries', 3)
 }
 
 def set_mqtt_config(config_dict=None, **kwargs):
@@ -46,8 +49,8 @@ def load_mqtt_config_from_main(config_data):
         
         # 更新全局配置
         _mqtt_config.update({
-            'reconnect_delay': mqtt_subconfig.get('reconnect_delay', 5),
-            'max_retries': mqtt_subconfig.get('max_retries', 3)
+            'reconnect_delay': mqtt_subconfig.get('reconnect_delay', config.get_config('mqtt', 'reconnect_delay', 5)),
+            'max_retries': mqtt_subconfig.get('max_retries', config.get_config('mqtt', 'max_retries', 3))
         })
         
         print("[MQTT] 从主配置文件加载MQTT配置完成")
@@ -68,28 +71,28 @@ class MqttServer:
     - 错误恢复机制
     """
     
-    def __init__(self, client_id, server, port=1883, user=None, password=None, topic='micropython/logs', keepalive=60):
+    def __init__(self, client_id, server, port=None, user=None, password=None, topic=None, keepalive=None):
         """
         初始化MQTT客户端
         
         参数：
         - client_id: 客户端唯一标识
-        - server: MQTT服务器地址
-        - port: 端口号，默认1883
+        - server: MQTT服务器地址（从config.py获取）
+        - port: 端口号（从config.py获取）
         - user: 用户名（可选）
         - password: 密码（可选）
-        - topic: 发布主题，默认'micropython/logs'
-        - keepalive: 心跳间隔，默认60秒
+        - topic: 发布主题（从config.py获取）
+        - keepalive: 心跳间隔（从config.py获取）
         """
         self.server = server
-        self.port = port
-        self.topic = topic
+        self.port = port if port is not None else config.get_config('mqtt', 'port', 1883)
+        self.topic = topic if topic is not None else config.get_config('mqtt', 'topic', 'lzs/esp32c3')
         self.user = user
         self.password = password
         self.client_id = client_id
         
         # 创建MQTT客户端
-        self.client = MQTTClient(client_id, server, port, user, password, keepalive=keepalive)
+        self.client = MQTTClient(client_id, server, self.port, user, password, keepalive=keepalive if keepalive is not None else config.get_config('mqtt', 'keepalive', 60))
         self.is_connected = False
         self.connection_attempts = 0
         self.last_connect_time = 0
