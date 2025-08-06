@@ -2,16 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-- 始终使用中文
-- 代码是在嵌入式设备运行
-   - 需要时刻注意代码的RAM使用情况以及内存泄漏问题
-   - 只允许编辑 ./src 下一级目录的文件
-- 不要添加测试代码和文件
-- 不要擅自添加说明文档
-
 ## Project Overview
 
-这是一个基于ESP32C3的MicroPython物联网设备项目，专为Home Assistant智能家居系统设计。项目采用模块化架构，提供WiFi连接、MQTT通信、系统监控、LED状态指示和错误恢复等功能，确保设备在资源受限的嵌入式环境中稳定运行。
+这是一个基于ESP32-C3的MicroPython物联网设备项目，专为Home Assistant智能家居系统设计。项目采用模块化架构，提供WiFi连接、MQTT通信、系统监控、LED状态指示和错误恢复等功能，确保设备在资源受限的嵌入式环境中稳定运行。
 
 ## Architecture
 
@@ -23,7 +16,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - 集成配置管理器、WiFi连接、MQTT通信和守护进程
    - LED状态指示和系统监控功能
 
-2. **Configuration Manager** (`src/config.py`)
+2. **Configuration Manager** (`src/config_manager.py`)
    - 集中式配置管理，使用类常量定义所有参数
    - 配置验证器，启动时自动验证配置有效性
    - 分模块配置：MQTTConfig、WiFiConfig、DaemonConfig、SystemConfig
@@ -64,7 +57,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - 垃圾回收初始化
    - 最小化的MicroPython启动脚本
 
-### Key Features
+### Advanced Features
+
+9. **State Machine** (`src/state_machine.py`)
+   - 清晰的系统状态管理
+   - 事件驱动的状态转换
+   - 支持INIT、NETWORKING、RUNNING、WARNING、ERROR、SAFE_MODE、RECOVERY、SHUTDOWN状态
+   - 状态历史记录和监控
+
+10. **Object Pool** (`src/object_pool.py`)
+    - 高效的对象池和缓存管理
+    - 字典对象池、字符串缓存、缓冲区管理
+    - 减少内存分配和垃圾回收开销
+    - 内存优化器提供智能内存管理
+
+11. **Recovery Manager** (`src/recovery_manager.py`)
+    - 集中化的错误恢复策略管理
+    - 分级恢复动作：网络、内存、服务、系统、硬件恢复
+    - 恢复成功率统计和冷却时间管理
+    - 智能恢复调度和错误处理
+
+## Key Features
 
 - **多网络WiFi支持**: 自动扫描并连接信号最强的配置网络
 - **MQTT通信**: 高效的MQTT客户端，支持自动重连和内存优化
@@ -79,8 +92,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### 配置文件结构
 项目使用双重配置系统：
-- `src/config.py`: Python类常量配置（主要配置）
 - `src/config.json`: JSON运行时配置（动态参数和设备设置）
+- `src/config_manager.py`: Python类常量配置（主要配置和验证规则）
 
 ### 主要配置类
 
@@ -167,14 +180,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 # 使用rshell或类似工具
 rshell cp src/boot.py /pyboard/boot.py
-rshell cp src/config.py /pyboard/config.py
+rshell cp src/config_manager.py /pyboard/config_manager.py
 rshell cp src/main.py /pyboard/main.py
+rshell cp src/config.json /pyboard/config.json
 rshell cp src/net_mqtt.py /pyboard/net_mqtt.py
 rshell cp src/net_wifi.py /pyboard/net_wifi.py
 rshell cp src/sys_daemon.py /pyboard/sys_daemon.py
 rshell cp src/sys_error.py /pyboard/sys_error.py
 rshell cp src/led_preset.py /pyboard/led_preset.py
-rshell cp src/config.json /pyboard/config.json
+rshell cp src/state_machine.py /pyboard/state_machine.py
+rshell cp src/object_pool.py /pyboard/object_pool.py
+rshell cp src/recovery_manager.py /pyboard/recovery_manager.py
 rshell cp src/lib/umqtt/simple.py /pyboard/umqtt/simple.py
 ```
 
@@ -223,6 +239,31 @@ sos_pattern(0)  # LED1 SOS模式
 heartbeat(1)    # LED2 心跳模式
 ```
 
+## State Machine System
+
+### 系统状态
+- **INIT**: 系统初始化
+- **NETWORKING**: 网络连接
+- **RUNNING**: 正常运行
+- **WARNING**: 警告状态
+- **ERROR**: 错误状态
+- **SAFE_MODE**: 安全模式
+- **RECOVERY**: 恢复模式
+- **SHUTDOWN**: 关机状态
+
+### 状态转换事件
+- **INIT_COMPLETE**: 初始化完成
+- **NETWORK_SUCCESS**: 网络连接成功
+- **NETWORK_FAILED**: 网络连接失败
+- **SYSTEM_WARNING**: 系统警告
+- **SYSTEM_ERROR**: 系统错误
+- **MEMORY_CRITICAL**: 内存严重不足
+- **SAFE_MODE_TRIGGER**: 安全模式触发
+- **RECOVERY_SUCCESS**: 恢复成功
+- **RECOVERY_FAILED**: 恢复失败
+- **SYSTEM_SHUTDOWN**: 系统关机
+- **WATCHDOG_TIMEOUT**: 看门狗超时
+
 ## Memory Management
 
 项目实现精细的内存管理：
@@ -238,6 +279,12 @@ heartbeat(1)    # LED2 心跳模式
 - 轻量级数据结构
 - 避免复杂对象创建
 - 定期内存清理和监控
+
+### 对象池系统
+- **字典对象池**: 避免频繁创建销毁字典对象
+- **字符串缓存**: 缓存常用字符串减少内存分配
+- **缓冲区管理**: 预分配缓冲区管理器
+- **内存优化器**: 提供内存监控和优化功能
 
 ## Error Handling
 
@@ -259,13 +306,20 @@ heartbeat(1)    # LED2 心跳模式
 - **安全模式**: 进入降级运行模式
 - **系统重启**: 致命错误时自动重启
 
+### 恢复管理器
+- **网络恢复**: WiFi重连 + MQTT重连
+- **内存恢复**: 深度清理 + 对象池重建
+- **服务恢复**: 守护进程重启
+- **系统恢复**: 状态机管理 + 安全模式
+- **硬件恢复**: 系统重启
+
 ## Network Behavior
 
 1. **启动流程**: boot.py → main.py → 配置验证 → WiFi连接
 2. **WiFi选择**: 扫描网络 → RSSI排序 → 连接最优网络
 3. **时间同步**: NTP服务器同步 + 时区设置
 4. **MQTT连接**: 连接代理 → 开始发布日志
-5. **守护进程**: 启动监控 → LED控制 → 系统健康检查
+5. **守护进程启动**: 开始系统监控 → LED控制 → 系统健康检查
 6. **主循环**: 看门狗喂狗 → 内存管理 → 状态监控 → LED状态指示
 
 ## System Workflow
@@ -287,3 +341,51 @@ MQTT连接检查 → LED状态检查 → 状态报告 → 延迟
 内存监控 → 阈值检查 → 垃圾回收 → 深度清理 → 
 状态报告 → 继续监控
 ```
+
+## Hardware Resources
+
+### ESP32-C3 规格
+- **内存**: 264KB SRAM
+- **存储**: 4MB Flash
+- **处理器**: RISC-V 双核 32位
+- **无线**: WiFi 802.11b/g/n
+- **GPIO**: 22个数字IO引脚
+- **接口**: SPI, I2C, UART, ADC
+
+### 引脚分配
+- **LED1**: GPIO 12
+- **LED2**: GPIO 13
+- **看门狗**: 软件实现
+
+## Web Interface
+
+项目包含基于Web Bluetooth的配置界面：
+- **位置**: `web/index.html`
+- **功能**: 蓝牙连接、WiFi配置、MQTT配置、设备配置
+- **设计**: Apple设计风格，响应式布局
+- **浏览器要求**: 支持Web Bluetooth API的现代浏览器
+
+## Important Notes
+
+- **内存限制**: ESP32C3只有264KB内存，必须时刻注意内存使用
+- **文件位置**: 只允许编辑 `./src` 下一级目录的文件
+- **测试代码**: 不要添加测试代码和文件
+- **文档**: 不要擅自添加说明文档
+- **语言**: 始终使用中文进行代码注释和文档
+
+## Monitoring and Debugging
+
+### 系统监控指标
+- 内存使用率（实时监控）
+- 温度监控（MCU内部温度）
+- 错误计数和统计
+- 网络连接状态
+- MQTT连接状态
+- 系统运行时间
+
+### 调试技巧
+- 通过串口查看详细日志
+- 监控内存使用情况
+- 检查LED状态指示
+- 查看错误统计信息
+- 使用状态机监控系统状态

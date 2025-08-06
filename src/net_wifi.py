@@ -34,6 +34,30 @@ def set_wifi_config(timeout=15, scan_interval=30, retry_delay=2, max_attempts=3)
     _wifi_max_connection_attempts = max_attempts
     print(f"[WiFi] 已设置WiFi连接参数")
 
+def load_wifi_config_from_main(config_data):
+    """从主配置文件加载WiFi配置"""
+    global _wifi_timeout, _wifi_scan_interval, _wifi_connection_retry_delay, _wifi_max_connection_attempts
+    
+    try:
+        # 获取WiFi配置部分
+        wifi_config = config_data.get('wifi', {})
+        
+        # 获取WiFi配置中的config部分
+        wifi_subconfig = wifi_config.get('config', {})
+        
+        # 更新全局配置
+        _wifi_timeout = wifi_subconfig.get('timeout', 15)
+        _wifi_scan_interval = wifi_subconfig.get('scan_interval', 30)
+        _wifi_connection_retry_delay = wifi_subconfig.get('retry_delay', 2)
+        _wifi_max_connection_attempts = wifi_subconfig.get('max_attempts', 3)
+        
+        print(f"[WiFi] 从主配置文件加载WiFi配置完成")
+        return True
+        
+    except Exception as e:
+        print(f"[WiFi] 从主配置文件加载WiFi配置失败: {e}")
+        return False
+
 
 def _scan_for_ssids(wlan):
     """

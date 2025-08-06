@@ -33,6 +33,30 @@ def set_mqtt_config(config_dict=None, **kwargs):
     _mqtt_config.update(kwargs)
     print("[MQTT] MQTT配置已更新")
 
+def load_mqtt_config_from_main(config_data):
+    """从主配置文件加载MQTT配置"""
+    global _mqtt_config
+    
+    try:
+        # 获取MQTT配置部分
+        mqtt_config = config_data.get('mqtt', {})
+        
+        # 获取MQTT配置中的config部分
+        mqtt_subconfig = mqtt_config.get('config', {})
+        
+        # 更新全局配置
+        _mqtt_config.update({
+            'reconnect_delay': mqtt_subconfig.get('reconnect_delay', 5),
+            'max_retries': mqtt_subconfig.get('max_retries', 3)
+        })
+        
+        print("[MQTT] 从主配置文件加载MQTT配置完成")
+        return True
+        
+    except Exception as e:
+        print(f"[MQTT] 从主配置文件加载MQTT配置失败: {e}")
+        return False
+
 class MqttServer:
     """
     MQTT服务器客户端

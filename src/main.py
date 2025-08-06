@@ -21,29 +21,31 @@ import sys_error
 import object_pool
 import state_machine
 import recovery_manager
-import config_manager
+import config
 
 # =============================================================================
 # 配置管理
 # =============================================================================
 
-def load_config(config_path='config.json'):
+def load_configuration(config_path='config.json'):
     """加载配置文件 - 使用配置管理器"""
     try:
-        config = config_manager.load_config()
+        # 直接使用已导入的config模块获取配置
+        config_data = config.get_config()
         print("[Main] 配置文件加载成功")
-        return config
+        return config_data
     except Exception as e:
         print(f"[Main] 配置文件加载失败: {e}")
         return None
 
-def get_config_value(config, section, key=None, default=None):
+def get_config_value(config_data, section, key=None, default=None):
     """获取配置值 - 使用配置管理器"""
-    # 优先使用配置管理器
+    # 直接使用配置数据
     if key is None:
-        return config_manager.get_config(section, default)
+        return config_data.get(section, {})
     else:
-        return config_manager.get_config(section, key, default)
+        section_data = config_data.get(section, {})
+        return section_data.get(key, default)
 
 # =============================================================================
 # 系统初始化
@@ -57,7 +59,7 @@ def initialize_system():
     config_dict = object_pool.get_dict()
     
     # 加载配置
-    config = load_config()
+    config = load_configuration()
     if not config:
         print("[Main] 配置加载失败，使用默认配置")
         config = {}
@@ -77,14 +79,15 @@ def initialize_system():
     wifi_networks = get_config_value(config, 'wifi', 'networks', [])
     if wifi_networks:
         net_wifi.set_wifi_networks(wifi_networks)
-        wifi_config = get_config_value(config, 'wifi', 'config', {})
-        if wifi_config:
-            net_wifi.set_wifi_config(**wifi_config)
     
-    # 设置守护进程配置
-    daemon_config = get_config_value(config, 'daemon', 'config', {})
-    if daemon_config:
-        sys_daemon.set_daemon_config(**daemon_config)
+    # 从主配置文件加载WiFi配置
+    net_wifi.load_wifi_config_from_main(config)
+    
+    # 从主配置文件加载守护进程配置
+    sys_daemon.load_daemon_config_from_main(config)
+    
+    # 从主配置文件加载MQTT配置
+    net_mqtt.load_mqtt_config_from_main(config)
     
     # 初始化看门狗
     initialize_watchdog(config)
@@ -153,13 +156,13 @@ def create_mqtt_client(client_id, broker, port=1883, topic='lzs/esp32c3', keepal
 _wdt = None
 _wdt_last_feed = 0
 
-def initialize_watchdog(config):
+def initialize_watchdog(config_data):
     """初始化硬件看门狗"""
     global _wdt, _wdt_last_feed
     
     try:
-        wdt_enabled = get_config_value(config, 'daemon', 'wdt_enabled', False)
-        wdt_timeout = get_config_value(config, 'daemon', 'wdt_timeout', 120000)
+        wdt_enabled = get_config_value(config_data, 'daemon', 'wdt_enabled', False)
+        wdt_timeout = get_config_value(config_data, 'daemon', 'wdt_timeout', 120000)
         
         if wdt_enabled:
             print(f"[Main] 启用硬件看门狗，超时时间: {wdt_timeout}ms")

@@ -231,7 +231,7 @@ async function connectBluetoothDevice() {
 #### 配置管理
 ```javascript
 async function saveConfig(path, value) {
-    const command = JSON.stringify({ cmd: 'set_config', path: path, value: value });
+    const command = JSON.stringify({ cmd: 'update_config', path: path, value: value });
     await configCharacteristic.writeValue(new TextEncoder().encode(command));
 }
 ```

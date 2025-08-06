@@ -55,6 +55,44 @@ def set_daemon_config(config_dict=None, **kwargs):
     _daemon_config.update(kwargs)
     print("[Daemon] 守护进程配置已更新")
 
+def load_daemon_config_from_main(config_data):
+    """从主配置文件加载守护进程配置"""
+    global _daemon_config
+    
+    try:
+        # 获取守护进程配置部分
+        daemon_config = config_data.get('daemon', {})
+        
+        # 获取守护进程配置中的config部分
+        daemon_subconfig = daemon_config.get('config', {})
+        
+        # 更新全局配置
+        _daemon_config.update({
+            'led_pins': daemon_subconfig.get('led_pins', [12, 13]),
+            'timer_id': daemon_subconfig.get('timer_id', 0),
+            'monitor_interval': daemon_subconfig.get('monitor_interval', 5000),
+            'temp_threshold': daemon_subconfig.get('temp_threshold', 65),
+            'temp_hysteresis': daemon_subconfig.get('temp_hysteresis', 5),
+            'memory_threshold': daemon_subconfig.get('memory_threshold', 80),
+            'memory_hysteresis': daemon_subconfig.get('memory_hysteresis', 10),
+            'max_error_count': daemon_subconfig.get('max_error_count', 10),
+            'safe_mode_cooldown': daemon_subconfig.get('safe_mode_cooldown', 60000)
+        })
+        
+        # 更新守护进程配置中的其他部分
+        _daemon_config.update({
+            'wdt_timeout': daemon_config.get('wdt_timeout', 120000),
+            'wdt_enabled': daemon_config.get('wdt_enabled', False),
+            'gc_force_threshold': daemon_config.get('gc_force_threshold', 95)
+        })
+        
+        print("[Daemon] 从主配置文件加载守护进程配置完成")
+        return True
+        
+    except Exception as e:
+        print(f"[Daemon] 从主配置文件加载守护进程配置失败: {e}")
+        return False
+
 # =============================================================================
 # 全局状态变量（内存优化：使用全局变量而非类实例）
 # =============================================================================
