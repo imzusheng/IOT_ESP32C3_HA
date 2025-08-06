@@ -288,11 +288,12 @@ def upload_and_run_with_mpremote(port, dist_dir, verbose=False):
         result = subprocess.run(list_cmd, capture_output=True, text=True, encoding='utf-8')
         
         # 添加调试日志：显示 ls 命令的原始输出
-        print(f"调试: ls 命令返回码: {result.returncode}")
-        if result.stdout:
-            print(f"调试: ls 命令标准输出:\n{repr(result.stdout)}")
-        if result.stderr:
-            print(f"调试: ls 命令错误输出:\n{repr(result.stderr)}")
+        if verbose:
+            print(f"调试: ls 命令返回码: {result.returncode}")
+            if result.stdout:
+                print(f"调试: ls 命令标准输出:\n{repr(result.stdout)}")
+            if result.stderr:
+                print(f"调试: ls 命令错误输出:\n{repr(result.stderr)}")
 
         # 如果命令失败但错误是"no such file"，说明目录为空，是正常情况
         if result.returncode != 0 and "no such file or directory" in result.stderr.lower():
@@ -304,25 +305,29 @@ def upload_and_run_with_mpremote(port, dist_dir, verbose=False):
         else:
             # 智能解析ls的输出，取最后一列作为文件名
             lines = result.stdout.strip().splitlines()
-            print(f"调试: 解析前的行数: {len(lines)}")
-            print(f"调试: 原始行内容: {lines}")
+            if verbose:
+                print(f"调试: 解析前的行数: {len(lines)}")
+                print(f"调试: 原始行内容: {lines}")
             
             # 更安全的文件名解析逻辑
             parsed_items = []
             for line in lines:
                 if not line.strip():
                     continue
-                print(f"调试: 处理行: {repr(line)}")
+                if verbose:
+                    print(f"调试: 处理行: {repr(line)}")
                 # 尝试多种解析方式
                 parts = line.strip().split()
                 if parts:
                     filename = parts[-1]
-                    print(f"调试: 解析出的文件名: {repr(filename)}")
+                    if verbose:
+                        print(f"调试: 解析出的文件名: {repr(filename)}")
                     if filename and filename not in ['.', '..', ':/', '/']:
                         parsed_items.append(filename)
             
             items_to_delete = parsed_items
-            print(f"调试: 最终要删除的项目: {items_to_delete}")
+            if verbose:
+                print(f"调试: 最终要删除的项目: {items_to_delete}")
 
 
         if not items_to_delete:
@@ -333,7 +338,8 @@ def upload_and_run_with_mpremote(port, dist_dir, verbose=False):
             for item in items_to_delete:
                 # 更严格的空值检查
                 if not item or not isinstance(item, str) or item.strip() == '':
-                    print(f"调试: 跳过无效项目: {repr(item)}")
+                    if verbose:
+                        print(f"调试: 跳过无效项目: {repr(item)}")
                     continue
                 
                 # 清理文件名，移除可能的特殊字符
@@ -343,33 +349,38 @@ def upload_and_run_with_mpremote(port, dist_dir, verbose=False):
                 
                 # 再次检查清理后的文件名
                 if not clean_item or clean_item in ['.', '..', '/']:
-                    print(f"调试: 跳过清理后的无效项目: {repr(clean_item)}")
+                    if verbose:
+                        print(f"调试: 跳过清理后的无效项目: {repr(clean_item)}")
                     continue
                 
                 remote_path = f":{clean_item}"
-                print(f"调试: 准备删除项目 - 原始: {repr(item)}, 清理后: {repr(clean_item)}, 远程路径: {repr(remote_path)}")
+                if verbose:
+                    print(f"调试: 准备删除项目 - 原始: {repr(item)}, 清理后: {repr(clean_item)}, 远程路径: {repr(remote_path)}")
                 print(f"  删除: {remote_path}")
                 
                 # 使用 rm -r 可以同时删除文件和目录
                 rm_cmd = base_cmd + ["fs", "rm", "-r", remote_path]
-                print(f"调试: 删除命令: {' '.join(rm_cmd)}")
+                if verbose:
+                    print(f"调试: 删除命令: {' '.join(rm_cmd)}")
                 
                 try:
                     result = subprocess.run(rm_cmd, check=True, capture_output=True, text=True)
-                    print(f"调试: 删除命令成功，返回码: {result.returncode}")
-                    if result.stdout:
-                        print(f"调试: 删除命令标准输出: {repr(result.stdout)}")
-                    if result.stderr:
-                        print(f"调试: 删除命令错误输出: {repr(result.stderr)}")
+                    if verbose:
+                        print(f"调试: 删除命令成功，返回码: {result.returncode}")
+                        if result.stdout:
+                            print(f"调试: 删除命令标准输出: {repr(result.stdout)}")
+                        if result.stderr:
+                            print(f"调试: 删除命令错误输出: {repr(result.stderr)}")
                     deleted_count += 1
                 except subprocess.CalledProcessError as e:
                     # 打印更清晰的错误信息并继续
                     error_msg = e.stderr.strip() or e.stdout.strip()
-                    print_message(f"  错误: 删除 {remote_path} 失败: {error_msg}", "ERROR")
-                    print(f"调试: 删除命令失败，返回码: {e.returncode}")
-                    print(f"调试: 失败命令: {' '.join(e.cmd)}")
-                    print(f"调试: 失败标准输出: {repr(e.stdout)}")
-                    print(f"调试: 失败错误输出: {repr(e.stderr)}")
+                    print_message(f"  错误: 删除 {remote_path} 失败: {error_msg}", "ERROR", verbose)
+                    if verbose:
+                        print(f"调试: 删除命令失败，返回码: {e.returncode}")
+                        print(f"调试: 失败命令: {' '.join(e.cmd)}")
+                        print(f"调试: 失败标准输出: {repr(e.stdout)}")
+                        print(f"调试: 失败错误输出: {repr(e.stderr)}")
             print(f"成功删除 {deleted_count}/{len(items_to_delete)} 个项目。")
         print_message("设备清空完成。", "SUCCESS")
 
@@ -408,9 +419,10 @@ def upload_and_run_with_mpremote(port, dist_dir, verbose=False):
                     remote_path = f":{relative_path}"
                     
                     # 添加上传功能的调试日志
-                    print(f"调试: 上传文件 - 本地路径: {repr(local_path)}")
-                    print(f"调试: 上传文件 - 相对路径: {repr(relative_path)}")
-                    print(f"调试: 上传文件 - 远程路径: {repr(remote_path)}")
+                    if verbose:
+                        print(f"调试: 上传文件 - 本地路径: {repr(local_path)}")
+                        print(f"调试: 上传文件 - 相对路径: {repr(relative_path)}")
+                        print(f"调试: 上传文件 - 远程路径: {repr(remote_path)}")
                     
                     # 验证路径有效性
                     if not local_path or not os.path.exists(local_path):
@@ -423,23 +435,26 @@ def upload_and_run_with_mpremote(port, dist_dir, verbose=False):
                     
                     print(f"  上传文件: {local_path} -> {remote_path}")
                     cp_cmd = base_cmd + ["fs", "cp", local_path, remote_path]
-                    print(f"调试: 上传命令: {' '.join(cp_cmd)}")
+                    if verbose:
+                        print(f"调试: 上传命令: {' '.join(cp_cmd)}")
                     
                     try:
                         result = subprocess.run(cp_cmd, check=True, capture_output=True, text=True)
-                        print(f"调试: 上传命令成功，返回码: {result.returncode}")
-                        if result.stdout:
-                            print(f"调试: 上传命令标准输出: {repr(result.stdout)}")
-                        if result.stderr:
-                            print(f"调试: 上传命令错误输出: {repr(result.stderr)}")
+                        if verbose:
+                            print(f"调试: 上传命令成功，返回码: {result.returncode}")
+                            if result.stdout:
+                                print(f"调试: 上传命令标准输出: {repr(result.stdout)}")
+                            if result.stderr:
+                                print(f"调试: 上传命令错误输出: {repr(result.stderr)}")
                         uploaded_files_count += 1
                     except subprocess.CalledProcessError as e:
                         error_msg = e.stderr.strip() or e.stdout.strip()
-                        print_message(f"  错误: 上传 {local_path} 失败: {error_msg}", "ERROR")
-                        print(f"调试: 上传命令失败，返回码: {e.returncode}")
-                        print(f"调试: 失败命令: {' '.join(e.cmd)}")
-                        print(f"调试: 失败标准输出: {repr(e.stdout)}")
-                        print(f"调试: 失败错误输出: {repr(e.stderr)}")
+                        print_message(f"  错误: 上传 {local_path} 失败: {error_msg}", "ERROR", verbose)
+                        if verbose:
+                            print(f"调试: 上传命令失败，返回码: {e.returncode}")
+                            print(f"调试: 失败命令: {' '.join(e.cmd)}")
+                            print(f"调试: 失败标准输出: {repr(e.stdout)}")
+                            print(f"调试: 失败错误输出: {repr(e.stderr)}")
             
             if uploaded_files_count > 0:
                 print_message(f"\n成功上传了 {uploaded_files_count} 个文件。", "SUCCESS")
@@ -475,9 +490,6 @@ def upload_and_run_with_mpremote(port, dist_dir, verbose=False):
     # 使用简单的 mpremote repl 命令
     repl_cmd = base_cmd + ["repl"]
     process = None
-    was_interrupted = False
-    restart_attempts = 0
-    max_restart_attempts = 5
     
     def start_mpremote_process():
         """启动 mpremote 进程并返回进程对象"""
@@ -496,10 +508,10 @@ def upload_and_run_with_mpremote(port, dist_dir, verbose=False):
                 stdin=subprocess.PIPE,
                 startupinfo=startupinfo
             )
-            print_message(f"mpremote 进程已启动 (PID: {process.pid})", "DEBUG")
+            print_message(f"mpremote 进程已启动 (PID: {process.pid})", "DEBUG", verbose)
             return process
         except Exception as e:
-            print_message(f"启动 mpremote 进程失败: {e}", "ERROR")
+            print_message(f"启动 mpremote 进程失败: {e}", "ERROR", verbose)
             return None
     
     try:
@@ -512,68 +524,53 @@ def upload_and_run_with_mpremote(port, dist_dir, verbose=False):
         while True:
             # 检查进程是否仍在运行
             if process.poll() is not None:
-                print_message(f"mpremote 进程已退出，退出码: {process.returncode}", "WARNING")
-                
-                # 如果进程意外退出且不是用户中断，尝试重启
-                if not was_interrupted and process.returncode != 0 and restart_attempts < max_restart_attempts:
-                    restart_attempts += 1
-                    print_message(f"尝试重启 mpremote 进程 (第 {restart_attempts}/{max_restart_attempts} 次)", "WARNING")
-                    time.sleep(2)  # 等待一段时间再重启
-                    process = start_mpremote_process()
-                    if process:
-                        continue
-                    else:
-                        break
-                else:
-                    break
+                print_message(f"mpremote 进程已退出，退出码: {process.returncode}", "WARNING", verbose)
+                # 进程退出时直接退出循环，不再尝试重启
+                break
             
             # 读取标准输出 - 简单处理
             try:
                 output = process.stdout.read(1024)
                 if output:
                     # 直接使用安全解码函数处理输出并打印
-                    decoded_output = safe_decode(output)
+                    decoded_output = safe_decode(output, verbose=verbose)
                     print(decoded_output, end='', flush=True)
             except Exception as e:
-                print_message(f"读取标准输出时出错: {e}", "ERROR")
+                print_message(f"读取标准输出时出错: {e}", "ERROR", verbose)
             
             # 读取标准错误 - 简单处理
             try:
                 error_output = process.stderr.read(1024)
                 if error_output:
                     # 直接使用安全解码函数处理错误输出并打印
-                    decoded_error = safe_decode(error_output)
+                    decoded_error = safe_decode(error_output, verbose=verbose)
                     print(decoded_error, end='', flush=True)
             except Exception as e:
-                print_message(f"读取标准错误时出错: {e}", "ERROR")
+                print_message(f"读取标准错误时出错: {e}", "ERROR", verbose)
             
             # 短暂休眠以避免过度占用 CPU
             time.sleep(0.01)
             
     except KeyboardInterrupt:
-        was_interrupted = True
-        print_message("\n用户中断，监控已停止。正在终止 mpremote...", "SUCCESS")
+        print_message("\n用户中断，监控已停止。正在终止 mpremote...", "SUCCESS", verbose)
         if process and process.poll() is None: # 如果进程仍在运行
             process.terminate()
             try:
                 process.wait(timeout=5) # 确保进程已终止，添加超时
             except subprocess.TimeoutExpired:
-                print_message("进程终止超时，强制结束...", "WARNING")
+                print_message("进程终止超时，强制结束...", "WARNING", verbose)
                 process.kill()
-        print_message("mpremote 已终止。", "SUCCESS")
+        print_message("mpremote 已终止。", "SUCCESS", verbose)
+        return True  # 用户中断是正常退出，返回 True
     except Exception as e:
-        print_message(f"\n错误: 启动监控时出错: {e}", "ERROR")
+        print_message(f"\n错误: 启动监控时出错: {e}", "ERROR", verbose)
         if process and process.poll() is None:
             process.terminate()
         return False
 
-    # 检查进程退出码，只有在不是用户中断的情况下
-    if not was_interrupted and process and process.returncode != 0:
-        if restart_attempts >= max_restart_attempts:
-            print_message(f"\n错误: mpremote REPL 意外退出，已达到最大重启次数 ({max_restart_attempts})。", "ERROR")
-            print_message(f"最后退出码: {process.returncode}", "ERROR")
-        else:
-            print_message(f"\n错误: mpremote REPL 意外退出 (退出码: {process.returncode})。", "ERROR")
+    # 检查进程退出码
+    if process and process.returncode != 0:
+        print_message(f"\n错误: mpremote REPL 意外退出 (退出码: {process.returncode})。", "ERROR", verbose)
         return False
         
     return True
@@ -662,7 +659,7 @@ def main():
         
         print_message(f"使用端口: {device_port}", "INFO")
         
-        if upload_and_run_with_mpremote(device_port, DIST_DIR):
+        if upload_and_run_with_mpremote(device_port, DIST_DIR, args.verbose):
             print_message("\n--- 任务成功 ---", "HEADER")
             print_message("所有操作已成功完成！", "SUCCESS")
         else:
