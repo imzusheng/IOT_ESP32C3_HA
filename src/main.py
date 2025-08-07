@@ -78,7 +78,7 @@ def initialize_system():
     status_interval = get_config_value(config, 'system', 'status_report_interval', 30)
     
     # 获取LED引脚配置
-    led_pins = get_config_value(config, 'daemon', 'config', 'led_pins', [12, 13])
+    led_pins = get_config_value(config, 'daemon', 'led_pins', [12, 13])
     
     # 早期初始化LED预设管理器
     print("[Main] Initializing LED preset manager...")
@@ -180,11 +180,42 @@ def initialize_watchdog(config_data):
     
     try:
         wdt_enabled = get_config_value(config_data, 'daemon', 'wdt_enabled', False)
-        wdt_timeout = get_config_value(config_data, 'daemon', 'wdt_timeout', config.get_config('daemon', 'wdt_timeout', 120000))
+        wdt_timeout = get_config_value(config_data, 'daemon', 'wdt_timeout', 120000)
+        
+        # 验证超时参数
+        if wdt_timeout < 1000:
+            print(f"[Main] Warning: WDT timeout too short ({wdt_timeout}ms), using minimum 1000ms")
+            wdt_timeout = 1000
+        elif wdt_timeout > 300000:
+            print(f"[Main] Warning: WDT timeout too long ({wdt_timeout}ms), using maximum 300000ms")
+            wdt_timeout = 300000
         
         if wdt_enabled:
             print(f"[Main] Hardware watchdog enabled, timeout: {wdt_timeout}ms")
-            _wdt = machine.WDT(timeout=wdt_timeout)
+            
+            # 尝试不同的 WDT 初始化方式
+            try:
+                # 方法1: 使用 timeout 参数（标准方式）
+                _wdt = machine.WDT(timeout=wdt_timeout)
+                print("[Main] WDT initialized with timeout parameter")
+            except TypeError as e:
+                print(f"[Main] WDT timeout parameter failed: {e}")
+                try:
+                    # 方法2: 使用 position 参数（某些版本）
+                    _wdt = machine.WDT(wdt_timeout)
+                    print("[Main] WDT initialized with positional parameter")
+                except Exception as e2:
+                    print(f"[Main] WDT positional parameter failed: {e2}")
+                    try:
+                        # 方法3: 使用毫秒参数
+                        _wdt = machine.WDT(timeout_ms=wdt_timeout)
+                        print("[Main] WDT initialized with timeout_ms parameter")
+                    except Exception as e3:
+                        print(f"[Main] WDT timeout_ms parameter failed: {e3}")
+                        print("[Main] All WDT initialization methods failed, disabling watchdog")
+                        _wdt = None
+                        return False
+            
             _wdt_last_feed = time.ticks_ms()
             return True
         else:
@@ -205,19 +236,32 @@ def feed_watchdog():
         if _wdt:
             _wdt.feed()
             _wdt_last_feed = time.ticks_ms()
+        else:
+            # 如果看门狗未初始化，记录但不报错
+            pass
     except Exception as e:
         print(f"[Main] Watchdog feed failed: {e}")
+        # 喂狗失败时，尝试重新初始化看门狗
+        try:
+            _wdt = None
+            print("[Main] Watchdog disabled due to feed failure")
+        except:
+            pass
 
 def check_watchdog():
     """检查看门狗状态"""
     global _wdt_last_feed
     
-    if _wdt:
-        elapsed = time.ticks_diff(time.ticks_ms(), _wdt_last_feed)
-        if elapsed > config.get_config('daemon', 'safe_mode_cooldown', 60000):  # 超过安全模式冷却时间未喂狗
-            print(f"[Main] Warning: watchdog not fed for {elapsed}ms")
-            return False
-    return True
+    try:
+        if _wdt:
+            elapsed = time.ticks_diff(time.ticks_ms(), _wdt_last_feed)
+            if elapsed > config.get_config('daemon', 'safe_mode_cooldown', 60000):  # 超过安全模式冷却时间未喂狗
+                print(f"[Main] Warning: watchdog not fed for {elapsed}ms")
+                return False
+        return True
+    except Exception as e:
+        print(f"[Main] Watchdog check failed: {e}")
+        return False
 
 # =============================================================================
 # 系统监控
