@@ -112,46 +112,43 @@ _last_error_time = 0
 
 # 硬件对象实例
 _timer = None
-_led_controller = None
 _mqtt_client = None
 # 看门狗已移至主循环管理，此处不再需要_wdt变量
 
 # =============================================================================
-# LED控制器类（使用LED预设模块）
+# LED状态控制函数（使用LED预设模块）
 # =============================================================================
 
-class LEDController:
-    """LED控制器类 - 使用LED预设模块控制LED状态"""
-    
-    def __init__(self, pin1: int, pin2: int):
-        """初始化LED控制器"""
-        # 使用LED预设管理器
-        self.led_manager = led_preset.LEDPresetManager(pin1, pin2)
-        print(f"[Daemon] LED controller initialized with LED preset module")
-    
-    def set_status(self, status: str):
-        """设置LED状态"""
-        status_mapping = {
-            'normal': led_preset.SYSTEM_NORMAL,
-            'warning': led_preset.SYSTEM_WARNING,
-            'error': led_preset.SYSTEM_ERROR,
-            'safe_mode': led_preset.SYSTEM_SAFE_MODE,
-            'off': led_preset.SYSTEM_OFF
-        }
-        
-        led_status = status_mapping.get(status.lower(), led_preset.SYSTEM_OFF)
-        self.led_manager.set_system_status(led_status)
-    
-    def update_safe_mode_led(self):
-        """更新安全模式LED状态 - 这个方法需要被定期调用"""
-        # 使用LED预设管理器的SOS模式
-        led_preset.sos_pattern(0)
+def set_led_status(status: str):
+    """设置LED状态 - 使用LED预设管理器"""
+    try:
+        from lib.sys import led as led_preset
+        led_preset.set_system_status(status)
         return True
-    
-    def reset_blink_state(self):
-        """重置闪烁状态，用于重新开始闪烁动画"""
-        self.led_manager.stop_blink()
-        print("[LED] Blink state reset")
+    except Exception as e:
+        print(f"[Daemon] LED status setting failed: {e}")
+        return False
+
+def update_safe_mode_led():
+    """更新安全模式LED状态 - 使用LED预设管理器"""
+    try:
+        from lib.sys import led as led_preset
+        led_preset.sos_pattern(0)  # LED1执行SOS模式
+        return True
+    except Exception as e:
+        print(f"[Daemon] Safe mode LED update failed: {e}")
+        return False
+
+def reset_led_state():
+    """重置LED状态"""
+    try:
+        from lib.sys import led as led_preset
+        led_preset.set_system_status('off')
+        print("[LED] LED state reset")
+        return True
+    except Exception as e:
+        print(f"[Daemon] LED state reset failed: {e}")
+        return False
 
 # =============================================================================
 # 系统监控函数
@@ -285,13 +282,12 @@ def _monitor_callback(timer):
         if not _safe_mode_active:
             # 正常模式：根据健康状态设置LED
             if health['overall']:
-                _led_controller.set_status('normal')
+                set_led_status('normal')
             else:
-                _led_controller.set_status('warning')
+                set_led_status('warning')
         else:
             # 安全模式：执行SOS闪烁并检查恢复条件
-            if _led_controller:
-                _led_controller.update_safe_mode_led()
+            update_safe_mode_led()
             _check_safe_mode_recovery()
         
         # 优化的垃圾回收策略
@@ -411,12 +407,9 @@ class SystemDaemon:
         try:
             print("[Daemon] Starting daemon...")
             
-            # 初始化硬件
-            print(f"[Daemon] Initializing LED controller, pins: {_daemon_config['led_pins']}")
-            _led_controller = LEDController(
-                _daemon_config['led_pins'][0], 
-                _daemon_config['led_pins'][1]
-            )
+            # 初始化LED状态
+            print("[Daemon] Initializing LED status using preset module")
+            set_led_status('off')
             
             # 看门狗已移至主循环管理，守护进程不再负责看门狗
             
@@ -478,8 +471,8 @@ class SystemDaemon:
         _daemon_active = False
         self._initialized = False
         
-        if _led_controller:
-            _led_controller.set_status('off')
+        # 关闭LED
+        reset_led_state()
         
         # 记录停止日志
         if _mqtt_client and hasattr(_mqtt_client, 'is_connected') and _mqtt_client.is_connected:
@@ -570,7 +563,7 @@ def reset_error_count():
 
 def force_safe_mode(reason: str = "未知错误"):
     """强制进入安全模式 - 优化内存使用，避免重复初始化"""
-    global _safe_mode_active, _safe_mode_start_time, _led_controller
+    global _safe_mode_active, _safe_mode_start_time
     
     print(f"[Daemon] Force entering safe mode: {reason}")
     
@@ -586,28 +579,12 @@ def force_safe_mode(reason: str = "未知错误"):
             except Exception:
                 pass
         
-        # 确保LED控制器已初始化并设置为安全模式
-        # 添加检查，避免LED控制器重复初始化
-        if _led_controller is None:
-            try:
-                print("[Daemon] Initializing LED controller for safe mode")
-                _led_controller = LEDController(
-                    _daemon_config['led_pins'][0],
-                    _daemon_config['led_pins'][1]
-                )
-            except Exception as e:
-                print(f"[Daemon] LED controller initialization failed: {e}")
-                _led_controller = None
-        
-        # 设置LED为安全模式（警灯闪烁）
-        if _led_controller:
-            try:
-                _led_controller.set_status('safe_mode')
-                print("[Daemon] LED set to safe mode (SOS pattern)")
-            except Exception as e:
-                print(f"[Daemon] LED safe mode setup failed: {e}")
-        
-        print("[Daemon] Safe mode activated, LED showing SOS pattern")
+        # 设置LED为安全模式（SOS闪烁）
+        print("[Daemon] Setting LED to safe mode (SOS pattern)")
+        if set_led_status('safe_mode'):
+            print("[Daemon] Safe mode activated, LED showing SOS pattern")
+        else:
+            print("[Daemon] Safe mode activated, but LED setup failed")
         
         # 执行深度垃圾回收
         for _ in range(2):
@@ -624,43 +601,38 @@ def check_safe_mode_recovery():
 
 def test_led_functionality():
     """测试LED功能 - 使用LED预设模块"""
-    global _led_controller
-    
     print("[Daemon] Starting LED functionality test...")
-    
-    # 确保LED控制器已初始化
-    if _led_controller is None:
-        try:
-            print("[Daemon] Initializing LED controller for testing")
-            _led_controller = LEDController(
-                _daemon_config['led_pins'][0], 
-                _daemon_config['led_pins'][1]
-            )
-        except Exception as e:
-            print(f"[Daemon] LED controller initialization failed: {e}")
-            return False
     
     # 使用LED预设模块的测试功能
     try:
         print("[Daemon] Testing LED hardware with LED preset module...")
-        test_result = _led_controller.led_manager.test_hardware()
         
-        if test_result:
-            print("[Daemon] LED functionality test passed")
+        # 测试LED预设管理器是否正常工作
+        from lib.sys import led as led_preset
+        manager = led_preset.get_led_manager()
+        
+        if manager:
+            # 测试硬件功能
+            test_result = manager.test_hardware() if hasattr(manager, 'test_hardware') else True
+            
+            if test_result:
+                print("[Daemon] LED functionality test passed")
+            else:
+                print("[Daemon] LED functionality test failed")
+            
+            return test_result
         else:
-            print("[Daemon] LED functionality test failed")
-        
-        return test_result
+            print("[Daemon] LED manager not available")
+            return False
     except Exception as e:
         print(f"[Daemon] LED test failed: {e}")
         return False
 
 def update_safe_mode_led():
     """更新安全模式LED状态的公共接口"""
-    global _led_controller
-    if _led_controller:
-        return _led_controller.update_safe_mode_led()
-    return False
+    # 调用模块级别的update_safe_mode_led函数
+    from lib.sys import led as led_preset
+    return led_preset.sos_pattern(0)
 
 # =============================================================================
 # 初始化

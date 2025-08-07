@@ -22,6 +22,7 @@ from lib.sys import memo as object_pool
 from lib import utils
 from lib.sys import fsm as state_machine
 from lib.sys import erm as recovery_manager
+from lib.sys import led as led_preset
 import config
 
 # =============================================================================
@@ -75,6 +76,22 @@ def initialize_system():
     mqtt_keepalive = get_config_value(config, 'mqtt', 'keepalive', 60)
     loop_delay = get_config_value(config, 'system', 'main_loop_delay', 300)
     status_interval = get_config_value(config, 'system', 'status_report_interval', 30)
+    
+    # 获取LED引脚配置
+    led_pins = get_config_value(config, 'daemon', 'config', 'led_pins', [12, 13])
+    
+    # 早期初始化LED预设管理器
+    print("[Main] Initializing LED preset manager...")
+    try:
+        led_manager = led_preset.init_led_manager(led_pins[0], led_pins[1])
+        if led_manager:
+            print("[Main] LED preset manager initialized successfully")
+            # 设置初始状态为关闭
+            led_manager.set_system_status(led_preset.SYSTEM_OFF)
+        else:
+            print("[Main] LED preset manager initialization failed")
+    except Exception as e:
+        print(f"[Main] LED preset manager initialization error: {e}")
     
     # 设置WiFi网络
     wifi_networks = get_config_value(config, 'wifi', 'networks', [])
@@ -269,7 +286,9 @@ def handle_safe_mode(mqtt_client=None):
     
     # 如果还没有进入安全模式，则强制进入
     if not sys_daemon.is_safe_mode():
+        print("[Main] Forcing safe mode entry...")
         sys_daemon.force_safe_mode("系统异常")
+        print("[Main] Safe mode forced, LED should be showing SOS pattern")
     
     # 安全模式循环
     safe_mode_count = 0
@@ -382,8 +401,32 @@ def _perform_system_maintenance():
         feed_watchdog()
         state_machine.handle_event(state_machine.StateEvent.WATCHDOG_TIMEOUT)
 
+def _update_led_for_state(current_state):
+    """根据状态更新LED显示"""
+    try:
+        if current_state == state_machine.SystemState.RUNNING:
+            led_preset.set_system_status(led_preset.SYSTEM_NORMAL)
+        elif current_state == state_machine.SystemState.NETWORKING:
+            led_preset.set_system_status(led_preset.SYSTEM_WARNING)
+        elif current_state == state_machine.SystemState.SAFE_MODE:
+            # 安全模式使用SOS闪烁
+            led_preset.sos_pattern(0)
+        elif current_state == state_machine.SystemState.WARNING:
+            led_preset.set_system_status(led_preset.SYSTEM_WARNING)
+        elif current_state == state_machine.SystemState.ERROR:
+            led_preset.set_system_status(led_preset.SYSTEM_ERROR)
+        elif current_state == state_machine.SystemState.RECOVERY:
+            led_preset.set_system_status(led_preset.SYSTEM_WARNING)
+        else:
+            led_preset.set_system_status(led_preset.SYSTEM_OFF)
+    except Exception as e:
+        print(f"[Main] LED state update failed: {e}")
+
 def _handle_state_specific_tasks(current_state, sys_config, mqtt_client, health_cache, status_cache):
     """根据状态执行特定任务"""
+    # 首先根据状态更新LED显示
+    _update_led_for_state(current_state)
+    
     if current_state == state_machine.SystemState.RUNNING:
         _handle_running_state(sys_config, mqtt_client, health_cache, status_cache)
     elif current_state == state_machine.SystemState.NETWORKING:
@@ -536,11 +579,15 @@ def main():
             print("[Main] State transition: Network connection")
         
         # 网络连接
+        print("[Main] Starting network connection...")
         wifi_connected, error_msg = connect_networks()
         if not wifi_connected:
-            print("[Main] Network connection failed, entering warning state")
+            print("[Main] Network connection failed")
+            print("[Main] Entering warning state due to network failure")
             state_machine.handle_event(state_machine.StateEvent.NETWORK_FAILED)
+            print("[Main] Forcing safe mode due to network failure")
             sys_daemon.force_safe_mode("网络连接失败")
+            print("[Main] Safe mode activated, LED should show SOS pattern")
         else:
             print("[Main] Network connection successful")
             state_machine.handle_event(state_machine.StateEvent.NETWORK_SUCCESS)

@@ -169,10 +169,11 @@ def init_led_manager(pin1: int = None, pin2: int = None):
         # 检查是否需要重新初始化
         if _led_preset_manager is None:
             # 首次初始化
+            print(f"[LED] Creating LED preset manager instance, pins: {pin1}, {pin2}")
             _led_manager_pins = [pin1, pin2]
             _led_preset_manager = LEDPresetManager(pin1, pin2)
             _led_manager_initialized = True
-            print(f"[LED] LED preset manager initialized, pins: {pin1}, {pin2}")
+            print(f"[LED] LED preset manager initialized successfully, pins: {pin1}, {pin2}")
         
         elif not _led_manager_initialized or _led_manager_pins != [pin1, pin2]:
             # 引脚配置变化或未正确初始化，需要重新初始化
