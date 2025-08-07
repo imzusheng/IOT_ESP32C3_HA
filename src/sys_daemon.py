@@ -50,7 +50,7 @@ def set_daemon_config(config_dict=None, **kwargs):
     if config_dict:
         _daemon_config.update(config_dict)
     _daemon_config.update(kwargs)
-    print("[Daemon] 守护进程配置已更新")
+    print("[Daemon] Daemon configuration updated")
 
 def load_daemon_config_from_main(config_data):
     """从主配置文件加载守护进程配置（config.py）"""
@@ -83,11 +83,11 @@ def load_daemon_config_from_main(config_data):
             'gc_force_threshold': daemon_config.get('gc_force_threshold', 95)
         })
         
-        print("[Daemon] 从主配置文件加载守护进程配置完成")
+        print("[Daemon] Daemon config loaded from main config")
         return True
         
     except Exception as e:
-        print(f"[Daemon] 从主配置文件加载守护进程配置失败: {e}")
+        print(f"[Daemon] Daemon config load failed: {e}")
         return False
 
 # =============================================================================
@@ -127,7 +127,7 @@ class LEDController:
         """初始化LED控制器"""
         # 使用LED预设管理器
         self.led_manager = led_preset.LEDPresetManager(pin1, pin2)
-        print(f"[Daemon] LED控制器初始化完成，使用LED预设模块")
+        print(f"[Daemon] LED controller initialized with LED preset module")
     
     def set_status(self, status: str):
         """设置LED状态"""
@@ -151,7 +151,7 @@ class LEDController:
     def reset_blink_state(self):
         """重置闪烁状态，用于重新开始闪烁动画"""
         self.led_manager.stop_blink()
-        print("[LED] 闪烁状态已重置")
+        print("[LED] Blink state reset")
 
 # =============================================================================
 # 系统监控函数
@@ -253,10 +253,10 @@ def _monitor_callback(timer):
         # 优化的监控计数器管理 - 分级重置策略
         if _monitor_count >= _MONITOR_COUNT_MAX:
             _monitor_count = 0
-            print("[Daemon] 监控计数器已重置（达到最大值）")
+            print("[Daemon] Monitor counter reset (max reached)")
             _deep_cleanup()
         elif _monitor_count % _MONITOR_RESET_INTERVAL == 0:
-            print(f"[Daemon] 监控计数器周期重置: {_monitor_count}")
+            print(f"[Daemon] Monitor counter periodic reset: {_monitor_count}")
             # 只重置计数器，不执行深度清理
             _light_cleanup()
         
@@ -275,7 +275,7 @@ def _monitor_callback(timer):
         # 任务4：错误计数管理 - 优化重置策略
         if _error_count > 0 and time.ticks_diff(current_time, _last_error_time) > 60000:  # 1分钟重置
             _error_count = 0
-            print("[Daemon] 错误计数器已重置")
+            print("[Daemon] Error counter reset")
         
         # 任务5：系统状态记录（调整频率，减少MQTT负载）
         if _monitor_count % 50 == 0:  # 从30次改为50次
@@ -346,7 +346,7 @@ def _scheduled_cleanup():
 def _deep_cleanup():
     """深度清理 - 强力垃圾回收和内存优化"""
     try:
-        print("[Daemon] 执行深度内存清理")
+        print("[Daemon] Performing deep memory cleanup")
         
         # 执行多次垃圾回收
         for _ in range(4):
@@ -361,9 +361,9 @@ def _deep_cleanup():
         except:
             pass
         
-        print("[Daemon] 深度内存清理完成")
+        print("[Daemon] Deep memory cleanup complete")
     except Exception as e:
-        print(f"[Daemon] 深度清理失败: {e}")
+        print(f"[Daemon] Deep cleanup failed: {e}")
 
 def _log_system_status():
     """记录系统状态 - 优化内存使用"""
@@ -409,10 +409,10 @@ class SystemDaemon:
             return True
         
         try:
-            print("[Daemon] 开始启动守护进程...")
+            print("[Daemon] Starting daemon...")
             
             # 初始化硬件
-            print(f"[Daemon] 初始化LED控制器，引脚: {_daemon_config['led_pins']}")
+            print(f"[Daemon] Initializing LED controller, pins: {_daemon_config['led_pins']}")
             _led_controller = LEDController(
                 _daemon_config['led_pins'][0], 
                 _daemon_config['led_pins'][1]
@@ -421,7 +421,7 @@ class SystemDaemon:
             # 看门狗已移至主循环管理，守护进程不再负责看门狗
             
             # 初始化定时器
-            print(f"[Daemon] 初始化定时器，间隔: {_daemon_config['monitor_interval']}ms")
+            print(f"[Daemon] Initializing timer, interval: {_daemon_config['monitor_interval']}ms")
             _timer = machine.Timer(_daemon_config['timer_id'])
             _timer.init(
                 period=_daemon_config['monitor_interval'],
@@ -434,7 +434,7 @@ class SystemDaemon:
             _start_time = time.ticks_ms()
             self._initialized = True
             
-            print("[Daemon] 守护进程启动成功")
+            print("[Daemon] Daemon startup successful")
             
             # 记录启动日志
             if _mqtt_client and hasattr(_mqtt_client, 'is_connected') and _mqtt_client.is_connected:
@@ -572,7 +572,7 @@ def force_safe_mode(reason: str = "未知错误"):
     """强制进入安全模式 - 优化内存使用，避免重复初始化"""
     global _safe_mode_active, _safe_mode_start_time, _led_controller
     
-    print(f"[Daemon] 强制进入安全模式: {reason}")
+    print(f"[Daemon] Force entering safe mode: {reason}")
     
     if not _safe_mode_active:
         _safe_mode_active = True
@@ -590,24 +590,24 @@ def force_safe_mode(reason: str = "未知错误"):
         # 添加检查，避免LED控制器重复初始化
         if _led_controller is None:
             try:
-                print("[Daemon] 初始化LED控制器用于安全模式")
+                print("[Daemon] Initializing LED controller for safe mode")
                 _led_controller = LEDController(
                     _daemon_config['led_pins'][0],
                     _daemon_config['led_pins'][1]
                 )
             except Exception as e:
-                print(f"[Daemon] LED控制器初始化失败: {e}")
+                print(f"[Daemon] LED controller initialization failed: {e}")
                 _led_controller = None
         
         # 设置LED为安全模式（警灯闪烁）
         if _led_controller:
             try:
                 _led_controller.set_status('safe_mode')
-                print("[Daemon] LED已设置为安全模式（SOS模式）")
+                print("[Daemon] LED set to safe mode (SOS pattern)")
             except Exception as e:
-                print(f"[Daemon] 设置LED安全模式失败: {e}")
+                print(f"[Daemon] LED safe mode setup failed: {e}")
         
-        print("[Daemon] 安全模式已激活，LED显示SOS模式")
+        print("[Daemon] Safe mode activated, LED showing SOS pattern")
         
         # 执行深度垃圾回收
         for _ in range(2):
@@ -626,33 +626,33 @@ def test_led_functionality():
     """测试LED功能 - 使用LED预设模块"""
     global _led_controller
     
-    print("[Daemon] 开始LED功能测试...")
+    print("[Daemon] Starting LED functionality test...")
     
     # 确保LED控制器已初始化
     if _led_controller is None:
         try:
-            print("[Daemon] 初始化LED控制器用于测试")
+            print("[Daemon] Initializing LED controller for testing")
             _led_controller = LEDController(
                 _daemon_config['led_pins'][0], 
                 _daemon_config['led_pins'][1]
             )
         except Exception as e:
-            print(f"[Daemon] LED控制器初始化失败: {e}")
+            print(f"[Daemon] LED controller initialization failed: {e}")
             return False
     
     # 使用LED预设模块的测试功能
     try:
-        print("[Daemon] 使用LED预设模块测试LED硬件...")
+        print("[Daemon] Testing LED hardware with LED preset module...")
         test_result = _led_controller.led_manager.test_hardware()
         
         if test_result:
-            print("[Daemon] LED功能测试通过")
+            print("[Daemon] LED functionality test passed")
         else:
-            print("[Daemon] LED功能测试失败")
+            print("[Daemon] LED functionality test failed")
         
         return test_result
     except Exception as e:
-        print(f"[Daemon] LED测试失败: {e}")
+        print(f"[Daemon] LED test failed: {e}")
         return False
 
 def update_safe_mode_led():

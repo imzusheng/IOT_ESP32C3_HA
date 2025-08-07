@@ -91,7 +91,7 @@ class LEDPresetManager:
             self._execute_sos_safe_mode()
             
         else:
-            print(f"[LED] 未知状态: {status}")
+            print(f"[LED] Unknown status: {status}")
             self.set_system_status(SYSTEM_OFF)
     
     def _execute_sos_safe_mode(self):
@@ -120,7 +120,7 @@ class LEDPresetManager:
                 time.sleep_ms(200)
             # print("[LED] SOS模式执行完成")
         except Exception as e:
-            print(f"[LED] SOS模式执行失败: {e}")
+            print(f"[LED] SOS pattern execution failed: {e}")
     
     def get_status(self):
         """获取LED管理器状态"""
@@ -150,7 +150,7 @@ def get_led_manager():
         try:
             _led_preset_manager = LEDPresetManager(_led_manager_pins[0], _led_manager_pins[1])
             _led_manager_initialized = True
-            print(f"[LED] LED预设管理器单例实例已创建，引脚: {_led_manager_pins}")
+            print(f"[LED] LED preset manager singleton instance created, pins: {_led_manager_pins}")
         finally:
             _led_manager_lock = False
     
@@ -161,7 +161,7 @@ def init_led_manager(pin1: int = None, pin2: int = None):
     global _led_preset_manager, _led_manager_initialized, _led_manager_pins, _led_manager_lock
     
     if _led_manager_lock:
-        print("[LED] LED管理器正在初始化中，请稍候...")
+        print("[LED] LED manager is initializing, please wait...")
         return _led_preset_manager
     
     _led_manager_lock = True
@@ -172,11 +172,11 @@ def init_led_manager(pin1: int = None, pin2: int = None):
             _led_manager_pins = [pin1, pin2]
             _led_preset_manager = LEDPresetManager(pin1, pin2)
             _led_manager_initialized = True
-            print(f"[LED] LED预设管理器已初始化，引脚: {pin1}, {pin2}")
+            print(f"[LED] LED preset manager initialized, pins: {pin1}, {pin2}")
         
         elif not _led_manager_initialized or _led_manager_pins != [pin1, pin2]:
             # 引脚配置变化或未正确初始化，需要重新初始化
-            print(f"[LED] LED预设管理器重新初始化，新引脚: {pin1}, {pin2}")
+            print(f"[LED] LED preset manager reinitializing, new pins: {pin1}, {pin2}")
             
             # 清理旧实例
             old_manager = _led_preset_manager
@@ -192,15 +192,15 @@ def init_led_manager(pin1: int = None, pin2: int = None):
             _led_preset_manager = LEDPresetManager(pin1, pin2)
             _led_manager_initialized = True
             
-            print(f"[LED] LED预设管理器重新初始化完成")
+            print(f"[LED] LED preset manager reinitialization completed")
         
         else:
-            print(f"[LED] LED预设管理器已存在，跳过重复初始化")
+            print(f"[LED] LED preset manager already exists, skipping duplicate initialization")
         
         return _led_preset_manager
         
     except Exception as e:
-        print(f"[LED] LED管理器初始化失败: {e}")
+        print(f"[LED] LED manager initialization failed: {e}")
         _led_manager_lock = False
         return None
         
@@ -212,13 +212,13 @@ def cleanup_led_manager():
     global _led_preset_manager, _led_manager_initialized, _led_manager_lock
     
     if _led_manager_lock:
-        print("[LED] LED管理器正在清理中，请稍候...")
+        print("[LED] LED manager is cleaning up, please wait...")
         return
     
     _led_manager_lock = True
     try:
         if _led_preset_manager is not None:
-            print("[LED] 开始清理LED预设管理器实例...")
+            print("[LED] Starting cleanup of LED preset manager instance...")
             
             # 关闭所有LED
             try:
@@ -230,16 +230,16 @@ def cleanup_led_manager():
             _led_preset_manager = None
             _led_manager_initialized = False
             
-            print("[LED] LED预设管理器实例已清理")
+            print("[LED] LED preset manager instance cleaned up")
             
             # 执行垃圾回收
             import gc
             gc.collect()
             
-            print(f"[LED] 内存清理完成，剩余内存: {gc.mem_free()} bytes")
+            print(f"[LED] Memory cleanup completed, remaining memory: {gc.mem_free()} bytes")
         
     except Exception as e:
-        print(f"[LED] LED管理器清理失败: {e}")
+        print(f"[LED] LED manager cleanup failed: {e}")
         
     finally:
         _led_manager_lock = False
@@ -260,12 +260,12 @@ def reset_led_manager():
     global _led_preset_manager, _led_manager_initialized, _led_manager_lock
     
     if _led_manager_lock:
-        print("[LED] LED管理器正在重置中，请稍候...")
+        print("[LED] LED manager is resetting, please wait...")
         return False
     
     _led_manager_lock = True
     try:
-        print("[LED] 开始重置LED管理器...")
+        print("[LED] Starting LED manager reset...")
         
         # 清理现有实例
         cleanup_led_manager()
@@ -277,11 +277,11 @@ def reset_led_manager():
         import time
         time.sleep_ms(100)
         
-        print("[LED] LED管理器重置完成")
+        print("[LED] LED manager reset completed")
         return True
         
     except Exception as e:
-        print(f"[LED] LED管理器重置失败: {e}")
+        print(f"[LED] LED manager reset failed: {e}")
         return False
         
     finally:
@@ -444,7 +444,7 @@ def counting_blink(led_index=0, count=5):
 def breathing_light(led_index=0, cycles=3):
     """呼吸灯模式的便捷函数"""
     manager = get_led_manager()
-    print(f"[LED] LED {led_index} 呼吸灯模式 ({cycles}次)")
+    print(f"[LED] LED {led_index} breathing light mode ({cycles} cycles)")
     led = manager.led1 if led_index == 0 else manager.led2
     for _ in range(cycles):
         # 渐亮
@@ -465,7 +465,7 @@ def breathing_light(led_index=0, cycles=3):
 def custom_pattern(pattern, led_index=0):
     """自定义模式的便捷函数"""
     manager = get_led_manager()
-    print(f"[LED] LED {led_index} 自定义模式")
+    print(f"[LED] LED {led_index} custom pattern")
     led = manager.led1 if led_index == 0 else manager.led2
     for on_time, off_time in pattern:
         led.on()

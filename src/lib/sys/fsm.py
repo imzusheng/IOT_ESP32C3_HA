@@ -35,7 +35,7 @@ def run_main_loop():
             print(".", end="")
         elif current_state == state_machine.SystemState.ERROR:
             # 3. 监控错误状态，并执行处理
-            print("检测到系统错误，准备重启...")
+            print("System error detected, preparing to restart...")
             # machine.reset() # 重启设备
             break
         
@@ -192,7 +192,7 @@ class SystemStateMachine:
                 handler()
             except Exception as e:
                 # 捕获处理器中的所有异常，打印错误并转换到 ERROR 状态
-                print(f"[StateMachine] ERROR: 状态 '{self._current_state}' 处理器异常: {e}")
+                print(f"[StateMachine] ERROR: State '{self._current_state}' handler exception: {e}")
                 self.handle_event(StateEvent.SYSTEM_ERROR)
     
     def _record_transition(self, from_state, to_state, reason):
@@ -200,7 +200,7 @@ class SystemStateMachine:
         transition = mem_opt.get_dict()
         if transition is None:
             # 当对象池耗尽时，打印警告，保证程序继续运行
-            print("[StateMachine] WARN: 无法从池中获取字典，本次历史记录将丢失。")
+            print("[StateMachine] WARN: Failed to get dictionary from pool, this history record will be lost.")
             return
             
         transition[mem_opt.get_string('from')] = from_state
@@ -219,7 +219,7 @@ class SystemStateMachine:
         """状态进入时的钩子函数，用于执行特定状态的初始化操作。"""
         if state == SystemState.SAFE_MODE:
             # 进入安全模式是严重事件，执行最高级别的内存清理
-            print("[StateMachine] INFO: 进入安全模式，执行紧急内存清理...")
+            print("[StateMachine] INFO: Entering safe mode, executing emergency memory cleanup...")
             mem_opt.clear_all_pools()
             gc.collect()
     

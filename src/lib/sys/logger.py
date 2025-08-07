@@ -354,7 +354,7 @@ class RecoveryAction:
             
         except Exception as e:
             # 恢复动作失败时记录日志但不抛出异常
-            print(f"[Recovery] {self.name} 执行失败: {e}")
+            print(f"[Recovery] {self.name} execution failed: {e}")
             return False
     
     def _execute_action(self, error_type: str, message: str, context: str) -> bool:
@@ -508,7 +508,7 @@ class ErrorHandler:
             
         except Exception as e:
             # 错误处理失败时使用print避免递归
-            print(f"[ErrorHandler] 错误处理失败: {e}")
+            print(f"[ErrorHandler] Error handling failed: {e}")
             return False
     
     def _determine_severity(self, error_type: str) -> str:

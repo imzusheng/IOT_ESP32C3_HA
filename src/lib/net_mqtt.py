@@ -34,7 +34,7 @@ def set_mqtt_config(config_dict=None, **kwargs):
     if config_dict:
         _mqtt_config.update(config_dict)
     _mqtt_config.update(kwargs)
-    print("[MQTT] MQTT配置已更新")
+    print("[MQTT] MQTT configuration updated")
 
 def load_mqtt_config_from_main(config_data):
     """从主配置文件加载MQTT配置"""
@@ -53,11 +53,11 @@ def load_mqtt_config_from_main(config_data):
             'max_retries': mqtt_subconfig.get('max_retries', config.get_config('mqtt', 'max_retries', 3))
         })
         
-        print("[MQTT] 从主配置文件加载MQTT配置完成")
+        print("[MQTT] MQTT configuration loaded from main config file")
         return True
         
     except Exception as e:
-        print(f"[MQTT] 从主配置文件加载MQTT配置失败: {e}")
+        print(f"[MQTT] Failed to load MQTT configuration from main config: {e}")
         return False
 
 class MqttServer:
@@ -97,7 +97,7 @@ class MqttServer:
         self.connection_attempts = 0
         self.last_connect_time = 0
         
-        print(f"[MQTT] MQTT客户端创建完成，服务器: {server}:{port}, 主题: '{topic}'")
+        print(f"[MQTT] MQTT client created, server: {server}:{port}, topic: '{topic}'")
 
     def connect(self):
         """
@@ -121,14 +121,14 @@ class MqttServer:
             self.is_connected = True
             self.connection_attempts = 0
             self.last_connect_time = current_time
-            print("\033[1;32m[MQTT] MQTT连接成功\033[0m")
+            print("\033[1;32m[MQTT] MQTT connection successful\033[0m")
             self.log("INFO", f"设备在线，ID: {self.client_id}")
             return True
             
         except Exception as e:
             self.connection_attempts += 1
             self.last_connect_time = current_time
-            print(f"\033[1;31m[MQTT] 连接失败 (尝试 {self.connection_attempts}/{_mqtt_config['max_retries']}): {e}\033[0m")
+            print(f"\033[1;31m[MQTT] Connection failed (attempt {self.connection_attempts}/{_mqtt_config['max_retries']}): {e}\033[0m")
             self.is_connected = False
             
             # 如果超过最大重试次数，执行垃圾回收
@@ -167,7 +167,7 @@ class MqttServer:
             self.client.publish(self.topic, log_ba)
             
         except Exception as e:
-            print(f"\033[1;31m[MQTT] 发送日志失败: {e}\033[0m")
+            print(f"\033[1;31m[MQTT] Failed to send log: {e}\033[0m")
             # 连接失败时清理状态
             self._cleanup_connection()
             gc.collect()
@@ -178,9 +178,9 @@ class MqttServer:
             try:
                 self.client.disconnect()
                 self.is_connected = False
-                print("\033[1;33m[MQTT] MQTT连接已断开\033[0m")
+                print("\033[1;33m[MQTT] MQTT connection disconnected\033[0m")
             except Exception as e:
-                print(f"\033[1;31m[MQTT] 断开连接失败: {e}\033[0m")
+                print(f"\033[1;31m[MQTT] Disconnection failed: {e}\033[0m")
 
     def check_connection(self):
         """
@@ -195,7 +195,7 @@ class MqttServer:
             return True
         except Exception as e:
             if self.is_connected:
-                print(f"\033[1;31m[MQTT] 连接丢失: {e}\033[0m")
+                print(f"\033[1;31m[MQTT] Connection lost: {e}\033[0m")
             self.is_connected = False
             return False
     

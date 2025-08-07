@@ -74,7 +74,7 @@ class MemoryOptimizer:
                 self._warning_cleanup()
 
         except Exception as e:
-            print(f"[MemOpt] CRITICAL ERROR: 内存检查或清理时发生异常: {e}")
+            print(f"[MemOpt] CRITICAL ERROR: Exception during memory check or cleanup: {e}")
 
     def _emergency_cleanup(self):
         """紧急内存清理：深度GC并清空所有池。"""

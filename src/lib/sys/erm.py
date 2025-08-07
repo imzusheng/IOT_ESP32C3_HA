@@ -78,7 +78,7 @@ class EnhancedRecoveryAction:
             return result
             
         except Exception as e:
-            print(f"[Recovery] {self.name} 执行异常: {e}")
+            print(f"[Recovery] {self.name} execution error: {e}")
             return False
     
     def _execute_action(self, error_type: str, error_data: dict) -> bool:
@@ -119,20 +119,20 @@ class NetworkRecoveryAction(EnhancedRecoveryAction):
     
     def _execute_action(self, error_type: str, error_data: dict) -> bool:
         """执行网络恢复"""
-        print("[Recovery] 开始网络恢复...")
+        print("[Recovery] Starting network recovery...")
         
         # 导入网络模块
         try:
             import net_wifi
             import net_mqtt
         except ImportError:
-            print("[Recovery] 网络模块导入失败")
+            print("[Recovery] Network module import failed")
             return False
         
         # 执行网络重连
         for attempt in range(self.max_retries):
             try:
-                print(f"[Recovery] 网络重连尝试 {attempt + 1}/{self.max_retries}")
+                print(f"[Recovery] Network reconnect attempt {attempt + 1}/{self.max_retries}")
                 
                 # 重连WiFi
                 wifi_connected = net_wifi.connect_wifi()
@@ -147,14 +147,14 @@ class NetworkRecoveryAction(EnhancedRecoveryAction):
                         time.sleep_ms(self.retry_delay)
                         continue
                 
-                print("[Recovery] 网络恢复成功")
+                print("[Recovery] Network recovery successful")
                 return True
                 
             except Exception as e:
-                print(f"[Recovery] 网络重连异常: {e}")
+                print(f"[Recovery] Network reconnect error: {e}")
                 time.sleep_ms(self.retry_delay)
         
-        print("[Recovery] 网络恢复失败")
+        print("[Recovery] Network recovery failed")
         return False
 
 class MemoryRecoveryAction(EnhancedRecoveryAction):
@@ -165,13 +165,13 @@ class MemoryRecoveryAction(EnhancedRecoveryAction):
     
     def _execute_action(self, error_type: str, error_data: dict) -> bool:
         """执行内存恢复"""
-        print("[Recovery] 开始内存恢复...")
+        print("[Recovery] Starting memory recovery...")
         
         try:
             # 使用对象池的内存优化器
             memory_info = utils.check_memory()
             if memory_info:
-                print(f"[Recovery] 当前内存使用: {memory_info['percent']:.1f}%")
+                print(f"[Recovery] Current memory usage: {memory_info['percent']:.1f}%")
             
             # 执行深度垃圾回收
             for _ in range(3):
@@ -196,13 +196,13 @@ class MemoryRecoveryAction(EnhancedRecoveryAction):
             # 验证恢复效果
             final_memory = utils.check_memory()
             if final_memory:
-                print(f"[Recovery] 内存恢复完成，使用率: {final_memory['percent']:.1f}%")
+                print(f"[Recovery] Memory recovery complete, usage: {final_memory['percent']:.1f}%")
                 return final_memory['percent'] < 85  # 内存使用率低于85%认为恢复成功
             
             return True
             
         except Exception as e:
-            print(f"[Recovery] 内存恢复异常: {e}")
+            print(f"[Recovery] Memory recovery error: {e}")
             return False
 
 class ServiceRecoveryAction(EnhancedRecoveryAction):
@@ -213,7 +213,7 @@ class ServiceRecoveryAction(EnhancedRecoveryAction):
     
     def _execute_action(self, error_type: str, error_data: dict) -> bool:
         """执行服务恢复"""
-        print("[Recovery] 开始服务恢复...")
+        print("[Recovery] Starting service recovery...")
         
         try:
             # 重启守护进程
@@ -222,7 +222,7 @@ class ServiceRecoveryAction(EnhancedRecoveryAction):
             
             daemon_started = sys_daemon.start_daemon()
             if not daemon_started:
-                print("[Recovery] 守护进程重启失败")
+                print("[Recovery] Daemon restart failed")
                 return False
             
             # 重置MQTT客户端连接
@@ -230,11 +230,11 @@ class ServiceRecoveryAction(EnhancedRecoveryAction):
             if mqtt_client and hasattr(mqtt_client, 'connect'):
                 mqtt_client.connect()
             
-            print("[Recovery] 服务恢复成功")
+            print("[Recovery] Service recovery successful")
             return True
             
         except Exception as e:
-            print(f"[Recovery] 服务恢复异常: {e}")
+            print(f"[Recovery] Service recovery error: {e}")
             return False
 
 class SystemRecoveryAction(EnhancedRecoveryAction):
@@ -245,7 +245,7 @@ class SystemRecoveryAction(EnhancedRecoveryAction):
     
     def _execute_action(self, error_type: str, error_data: dict) -> bool:
         """执行系统恢复"""
-        print("[Recovery] 开始系统恢复...")
+        print("[Recovery] Starting system recovery...")
         
         try:
             # 尝试状态机恢复
@@ -263,7 +263,7 @@ class SystemRecoveryAction(EnhancedRecoveryAction):
                 return True
                 
         except Exception as e:
-            print(f"[Recovery] 系统恢复异常: {e}")
+            print(f"[Recovery] System recovery error: {e}")
             return False
 
 class HardwareRecoveryAction(EnhancedRecoveryAction):
@@ -274,11 +274,11 @@ class HardwareRecoveryAction(EnhancedRecoveryAction):
     
     def _execute_action(self, error_type: str, error_data: dict) -> bool:
         """执行硬件恢复"""
-        print("[Recovery] 开始硬件恢复...")
+        print("[Recovery] Starting hardware recovery...")
         
         try:
             # 硬件错误通常需要重启系统
-            print("[Recovery] 硬件错误，准备重启系统...")
+            print("[Recovery] Hardware error, preparing system restart...")
             
             # 记录重启原因
             if error_data.get('mqtt_client'):
@@ -296,7 +296,7 @@ class HardwareRecoveryAction(EnhancedRecoveryAction):
             return True  # 理论上不会执行到这里
             
         except Exception as e:
-            print(f"[Recovery] 硬件恢复异常: {e}")
+            print(f"[Recovery] Hardware recovery error: {e}")
             return False
 
 # =============================================================================
@@ -317,7 +317,7 @@ class RecoveryManager:
         # 注册恢复动作
         self._register_recovery_actions()
         
-        print("[RecoveryManager] 恢复管理器初始化完成")
+        print("[RecoveryManager] Recovery manager initialized")
     
     def _register_recovery_actions(self):
         """注册恢复动作"""
@@ -387,7 +387,7 @@ class RecoveryManager:
             return recovery_success
             
         except Exception as e:
-            print(f"[RecoveryManager] 错误处理异常: {e}")
+            print(f"[RecoveryManager] Error handling exception: {e}")
             return False
     
     def _execute_recovery(self, error_type: str, error_data: dict) -> bool:
@@ -396,7 +396,7 @@ class RecoveryManager:
         actions = self.recovery_actions.get(error_type, [])
         
         if not actions:
-            print(f"[RecoveryManager] 没有找到 {error_type} 的恢复动作")
+            print(f"[RecoveryManager] No recovery action found for {error_type}")
             return False
         
         # 按优先级排序
@@ -405,18 +405,18 @@ class RecoveryManager:
         # 尝试执行恢复动作
         for action in actions:
             try:
-                print(f"[RecoveryManager] 尝试恢复动作: {action.name}")
+                print(f"[RecoveryManager] Attempting recovery action: {action.name}")
                 
                 if action.execute(error_type, error_data):
-                    print(f"[RecoveryManager] 恢复动作成功: {action.name}")
+                    print(f"[RecoveryManager] Recovery action successful: {action.name}")
                     return True
                 else:
-                    print(f"[RecoveryManager] 恢复动作失败: {action.name}")
+                    print(f"[RecoveryManager] Recovery action failed: {action.name}")
                     
             except Exception as e:
-                print(f"[RecoveryManager] 恢复动作异常: {action.name} - {e}")
+                print(f"[RecoveryManager] Recovery action exception: {action.name} - {e}")
         
-        print(f"[RecoveryManager] 所有恢复动作失败: {error_type}")
+        print(f"[RecoveryManager] All recovery actions failed: {error_type}")
         return False
     
     def _record_recovery_attempt(self, error_type: str, success: bool, error_data: dict):
@@ -503,7 +503,7 @@ class RecoveryManager:
                 action.last_success = 0
                 action.cooldown_until = 0
         
-        print("[RecoveryManager] 恢复统计已重置")
+        print("[RecoveryManager] Recovery statistics reset")
 
 # =============================================================================
 # 全局恢复管理器实例
@@ -544,4 +544,4 @@ def reset_recovery_stats():
 # 执行垃圾回收
 gc.collect()
 
-print("[RecoveryManager] 错误恢复管理模块加载完成")
+print("[RecoveryManager] Error recovery management module loaded")

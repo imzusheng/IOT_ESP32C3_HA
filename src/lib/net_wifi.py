@@ -27,7 +27,7 @@ def set_wifi_networks(networks):
     """设置WiFi网络配置"""
     global _wifi_networks
     _wifi_networks = networks
-    print(f"[WiFi] 已设置 {len(networks)} 个WiFi网络配置")
+    print(f"[WiFi] Set {len(networks)} WiFi network configs")
 
 def set_wifi_config(timeout=None, scan_interval=None, retry_delay=None, max_attempts=None):
     """设置WiFi连接参数（从config.py获取）"""
@@ -36,7 +36,7 @@ def set_wifi_config(timeout=None, scan_interval=None, retry_delay=None, max_atte
     _wifi_scan_interval = scan_interval
     _wifi_connection_retry_delay = retry_delay
     _wifi_max_connection_attempts = max_attempts
-    print(f"[WiFi] 已设置WiFi连接参数")
+    print(f"[WiFi] WiFi connection parameters set")
 
 def load_wifi_config_from_main(config_data):
     """从主配置文件加载WiFi配置"""
@@ -55,11 +55,11 @@ def load_wifi_config_from_main(config_data):
         _wifi_connection_retry_delay = wifi_subconfig.get('retry_delay', config.get_config('wifi', 'retry_delay', 2))
         _wifi_max_connection_attempts = wifi_subconfig.get('max_attempts', config.get_config('wifi', 'max_attempts', 3))
         
-        print(f"[WiFi] 从主配置文件加载WiFi配置完成")
+        print(f"[WiFi] WiFi config loaded from main config")
         return True
         
     except Exception as e:
-        print(f"[WiFi] 从主配置文件加载WiFi配置失败: {e}")
+        print(f"[WiFi] WiFi config load failed: {e}")
         return False
 
 
@@ -73,18 +73,18 @@ def _scan_for_ssids(wlan):
     返回：
     - list: [(ssid, rssi), ...] 匹配配置的网络列表
     """
-    print("[WiFi] 正在扫描网络...")
-    print(f"[WiFi] 配置的网络: {[c['ssid'] for c in _wifi_networks]}")
+    print("[WiFi] Scanning networks...")
+    print(f"[WiFi] Configured networks: {[c['ssid'] for c in _wifi_networks]}")
     
     scanned_networks = []
     target_ssids = {c['ssid'] for c in _wifi_networks}
     
     try:
         scan_results = wlan.scan()
-        print(f"[WiFi] 扫描到 {len(scan_results)} 个网络")
+        print(f"[WiFi] Found {len(scan_results)} networks")
         
         if not scan_results:
-            print("[WiFi] 警告: 没有扫描到任何网络")
+            print("[WiFi] Warning: No networks found")
             return []
         
         for i, res in enumerate(scan_results):
@@ -95,11 +95,11 @@ def _scan_for_ssids(wlan):
                 channel = res[2]
                 bssid = res[1]
                 
-                print(f"[WiFi] 网络 {i+1}: SSID='{ssid}' | RSSI={rssi} dBm | CH={channel} | BSSID={bssid.hex()}")
+                print(f"[WiFi] Network {i+1}: SSID='{ssid}' | RSSI={rssi} dBm | CH={channel} | BSSID={bssid.hex()}")
                 
                 if ssid in target_ssids:
                     scanned_networks.append((ssid, rssi))
-                    print(f"[WiFi] [OK] 发现配置网络: {ssid:<20} | RSSI: {rssi} dBm")
+                    print(f"[WiFi] [OK] Found configured network: {ssid:<20} | RSSI: {rssi} dBm")
                 else:
                     # 检查是否有相似的SSID（用于调试）
                     for target_ssid in target_ssids:
@@ -107,29 +107,29 @@ def _scan_for_ssids(wlan):
                         if (ssid and target_ssid and len(ssid.strip()) > 0 and len(target_ssid.strip()) > 0 and 
                             len(ssid) >= 3 and len(target_ssid) >= 3 and
                             (target_ssid.lower() in ssid.lower() or ssid.lower() in target_ssid.lower())):
-                            print(f"[WiFi] 发现相似网络: '{ssid}' (目标: '{target_ssid}')")
+                            print(f"[WiFi] Found similar network: '{ssid}' (target: '{target_ssid}')")
                     
             except UnicodeError:
                 try:
                     # 尝试其他编码
                     ssid = res[0].decode('latin-1')
-                    print(f"[WiFi] 网络 {i+1}: SSID='{ssid}' (Latin-1编码) | RSSI={res[3]} dBm")
+                    print(f"[WiFi] Network {i+1}: SSID='{ssid}' (Latin-1) | RSSI={res[3]} dBm")
                     
                     if ssid in target_ssids:
                         scanned_networks.append((ssid, res[3]))
-                        print(f"[WiFi] [OK] 发现配置网络(Latin-1): {ssid:<20} | RSSI: {res[3]} dBm")
+                        print(f"[WiFi] [OK] Found configured network(Latin-1): {ssid:<20} | RSSI: {res[3]} dBm")
                 except:
-                    print(f"[WiFi] 网络 {i+1}: 无法解码SSID")
+                    print(f"[WiFi] Network {i+1}: Cannot decode SSID")
             except Exception as e:
-                print(f"[WiFi] 解析网络 {i+1} 失败: {e}")
+                print(f"[WiFi] Parse network {i+1} failed: {e}")
                 
         # 按RSSI强度排序
         scanned_networks.sort(key=lambda x: x[1], reverse=True)
-        print(f"[WiFi] 匹配的网络数量: {len(scanned_networks)}")
+        print(f"[WiFi] Matched networks count: {len(scanned_networks)}")
         return scanned_networks
         
     except Exception as e:
-        print(f"\033[1;31m[WiFi] 扫描网络失败: {e}\033[0m")
+        print(f"\033[1;31m[WiFi] Network scan failed: {e}\033[0m")
         return []
 
 
@@ -141,9 +141,9 @@ def sync_and_set_time():
     - True: 时间同步成功
     - False: 时间同步失败
     """
-    print("\n[NTP] 开始时间同步...")
+    print("\n[NTP] Starting time sync...")
     ntptime.host = 'ntp.aliyun.com'  # 默认NTP服务器
-    print(f"[NTP] 使用NTP服务器: {ntptime.host}")
+    print(f"[NTP] Using NTP server: {ntptime.host}")
     
     # 看门狗已移至主循环统一管理，NTP模块不再需要单独处理
     
@@ -157,16 +157,16 @@ def sync_and_set_time():
             # 设置RTC
             machine.RTC().datetime((utc[0], utc[1], utc[2], utc[6]+1, utc[3], utc[4], utc[5], 0))
             
-            print(f"[NTP] 本地时间: {local_time[0]}-{local_time[1]:02d}-{local_time[2]:02d} {local_time[3]:02d}:{local_time[4]:02d}")
+            print(f"[NTP] Local time: {local_time[0]}-{local_time[1]:02d}-{local_time[2]:02d} {local_time[3]:02d}:{local_time[4]:02d}")
             gc.collect()
             return True
             
         except Exception as e:
-            print(f"[NTP] 重试 {i+1}/3: {e}")
+            print(f"[NTP] Retry {i+1}/3: {e}")
             # 等待重试
             time.sleep(3)
     
-    print("\033[1;31m[NTP] 时间同步失败\033[0m")
+    print("\033[1;31m[NTP] Time sync failed\033[0m")
     gc.collect()
     return False
 
@@ -185,12 +185,12 @@ def connect_wifi():
     - True: WiFi连接成功
     - False: WiFi连接失败
     """
-    print("[WiFi] 开始连接WiFi...")
+    print("[WiFi] Starting WiFi connection...")
     
     # 看门狗已移至主循环统一管理，WiFi模块不再需要单独处理
     
     # 蓝牙功能已移除，不再需要蓝牙资源管理
-    print("[WiFi] 蓝牙功能已移除，跳过蓝牙资源管理")
+    print("[WiFi] Bluetooth functionality removed, skipping resource management")
     
     wlan = network.WLAN(network.STA_IF)
     
@@ -202,22 +202,22 @@ def connect_wifi():
     # 激活WLAN接口，添加错误处理
     try:
         if not wlan.active():
-            print("[WiFi] 激活WLAN接口...")
+            print("[WiFi] Activating WLAN interface...")
             wlan.active(True)
             time.sleep_ms(1000)  # 增加等待时间确保接口完全激活
             
             # 验证接口是否成功激活
             if not wlan.active():
-                print("\033[1;31m[WiFi] WLAN接口激活失败\033[0m")
+                print("\033[1;31m[WiFi] WLAN interface activation failed\033[0m")
                 return False
     except Exception as e:
-        print(f"\033[1;31m[WiFi] WLAN接口激活异常: {e}\033[0m")
+        print(f"\033[1;31m[WiFi] WLAN interface activation error: {e}\033[0m")
         return False
 
     # 扫描网络
     scanned_networks = _scan_for_ssids(wlan)
     if not scanned_networks:
-        print("\033[1;31m[WiFi] 未找到配置的网络\033[0m")
+        print("\033[1;31m[WiFi] No configured networks found\033[0m")
         wlan.active(False)
         return False
 
@@ -227,14 +227,14 @@ def connect_wifi():
     connectable_configs = [c for c in _wifi_networks if c['ssid'] in available_ssids]
 
     if not connectable_configs:
-        print("\033[1;31m[WiFi] 没有匹配的网络配置\033[0m")
+        print("\033[1;31m[WiFi] No matching network configurations\033[0m")
         wlan.active(False)
         return False
 
     # 按信号强度排序
     connectable_configs.sort(key=lambda c: rssi_map[c['ssid']], reverse=True)
     
-    print("[WiFi] 可用网络（按信号强度排序）:")
+    print("[WiFi] Available networks (by signal strength):")
     for network_config in connectable_configs:
         print(f"  - {network_config['ssid']} (RSSI: {rssi_map[network_config['ssid']]} dBm)")
 
@@ -243,7 +243,7 @@ def connect_wifi():
         ssid = network_config["ssid"]
         password = network_config["password"]
         
-        print(f"\n[WiFi] 正在连接: {ssid}")
+        print(f"\n[WiFi] Connecting to: {ssid}")
         wlan.connect(ssid, password)
         
         start_time = time.time()
@@ -253,14 +253,14 @@ def connect_wifi():
             # 看门狗已移至主循环统一管理
             
             if time.time() - start_time > connection_timeout:
-                print(f"\033[1;31m[WiFi] 连接 {ssid} 超时\033[0m")
+                print(f"\033[1;31m[WiFi] Connection {ssid} timeout\033[0m")
                 break
             time.sleep(1)
 
         if wlan.isconnected():
             ip_address = wlan.ifconfig()[0]
-            print(f"\033[1;32m[WiFi] 成功连接: {ssid}\033[0m")
-            print(f"\033[1;34m[WiFi] IP地址: {ip_address}\033[0m")
+            print(f"\033[1;32m[WiFi] Successfully connected: {ssid}\033[0m")
+            print(f"\033[1;34m[WiFi] IP address: {ip_address}\033[0m")
             
             # 同步时间
             sync_and_set_time()
@@ -269,7 +269,7 @@ def connect_wifi():
             gc.collect()
             return True
 
-    print("\n\033[1;31m[WiFi] 所有网络连接失败\033[0m")
+    print("\n\033[1;31m[WiFi] All network connections failed\033[0m")
     wlan.active(False)
     return False
 
@@ -307,7 +307,7 @@ def disconnect_wifi():
     if wlan.isconnected():
         wlan.disconnect()
         wlan.active(False)
-        print("[WiFi] WiFi连接已断开")
+        print("[WiFi] WiFi connection disconnected")
         return True
     return False
 
@@ -316,6 +316,6 @@ if __name__ == "__main__":
     connection_successful = connect_wifi()
 
     if connection_successful:
-        print("\n=== 网络设置和时间同步完成 ===")
+        print("\n=== Network setup and time sync complete ===")
     else:
-        print("\n=== 网络连接失败，设备将进入低功耗模式 ===")
+        print("\n=== Network connection failed, device entering low power mode ===")

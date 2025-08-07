@@ -213,4 +213,4 @@ def get_config(section: str = None, key: str = None, default=None):
 
 gc.collect()
 
-print("[Config] 配置模块加载完成。")
+print("[Config] Configuration module loaded.")
