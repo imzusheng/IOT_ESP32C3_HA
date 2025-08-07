@@ -237,20 +237,71 @@ def check_tool(executable):
 
 # ==================== 命令执行 ====================
 
-def execute_mpremote_command(port, *cmd_args, timeout=60):
-    """执行 mpremote 命令并返回结果"""
+def execute_mpremote_command(port, *cmd_args, timeout=60, retries=1, verbose=False):
+    """执行 mpremote 命令并返回结果，支持重试和详细错误分析"""
     command = [MPREMOTE_EXECUTABLE, 'connect', port, *cmd_args]
-    try:
-        result = subprocess.run(
-            command, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=timeout
-        )
-        return result.returncode, result.stdout, result.stderr
-    except subprocess.TimeoutExpired:
-        print_message(f"命令超时: {' '.join(command)}", "ERROR")
-        return -1, "", "命令执行超时"
-    except Exception as e:
-        print_message(f"命令执行异常: {e}", "ERROR")
-        return -1, "", str(e)
+    
+    for attempt in range(retries):
+        if attempt > 0 and verbose:
+            print_message(f"命令重试 {attempt + 1}/{retries}: {' '.join(cmd_args)}", "INFO")
+        
+        try:
+            result = subprocess.run(
+                command, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=timeout
+            )
+            
+            # 成功执行或非连接相关错误直接返回
+            if result.returncode == 0 or not _is_connection_error(result.stderr):
+                return result.returncode, result.stdout, result.stderr
+            
+            # 连接错误且还有重试机会
+            if attempt < retries - 1:
+                if verbose:
+                    print_message(f"连接错误，{2}秒后重试: {result.stderr.strip()[:100]}", "WARNING")
+                time.sleep(2)
+                continue
+            
+            return result.returncode, result.stdout, result.stderr
+            
+        except subprocess.TimeoutExpired:
+            error_msg = f"命令超时 ({timeout}s): {' '.join(cmd_args)}"
+            if attempt < retries - 1:
+                if verbose: print_message(f"{error_msg}，重试中...", "WARNING")
+                time.sleep(1)
+                continue
+            else:
+                print_message(error_msg, "ERROR")
+                return -1, "", "命令执行超时"
+                
+        except Exception as e:
+            error_msg = f"命令执行异常: {e}"
+            if attempt < retries - 1:
+                if verbose: print_message(f"{error_msg}，重试中...", "WARNING")
+                time.sleep(1)
+                continue
+            else:
+                print_message(error_msg, "ERROR")
+                return -1, "", str(e)
+    
+    return -1, "", "所有重试都失败了"
+
+def _is_connection_error(stderr):
+    """判断错误是否为连接相关错误"""
+    connection_error_keywords = [
+        "could not enter raw repl",
+        "could not connect",
+        "device not found",
+        "permission denied",
+        "access denied",
+        "device busy",
+        "no such file or directory",
+        "connection failed",
+        "timeout",
+        "device disconnected"
+    ]
+    
+    stderr_lower = stderr.lower()
+    return any(keyword in stderr_lower for keyword in connection_error_keywords)
 
 # ==================== 编译系统 ====================
 
@@ -313,23 +364,108 @@ def compile_project(verbose=False, exclude_dirs=None):
 
 # ==================== 设备控制 ====================
 
-def prepare_device(port, verbose=False):
-    """准备设备以接收命令，尝试多种方法唤醒"""
+def hardware_reset_device(port, verbose=False):
+    """通过DTR/RTS信号对ESP32设备进行硬重置"""
+    if not SERIAL_AVAILABLE:
+        if verbose: print_message("pyserial不可用，跳过硬重置", "WARNING")
+        return False
+    
+    try:
+        if verbose: print_message(f"正在对端口 {port} 执行硬重置...", "INFO")
+        with serial.Serial(port, 115200, timeout=1) as ser:
+            # ESP32硬重置序列：拉低DTR和RTS
+            ser.dtr = False
+            ser.rts = False
+            time.sleep(0.1)
+            
+            # 释放DTR，保持RTS低电平进入下载模式
+            ser.dtr = True
+            time.sleep(0.1)
+            
+            # 释放RTS，让设备正常启动
+            ser.rts = True
+            time.sleep(0.5)  # 等待设备启动
+            
+        if verbose: print_message("硬重置完成", "SUCCESS")
+        return True
+    except Exception as e:
+        if verbose: print_message(f"硬重置失败: {e}", "WARNING")
+        return False
+
+def check_device_status(port, verbose=False):
+    """检查设备状态和连接性"""
+    if verbose: print_message("检查设备状态...", "INFO")
+    
+    # 尝试简单的ping命令
+    test_script = "print('DEVICE_OK')"
+    returncode, stdout, stderr = execute_mpremote_command(
+        port, "exec", test_script, timeout=5, retries=2, verbose=verbose
+    )
+    
+    if returncode == 0 and "DEVICE_OK" in stdout:
+        if verbose: print_message("设备状态正常", "SUCCESS")
+        return True
+    else:
+        if verbose: print_message(f"设备状态异常: {stderr.strip()}", "WARNING")
+        return False
+
+def prepare_device(port, verbose=False, max_retries=3):
+    """多阶段设备准备策略，包含硬重置、软重置和重试机制"""
     print_message("正在准备设备...", "INFO")
-    # 尝试1: resume 命令，适用于从 REPL 中断的设备
-    returncode, _, stderr = execute_mpremote_command(port, "resume", timeout=TIMEOUT_SHORT)
-    if returncode == 0:
-        if verbose: print_message("设备准备成功 (resume)", "SUCCESS")
-        return True
-
-    # 尝试2: exec pass 命令，适用于某些卡在软重启的设备
-    if verbose: print_message("尝试使用 exec 命令准备设备...", "INFO")
-    returncode, _, stderr = execute_mpremote_command(port, "exec", "pass", timeout=TIMEOUT_SHORT)
-    if returncode == 0:
-        if verbose: print_message("设备准备成功 (exec)", "SUCCESS")
-        return True
-
-    print_message(f"设备准备失败: {stderr.strip()}", "ERROR")
+    
+    for attempt in range(max_retries):
+        if attempt > 0:
+            print_message(f"第 {attempt + 1} 次尝试连接设备...", "INFO")
+        
+        # 阶段1: 发送中断信号，停止当前运行的程序
+        if verbose: print_message("发送中断信号...", "INFO")
+        try:
+            subprocess.run([MPREMOTE_EXECUTABLE, 'connect', port, 'exec', '\x03'], 
+                          capture_output=True, timeout=2, text=True)
+        except subprocess.TimeoutExpired:
+            pass  # 中断信号不需要等待响应
+        time.sleep(3)  # 等待设备完全停止
+        
+        # 阶段2: 尝试exec命令
+        if verbose: print_message("尝试exec命令...", "INFO")
+        returncode, _, stderr = execute_mpremote_command(port, "exec", "pass", timeout=TIMEOUT_SHORT, retries=2, verbose=verbose)
+        if returncode == 0:
+            if check_device_status(port, verbose):
+                if verbose: print_message("设备准备成功 (exec)", "SUCCESS")
+                return True
+        
+        # 阶段3: 尝试软重置
+        if verbose: print_message("尝试软重置...", "INFO")
+        returncode, _, stderr = execute_mpremote_command(port, "reset", timeout=TIMEOUT_SHORT, retries=2, verbose=verbose)
+        if returncode == 0:
+            time.sleep(2)  # 等待设备重启
+            if check_device_status(port, verbose):
+                if verbose: print_message("设备准备成功 (软重置)", "SUCCESS")
+                return True
+        
+        # 阶段4: 硬重置（最后手段）
+        if attempt < max_retries - 1:  # 不在最后一次尝试硬重置
+            if verbose: print_message("尝试硬重置...", "INFO")
+            if hardware_reset_device(port, verbose):
+                time.sleep(3)  # 等待设备完全启动
+                if check_device_status(port, verbose):
+                    if verbose: print_message("设备准备成功 (硬重置)", "SUCCESS")
+                    return True
+        
+        # 如果不是最后一次尝试，等待一段时间再重试
+        if attempt < max_retries - 1:
+            wait_time = 2 * (attempt + 1)  # 递增等待时间
+            if verbose: print_message(f"等待 {wait_time} 秒后重试...", "INFO")
+            time.sleep(wait_time)
+    
+    # 所有尝试都失败了
+    print_message("设备准备失败，已尝试所有方法", "ERROR")
+    print_message("可能的解决方案:", "INFO")
+    print_message("1. 检查USB连接线是否正常", "INFO")
+    print_message("2. 检查设备驱动是否正确安装", "INFO")
+    print_message("3. 尝试手动重启设备", "INFO")
+    print_message("4. 检查设备是否被其他程序占用", "INFO")
+    print_message("5. 尝试使用不同的波特率或连接参数", "INFO")
     return False
 
 def clean_device(port, verbose=False):
@@ -384,7 +520,13 @@ for f in ('/boot.py', '/main.py'):
         pass
 print("清理完成")
 """
-    returncode, stdout, stderr = execute_mpremote_command(port, "exec", clean_script, timeout=TIMEOUT_LONG)
+    returncode, stdout, stderr = execute_mpremote_command(
+        port, "exec", clean_script, 
+        timeout=TIMEOUT_LONG, 
+        retries=2, 
+        verbose=verbose
+    )
+    
     if verbose:
         print_message("--- 设备端清理日志 ---", "INFO")
         print(stdout)
@@ -397,10 +539,16 @@ print("清理完成")
         print_message(f"设备清理失败: {stderr}", "ERROR")
         return False
 
-def reset_device(port):
+def reset_device(port, verbose=False):
     """软重置设备"""
     print_message("正在重置设备...", "INFO")
-    returncode, _, stderr = execute_mpremote_command(port, "reset", timeout=TIMEOUT_SHORT)
+    returncode, _, stderr = execute_mpremote_command(
+        port, "reset", 
+        timeout=TIMEOUT_SHORT, 
+        retries=2, 
+        verbose=verbose
+    )
+    
     if returncode == 0:
         print_message("设备重置完成", "SUCCESS")
         time.sleep(2)  # 等待设备重启
@@ -433,9 +581,12 @@ def monitor_device(port):
 
 def upload_file(port, local_path, remote_path, verbose=False):
     """上传单个文件并使用MicroPython兼容的方式进行验证"""
-    # 执行上传命令
+    # 执行上传命令（带重试）
     returncode, _, stderr = execute_mpremote_command(
-        port, "fs", "cp", str(local_path), f":{remote_path}", timeout=TIMEOUT_MEDIUM
+        port, "fs", "cp", str(local_path), f":{remote_path}", 
+        timeout=TIMEOUT_MEDIUM, 
+        retries=2, 
+        verbose=verbose
     )
     if returncode != 0:
         if verbose: print_message(f"上传命令失败: {remote_path} - {stderr.strip()}", "ERROR")
@@ -451,7 +602,12 @@ try:
 except OSError:
     print('NOT_EXISTS')
 """
-    returncode, stdout, stderr = execute_mpremote_command(port, "exec", verify_script, timeout=TIMEOUT_SHORT)
+    returncode, stdout, stderr = execute_mpremote_command(
+        port, "exec", verify_script, 
+        timeout=TIMEOUT_SHORT, 
+        retries=2, 
+        verbose=verbose
+    )
 
     if returncode == 0 and "EXISTS" in stdout:
         return True
