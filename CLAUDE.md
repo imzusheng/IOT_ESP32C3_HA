@@ -182,7 +182,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### 构建和部署
 
-使用构建脚本编译和部署项目：
+使用 [`build.py`](build.py) 脚本编译和部署项目：
 
 ```bash
 # 构建项目（排除测试文件）
@@ -191,27 +191,60 @@ python build.py
 # 构建项目（包含测试文件）
 python build.py --test
 
-# 部署到设备（使用rshell）
+# 仅编译不部署
+python build.py --compile
+
+# 上传并监听设备输出
+python build.py --upload
+
+# 指定端口上传
+python build.py --upload --port COM3
+
+# 启用完整REPL交互模式
+python build.py --upload --repl
+
+# 使用原始REPL模式（调试用）
+python build.py --upload --raw-repl
+```
+
+构建脚本功能：
+- **编译**: 使用 mpy-cross 编译 Python 文件为 .mpy 格式（排除 boot.py 和 main.py）
+- **上传**: 使用 mpremote 自动检测 ESP32 设备并上传文件
+- **监控**: 实时监控设备串口输出，支持中文编码处理
+- **设备检测**: 自动识别 ESP32-C3 设备端口（支持多种USB转串口芯片）
+
+### 文件上传到设备
+构建脚本会自动处理文件上传，也可手动使用 MicroPython 工具：
+```bash
+# 使用 mpremote（推荐）
+mpremote connect <port> fs cp -r dist/ /
+
+# 使用 rshell
 rshell cp dist/* /pyboard/ -r
 ```
 
-### 文件上传到设备
-使用MicroPython工具上传文件到ESP32C3：
-```bash
-# 使用rshell或类似工具
-rshell cp src/boot.py /pyboard/boot.py
-rshell cp src/config.py /pyboard/config.py
-rshell cp src/main.py /pyboard/main.py
-rshell cp src/lib/ /pyboard/lib/ -r
-```
+### 设备监控和调试
 
-### 设备测试
-主应用程序包含内存监控，每30次循环记录日志。通过串口查看：
-- WiFi连接状态
-- MQTT连接状态
-- 内存使用报告
-- 系统日志
-- LED状态指示
+#### 实时监控
+构建脚本支持多种监控模式：
+- **安全监控模式**: 智能处理中文编码，避免特殊字符导致的崩溃
+- **原始REPL模式**: 查看所有原始输出（可能遇到编码问题）
+- **交互REPL模式**: 完整的Python交互环境，可执行代码和查看状态
+
+#### 监控指标
+通过串口查看：
+- WiFi连接状态和网络扫描结果
+- MQTT连接状态和消息发布
+- 内存使用报告和垃圾回收统计
+- 系统运行时间和错误计数
+- LED状态指示和系统状态转换
+- CPU温度监控和看门狗状态
+
+#### 调试技巧
+- 使用 `--verbose` 参数查看详细构建信息
+- 使用 `--repl` 参数进入完整交互模式进行远程调试
+- 监控模式下按 Ctrl+C 停止监听
+- 查看 ISSUE.md 了解已知问题和解决方案
 
 ## LED Preset Manager
 
@@ -453,6 +486,28 @@ led_pins = get_config_value(config, 'daemon', 'config', 'led_pins')
 - **测试代码**: 不要添加测试代码和文件
 - **文档**: 不要擅自添加说明文档
 - **语言**: 始终使用中文进行代码注释和文档
+
+## 常见问题和解决方案
+
+### WiFi连接问题
+- **问题**: WiFi扫描显示空字符串SSID的相似网络
+- **解决**: 这是正常现象，系统会自动过滤无效网络并尝试连接配置的网络列表
+
+### LED状态指示问题
+- **问题**: 进入错误状态时LED未按预期闪烁
+- **解决**: 检查守护进程是否正确启动，确认LED引脚配置与硬件连接一致
+
+### 编码问题
+- **问题**: mpremote 监控时出现中文编码错误
+- **解决**: 使用构建脚本的 `--raw-repl` 参数或 `--repl` 参数进行调试
+
+### 网络超时问题
+- **问题**: MQTT连接失败显示 EHOSTUNREACH 错误
+- **解决**: 检查网络连接和MQTT服务器配置，确认IP地址和端口正确
+
+### 构建脚本问题
+- **问题**: mpremote 因特殊字符崩溃
+- **解决**: 构建脚本已实现智能编码处理，使用安全监控模式避免崩溃
 
 ## Monitoring and Debugging
 

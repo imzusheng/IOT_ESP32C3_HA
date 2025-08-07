@@ -99,7 +99,7 @@ def _scan_for_ssids(wlan):
                 
                 if ssid in target_ssids:
                     scanned_networks.append((ssid, rssi))
-                    print(f"[WiFi] ✓ 发现配置网络: {ssid:<20} | RSSI: {rssi} dBm")
+                    print(f"[WiFi] [OK] 发现配置网络: {ssid:<20} | RSSI: {rssi} dBm")
                 else:
                     # 检查是否有相似的SSID（用于调试）
                     for target_ssid in target_ssids:
@@ -107,7 +107,7 @@ def _scan_for_ssids(wlan):
                         if (ssid and target_ssid and len(ssid.strip()) > 0 and len(target_ssid.strip()) > 0 and 
                             len(ssid) >= 3 and len(target_ssid) >= 3 and
                             (target_ssid.lower() in ssid.lower() or ssid.lower() in target_ssid.lower())):
-                            print(f"[WiFi] ! 发现相似网络: '{ssid}' (目标: '{target_ssid}')")
+                            print(f"[WiFi] 发现相似网络: '{ssid}' (目标: '{target_ssid}')")
                     
             except UnicodeError:
                 try:
@@ -117,7 +117,7 @@ def _scan_for_ssids(wlan):
                     
                     if ssid in target_ssids:
                         scanned_networks.append((ssid, res[3]))
-                        print(f"[WiFi] ✓ 发现配置网络(Latin-1): {ssid:<20} | RSSI: {res[3]} dBm")
+                        print(f"[WiFi] [OK] 发现配置网络(Latin-1): {ssid:<20} | RSSI: {res[3]} dBm")
                 except:
                     print(f"[WiFi] 网络 {i+1}: 无法解码SSID")
             except Exception as e:

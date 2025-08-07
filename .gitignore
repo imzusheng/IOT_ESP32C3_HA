@@ -3,4 +3,7 @@ __pycache__
 .claude
 .vscode
 .cline*
+.trae
+.port_cache
+.upload_cache.json
 dist
