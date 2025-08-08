@@ -1242,27 +1242,89 @@ def reset_device(port, verbose=False):
         return False
 
 def start_interactive_repl(port):
-    """启动独立的交互式REPL会话"""
+    """启动交互式REPL会话，自动绕过编码错误"""
     print_message(f"启动交互式REPL会话 (端口: {port})", "INFO")
     print_message("按 Ctrl+] 或 Ctrl+X 退出REPL", "INFO")
+    print_message("提示: 已启用编码错误自动处理，不会因UTF-8错误而崩溃", "INFO")
+    
     try:
-        # 使用简单的subprocess.run，让mpremote自己处理终端
-        subprocess.run(
+        # 方法1: 使用环境变量和错误处理
+        import os
+        env = os.environ.copy()
+        env['PYTHONIOENCODING'] = 'utf-8:replace'  # 设置Python的编码错误处理
+        
+        # 尝试直接运行mpremote
+        process = subprocess.Popen(
             [MPREMOTE_EXECUTABLE, 'connect', port, 'repl'],
-            check=True,
+            env=env,
             encoding='utf-8',
-            errors='ignore'
+            errors='replace',  # 关键：替换无法解码的字符
+            text=True,
+            # 不重定向stdin/stdout/stderr，让系统直接处理交互
         )
-    except subprocess.CalledProcessError as e:
-        # mpremote正常退出时的异常，不视为错误
-        if e.returncode == 0 or "exit" in str(e).lower():
-            pass  # 正常退出
-        else:
-            print_message(f"REPL执行错误: {e}", "WARNING")
+        
+        # 等待进程结束
+        process.wait()
+        print_message("REPL会话已结束", "INFO")
+        
+    except UnicodeDecodeError as e:
+        print_message("检测到UTF-8编码错误，尝试备用方案...", "WARNING")
+        # 方法2: 使用原始字节处理
+        try:
+            print_message("启动备用REPL模式 (原始字节处理)", "INFO")
+            process = subprocess.Popen(
+                [MPREMOTE_EXECUTABLE, 'connect', port, 'repl'],
+                env=env,
+                # 不设置encoding，使用原始字节
+                # 但仍然设置环境变量
+            )
+            process.wait()
+            print_message("备用REPL会话已结束", "INFO")
+        except Exception as e2:
+            print_message(f"备用REPL模式也失败: {e2}", "ERROR")
+            print_message("建议使用原始REPL模式: python build_m.py --raw-repl", "INFO")
+        
+    except subprocess.TimeoutExpired:
+        print_message("REPL会话超时", "WARNING")
+        
     except KeyboardInterrupt:
         print_message("\nREPL会话已由用户中断", "INFO")
+        
     except Exception as e:
         print_message(f"REPL启动失败: {e}", "ERROR")
+        print_message("建议尝试以下解决方案:", "INFO")
+        print_message("  1. 检查设备连接是否正常", "INFO")
+        print_message("  2. 重启设备后重试", "INFO")
+        print_message("  3. 检查mpremote工具是否正确安装", "INFO")
+        print_message("  4. 尝试使用原始REPL模式: python build_m.py --raw-repl", "INFO")
+
+
+def start_raw_repl(port):
+    """启动原始REPL会话，显示所有原始输出"""
+    print_message(f"启动原始REPL会话 (端口: {port})", "INFO")
+    print_message("按 Ctrl+] 或 Ctrl+X 退出REPL", "INFO")
+    print_message("警告: 原始模式可能显示编码错误，但可以看到所有输出", "WARNING")
+    
+    try:
+        # 直接运行mpremote，不进行任何编码处理
+        process = subprocess.Popen(
+            [MPREMOTE_EXECUTABLE, 'connect', port, 'repl'],
+            # 不设置encoding和errors，使用原始字节
+        )
+        
+        # 等待进程结束
+        process.wait()
+        print_message("原始REPL会话已结束", "INFO")
+        
+    except subprocess.TimeoutExpired:
+        print_message("REPL会话超时", "WARNING")
+        
+    except KeyboardInterrupt:
+        print_message("\nREPL会话已由用户中断", "INFO")
+        
+    except Exception as e:
+        print_message(f"原始REPL启动失败: {e}", "ERROR")
+
 
 def monitor_device(port):
     """启动设备输出监控"""
@@ -1403,17 +1465,23 @@ def main():
   python %(prog)s -u             # 仅上传 (智能同步)
   python %(prog)s -u --clean     # 清理设备后，再进行智能同步上传
   python %(prog)s --clean --full-upload # 清理设备后，再进行强制全量上传
-  python %(prog)s -r             # 仅连接并进入交互式REPL
+  python %(prog)s -r             # 仅连接并进入交互式REPL (自动处理编码错误)
   python %(prog)s -m             # 仅连接并监控设备输出
   python %(prog)s --diagnose     # 诊断设备安全模式状态
   python %(prog)s --clean-cache  # 清理本地缓存
   python %(prog)s -p COM3        # 手动指定端口
+  
+编码错误处理:
+  - REPL模式 (-r) 已内置编码错误自动处理，遇到UTF-8错误时会自动替换字符
+  - 原始REPL模式 (--raw-repl) 显示所有原始输出，可能看到编码错误但信息最完整
+  - 两种模式都不会因编码问题而崩溃，可根据需要选择使用
 """
     )
     group = parser.add_mutually_exclusive_group()
     group.add_argument("-c", "--compile", action="store_true", help="仅编译 src 目录到 dist")
     group.add_argument("-u", "--upload", action="store_true", help="仅上传 dist 目录到设备 (智能同步)")
-    group.add_argument("-r", "--repl", action="store_true", help="仅连接并进入交互式REPL")
+    group.add_argument("-r", "--repl", action="store_true", help="仅连接并进入交互式REPL (自动处理编码错误)")
+    group.add_argument("--raw-repl", action="store_true", help="仅连接并进入原始REPL模式 (显示所有原始输出)")
     group.add_argument("-m", "--monitor", action="store_true", help="仅连接并监控设备输出")
     group.add_argument("--diagnose", action="store_true", help="诊断设备安全模式状态并提供解决方案")
     group.add_argument("--clean-cache", action="store_true", help="清理本地端口和上传缓存文件")
@@ -1441,8 +1509,8 @@ def main():
         return
 
     # 需要与设备交互的操作
-    is_device_action = args.upload or args.repl or args.monitor or args.clean or args.diagnose or \
-                       not any([args.compile, args.repl, args.monitor, args.clean_cache, args.diagnose])
+    is_device_action = args.upload or args.repl or args.raw_repl or args.monitor or args.clean or args.diagnose or \
+                       not any([args.compile, args.repl, args.raw_repl, args.monitor, args.clean_cache, args.diagnose])
 
     if not is_device_action:
         parser.print_help()
@@ -1459,6 +1527,9 @@ def main():
 
     if args.repl:
         start_interactive_repl(device_port)
+        return
+    if args.raw_repl:
+        start_raw_repl(device_port)
         return
     if args.monitor:
         monitor_device(device_port)
@@ -1502,7 +1573,7 @@ def main():
         reset_device(device_port)
 
     # 默认流程(无-u, -c, -r, -m等独立指令时)上传后进入监控模式
-    if not any([args.upload, args.compile, args.repl, args.monitor, args.clean, args.clean_cache]):
+    if not any([args.upload, args.compile, args.repl, args.raw_repl, args.monitor, args.clean, args.clean_cache]):
         print_message("--- 开始监控设备输出 ---", "HEADER")
         monitor_device(device_port)
 

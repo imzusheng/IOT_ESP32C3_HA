@@ -274,9 +274,9 @@ def _monitor_callback(timer):
             _error_count = 0
             print("[Daemon] Error counter reset")
         
-        # 任务5：系统状态记录（调整频率，减少MQTT负载）
-        if _monitor_count % 50 == 0:  # 从30次改为50次
-            _log_system_status()
+        # 任务5：系统状态记录（已屏蔽，避免与main.py重复发送）
+        # if _monitor_count % 50 == 0:  # 从30次改为50次
+        #     _log_system_status()
         
         # 任务6：LED状态控制
         if not _safe_mode_active:

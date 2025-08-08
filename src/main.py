@@ -353,7 +353,7 @@ def handle_safe_mode(mqtt_client=None):
 # 主循环
 # =============================================================================
 
-def main_loop(sys_config, mqtt_client):
+def main_loop(sys_config, mqtt_client, main_start_time):
     """主循环 - 使用状态机模式和优化内存管理"""
     print("[Main] Starting state machine main loop")
     
@@ -395,7 +395,7 @@ def main_loop(sys_config, mqtt_client):
             
             # 5. 定期状态报告
             if loop_count % status_interval == 0:
-                _perform_status_report(loop_count, mqtt_client, health_cache, status_cache)
+                _perform_status_report(loop_count, mqtt_client, health_cache, status_cache, main_start_time)
             
             # 6. 内存管理和优化
             if loop_count % 100 == 0:  # 每100次循环执行一次内存优化
@@ -545,12 +545,15 @@ def _handle_recovery_state(sys_config, mqtt_client):
         print("[Main] Network recovery failed")
         state_machine.handle_event(state_machine.StateEvent.RECOVERY_FAILED)
 
-def _perform_status_report(loop_count, mqtt_client, health_cache, status_cache):
+def _perform_status_report(loop_count, mqtt_client, health_cache, status_cache, main_start_time):
     """执行状态报告"""
     if not (health_cache and mqtt_client and mqtt_client.is_connected):
         return
     
     try:
+        # 计算系统运行时间
+        uptime = time.ticks_diff(time.ticks_ms(), main_start_time) // 1000
+        
         # 使用缓存字符串构建状态消息
         daemon_status = status_cache['active_str'] if health_cache.get('daemon', {}).get('active', False) else status_cache['inactive_str']
         wdt_status = status_cache['enabled_str'] if _wdt else status_cache['disabled_str']
@@ -562,8 +565,8 @@ def _perform_status_report(loop_count, mqtt_client, health_cache, status_cache):
         
         # 构建状态消息
         status_msg = utils.format_string(
-            "Loop:{},state:{},memory:{:.1f}%,temp:{},daemon:{},watchdog:{}",
-            loop_count, current_state, memory_percent, temp_str, daemon_status, wdt_status
+            "Loop:{},state:{},uptime:{}s,memory:{:.1f}%,temp:{},daemon:{},watchdog:{}",
+            loop_count, current_state, uptime, memory_percent, temp_str, daemon_status, wdt_status
         )
         
         mqtt_client.log("INFO", status_msg)
@@ -603,6 +606,9 @@ def main():
     """主程序入口 - 集成状态机管理"""
     try:
         print("=== ESP32-C3 IoT Device Starting ===")
+        
+        # 记录系统启动时间
+        main_start_time = time.ticks_ms()
         
         # 获取状态机实例
         sm = state_machine.get_state_machine()
@@ -676,7 +682,7 @@ def main():
             state_machine.handle_event(state_machine.StateEvent.NETWORK_SUCCESS)
         
         # 进入主循环
-        main_loop(sys_config, mqtt_client)
+        main_loop(sys_config, mqtt_client, main_start_time)
         
     except Exception as e:
         print(f"[Main] Main program error: {e}")
