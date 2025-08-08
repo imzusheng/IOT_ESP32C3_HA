@@ -315,7 +315,7 @@ def check_system_health():
         
         # 检查温度状态
         temp = utils.get_temperature()
-        temp_status = {'value': temp, 'celsius': f"{temp:.1f}°C" if temp is not None else "N/A"}
+        temp_status = {'value': temp, 'celsius': f"{temp:.1f}" if temp is not None else "N/A"}
         
         # 使用预分配的字典结构，避免每次创建新对象
         health_data = {

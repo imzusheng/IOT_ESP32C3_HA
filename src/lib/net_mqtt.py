@@ -147,7 +147,6 @@ class MqttServer:
             self.is_connected = True
             self.reset_backoff()
             self.last_connect_time = current_time
-            print("\033[1;32m[MQTT] MQTT connection successful\033[0m")
             self.log("INFO", f"设备在线，ID: {self.client_id}")
             return True
             

@@ -172,7 +172,7 @@ def _perform_health_check():
             health_status['details']['temperature'] = '读取失败'
         elif temp > 70:  # ESP32C3最高85°C，70°C作为警告线
             health_status['temperature'] = False
-            health_status['details']['temperature'] = f'温度过高: {temp:.1f}°C'
+            health_status['details']['temperature'] = f'温度过高: {temp:.1f}'
         
         # 检查内存 - 使用utils模块的函数
         memory = utils.get_memory_usage()
@@ -273,7 +273,7 @@ def _monitor_callback(timer):
         if _error_count > 0 and time.ticks_diff(current_time, _last_error_time) > 60000:  # 1分钟重置
             _error_count = 0
             print("[Daemon] Error counter reset")
-        
+
         # 任务5：系统状态记录（已屏蔽，避免与main.py重复发送）
         # if _monitor_count % 50 == 0:  # 从30次改为50次
         #     _log_system_status()
@@ -373,7 +373,7 @@ def _log_system_status():
         memory = utils.get_memory_usage()
         
         # 使用更紧凑的消息构建方式
-        status_msg = f"运行时间:{uptime}s,温度:{temp:.1f}°C" if temp else f"运行时间:{uptime}s,温度:未知"
+        status_msg = f"运行时间:{uptime}s,温度:{temp:.1f}" if temp else f"运行时间:{uptime}s,温度:未知"
         if memory:
             status_msg += f",内存:{memory['percent']:.1f}%"
         else:
