@@ -156,7 +156,6 @@ def create_mqtt_client(client_id, broker, port=1883, topic='lzs/esp32c3', keepal
         
         # 连接MQTT
         if mqtt_client.connect():
-            print("[Main] MQTT connection successful")
             return mqtt_client
         else:
             print("[Main] MQTT connection failed")
@@ -634,7 +633,6 @@ def main():
             sys_daemon.force_safe_mode("网络连接失败")
             print("[Main] Safe mode activated, LED should show SOS pattern")
         else:
-            print("[Main] Network connection successful")
             state_machine.handle_event(state_machine.StateEvent.NETWORK_SUCCESS)
         
         # 创建MQTT客户端
