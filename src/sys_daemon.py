@@ -130,10 +130,10 @@ def set_led_status(status: str):
         return False
 
 def update_safe_mode_led():
-    """更新安全模式LED状态 - 使用LED预设管理器"""
+    """更新安全模式LED状态 - 使用LED预设管理器的非阻塞更新"""
     try:
         from lib.sys import led as led_preset
-        led_preset.sos_pattern(0)  # LED1执行SOS模式
+        led_preset.update()  # 调用非阻塞LED更新
         return True
     except Exception as e:
         print(f"[Daemon] Safe mode LED update failed: {e}")
@@ -628,11 +628,10 @@ def test_led_functionality():
         print(f"[Daemon] LED test failed: {e}")
         return False
 
-def update_safe_mode_led():
+def update_safe_mode_led_public():
     """更新安全模式LED状态的公共接口"""
     # 调用模块级别的update_safe_mode_led函数
-    from lib.sys import led as led_preset
-    return led_preset.sos_pattern(0)
+    return update_safe_mode_led()
 
 # =============================================================================
 # 初始化

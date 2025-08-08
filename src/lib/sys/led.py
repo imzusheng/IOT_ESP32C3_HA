@@ -42,6 +42,13 @@ class LEDPresetManager:
         self.led2 = machine.Pin(pin2, machine.Pin.OUT)
         
         # 初始化状态
+        self.current_mode = SYSTEM_OFF
+        self.sos_state = 'IDLE'  # SOS状态机: IDLE, THREE_SHORT, THREE_LONG, THREE_SHORT_AGAIN, PAUSE
+        self.sos_step = 0
+        self.sos_last_update = 0
+        self.sos_led_index = 0
+        
+        # 设置初始状态
         self.set_system_status(SYSTEM_OFF)
         
         # print(f"[LED] LED预设管理器初始化完成，引脚: {pin1}, {pin2}")
@@ -62,65 +69,135 @@ class LEDPresetManager:
         
         if status == SYSTEM_NORMAL:
             # 正常运行：LED1亮，LED2灭
+            self.current_mode = SYSTEM_NORMAL
             self.led1.on()
             self.led2.off()
             # print("[LED] 系统状态：正常运行")
             
         elif status == SYSTEM_WARNING:
             # 警告状态：LED1亮，LED2亮
+            self.current_mode = SYSTEM_WARNING
             self.led1.on()
             self.led2.on()
             # print("[LED] 系统状态：警告")
             
         elif status == SYSTEM_ERROR:
             # 错误状态：LED1灭，LED2亮
+            self.current_mode = SYSTEM_ERROR
             self.led1.off()
             self.led2.on()
             # print("[LED] 系统状态：错误")
             
         elif status == SYSTEM_OFF:
             # 关闭状态：LED1灭，LED2灭
+            self.current_mode = SYSTEM_OFF
             self.led1.off()
             self.led2.off()
             # print("[LED] 系统状态：关闭")
             
         elif status == SYSTEM_SAFE_MODE:
-            # 安全模式：SOS模式 - 直接执行SOS闪烁
+            # 安全模式：SOS模式 - 初始化SOS状态机
             # print("[LED] 系统状态：安全模式（SOS模式）")
-            # 直接在LED1上执行SOS模式
-            self._execute_sos_safe_mode()
+            self.current_mode = SYSTEM_SAFE_MODE
+            self.sos_state = 'THREE_SHORT'
+            self.sos_step = 0
+            self.sos_last_update = time.ticks_ms()
+            self.sos_led_index = 0
+            # 初始状态关闭LED
+            self.led1.off()
+            self.led2.off()
             
         else:
             print(f"[LED] Unknown status: {status}")
             self.set_system_status(SYSTEM_OFF)
     
-    def _execute_sos_safe_mode(self):
-        """执行安全模式SOS闪烁 - 优化为非阻塞方式"""
+    def update(self):
+        """非阻塞LED状态更新方法 - 在主循环中调用"""
         try:
-            # 使用现有的SOS模式函数，但优化为单次执行
-            # 三短
-            for _ in range(3):
-                self.led1.on()
-                time.sleep_ms(200)
-                self.led1.off()
-                time.sleep_ms(200)
-            time.sleep_ms(300)
-            # 三长
-            for _ in range(3):
-                self.led1.on()
-                time.sleep_ms(600)
-                self.led1.off()
-                time.sleep_ms(200)
-            time.sleep_ms(300)
-            # 三短
-            for _ in range(3):
-                self.led1.on()
-                time.sleep_ms(200)
-                self.led1.off()
-                time.sleep_ms(200)
-            # print("[LED] SOS模式执行完成")
+            if self.current_mode == SYSTEM_SAFE_MODE:
+                self._update_sos_pattern()
         except Exception as e:
-            print(f"[LED] SOS pattern execution failed: {e}")
+            print(f"[LED] LED update failed: {e}")
+    
+    def _update_sos_pattern(self):
+        """非阻塞SOS模式更新"""
+        current_time = time.ticks_ms()
+        
+        # 获取要控制的LED
+        led = self.led1 if self.sos_led_index == 0 else self.led2
+        
+        if self.sos_state == 'THREE_SHORT':
+            # 三短模式
+            if self.sos_step < 6:  # 3次开 + 3次关
+                if time.ticks_diff(current_time, self.sos_last_update) >= 200:
+                    if self.sos_step % 2 == 0:
+                        led.on()
+                    else:
+                        led.off()
+                    self.sos_step += 1
+                    self.sos_last_update = current_time
+            else:
+                # 三短完成，进入暂停
+                self.sos_state = 'PAUSE'
+                self.sos_step = 0  # 标记这是从三短来的暂停
+                self.sos_last_update = current_time
+                
+        elif self.sos_state == 'THREE_LONG':
+            # 三长模式
+            if self.sos_step < 6:  # 3次开 + 3次关
+                if time.ticks_diff(current_time, self.sos_last_update) >= (600 if self.sos_step % 2 == 0 else 200):
+                    if self.sos_step % 2 == 0:
+                        led.on()
+                    else:
+                        led.off()
+                    self.sos_step += 1
+                    self.sos_last_update = current_time
+            else:
+                # 三长完成，进入暂停
+                self.sos_state = 'PAUSE'
+                self.sos_step = 1  # 标记这是从三长来的暂停
+                self.sos_last_update = current_time
+                
+        elif self.sos_state == 'THREE_SHORT_AGAIN':
+            # 再次三短模式
+            if self.sos_step < 6:  # 3次开 + 3次关
+                if time.ticks_diff(current_time, self.sos_last_update) >= 200:
+                    if self.sos_step % 2 == 0:
+                        led.on()
+                    else:
+                        led.off()
+                    self.sos_step += 1
+                    self.sos_last_update = current_time
+            else:
+                # SOS完成，进入长暂停
+                self.sos_state = 'LONG_PAUSE'
+                self.sos_step = 0
+                self.sos_last_update = current_time
+                
+        elif self.sos_state == 'PAUSE':
+            # 短暂停
+            if time.ticks_diff(current_time, self.sos_last_update) >= 300:
+                if self.sos_step == 0:
+                    # 从三短切换到三长
+                    self.sos_state = 'THREE_LONG'
+                    self.sos_step = 0
+                elif self.sos_step == 1:
+                    # 从三长切换到再次三短
+                    self.sos_state = 'THREE_SHORT_AGAIN'
+                    self.sos_step = 0
+                self.sos_last_update = current_time
+                
+        elif self.sos_state == 'LONG_PAUSE':
+            # 长暂停，然后重新开始SOS
+            if time.ticks_diff(current_time, self.sos_last_update) >= 2000:
+                self.sos_state = 'THREE_SHORT'
+                self.sos_step = 0
+                self.sos_last_update = current_time
+    
+    def _execute_sos_safe_mode(self):
+        """执行安全模式SOS闪烁 - 保持向后兼容性"""
+        # 现在这个方法只是设置状态，实际更新由update()方法处理
+        self.set_system_status(SYSTEM_SAFE_MODE)
     
     def get_status(self):
         """获取LED管理器状态"""
@@ -296,6 +373,12 @@ def set_system_status(status: str):
     """设置系统状态的便捷函数"""
     manager = get_led_manager()
     manager.set_system_status(status)
+
+def update():
+    """非阻塞LED状态更新的便捷函数"""
+    manager = get_led_manager()
+    if manager:
+        manager.update()
 
 # =============================================================================
 # 从led_preset_temp_data.py移植的便捷函数

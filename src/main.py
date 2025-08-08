@@ -13,7 +13,6 @@ ESP32C3主程序 - 重构版本
 import time
 import machine
 import gc
-import ujson
 import net_wifi
 import net_mqtt
 import sys_daemon
@@ -325,8 +324,8 @@ def check_system_health():
 # =============================================================================
 
 def handle_safe_mode(mqtt_client=None):
-    """处理安全模式"""
-    print("[Main] Entering safe mode processing loop")
+    """处理安全模式 - 非阻塞方式"""
+    print("[Main] Entering safe mode processing")
     
     # 如果还没有进入安全模式，则强制进入
     if not sys_daemon.is_safe_mode():
@@ -334,31 +333,16 @@ def handle_safe_mode(mqtt_client=None):
         sys_daemon.force_safe_mode("系统异常")
         print("[Main] Safe mode forced, LED should be showing SOS pattern")
     
-    # 安全模式循环
-    safe_mode_count = 0
-    while sys_daemon.is_safe_mode():
-        try:
-            # 安全模式下也要喂狗
-            feed_watchdog()
-            
-            # 安全模式LED控制 - SOS模式
-            # 使用守护进程的公共接口更新LED状态
-            sys_daemon.update_safe_mode_led()
-            
-            # 短暂延迟，控制SOS闪烁频率
-            time.sleep_ms(100)
-            
-            # 每100次循环检查一次恢复条件
-            safe_mode_count += 1
-            if safe_mode_count % 100 == 0:
-                sys_daemon.check_safe_mode_recovery()
-                if not sys_daemon.is_safe_mode():
-                    print("[Main] Safe mode exited")
-                    break
-                    
-        except Exception as e:
-            print(f"[Main] Safe mode processing error: {e}")
-            time.sleep_ms(500)
+    # 安全模式处理现在由主循环统一处理
+    # 这里只需要确保安全模式状态已设置，LED更新由主循环的led_preset.update()处理
+    print("[Main] Safe mode processing delegated to main loop")
+    
+    # 安全模式下的特殊处理（如果需要）
+    if sys_daemon.is_safe_mode():
+        # 深度垃圾回收
+        for _ in range(2):
+            gc.collect()
+            time.sleep_ms(50)
 
 # =============================================================================
 # 主循环
@@ -397,15 +381,18 @@ def main_loop(sys_config, mqtt_client):
             # 2. 更新状态机
             state_machine.update_state_machine()
             
-            # 3. 根据当前状态执行相应处理
+            # 3. 非阻塞LED状态更新 - 确保SOS闪烁正常工作
+            led_preset.update()
+            
+            # 4. 根据当前状态执行相应处理
             current_state = state_machine.get_current_state()
             _handle_state_specific_tasks(current_state, sys_config, mqtt_client, health_cache, status_cache)
             
-            # 4. 定期状态报告
+            # 5. 定期状态报告
             if loop_count % status_interval == 0:
                 _perform_status_report(loop_count, mqtt_client, health_cache, status_cache)
             
-            # 5. 内存管理和优化
+            # 6. 内存管理和优化
             if loop_count % 100 == 0:  # 每100次循环执行一次内存优化
                 _perform_memory_optimization(health_cache)
             
@@ -453,8 +440,8 @@ def _update_led_for_state(current_state):
         elif current_state == state_machine.SystemState.NETWORKING:
             led_preset.set_system_status(led_preset.SYSTEM_WARNING)
         elif current_state == state_machine.SystemState.SAFE_MODE:
-            # 安全模式使用SOS闪烁
-            led_preset.sos_pattern(0)
+            # 安全模式使用SOS闪烁 - 非阻塞方式
+            led_preset.set_system_status(led_preset.SYSTEM_SAFE_MODE)
         elif current_state == state_machine.SystemState.WARNING:
             led_preset.set_system_status(led_preset.SYSTEM_WARNING)
         elif current_state == state_machine.SystemState.ERROR:
@@ -567,7 +554,7 @@ def _perform_status_report(loop_count, mqtt_client, health_cache, status_cache):
         
         # 构建状态消息
         status_msg = utils.format_string(
-            "Loop:{},状态:{},内存:{:.1f}%,守护进程:{},看门狗:{}",
+            "Loop:{},state:{},memory:{:.1f}%,daemon:{},watchdog:{}",
             loop_count, current_state, memory_percent, daemon_status, wdt_status
         )
         

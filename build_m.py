@@ -25,6 +25,7 @@ if sys.platform == "win32":
     try:
         # 设置控制台输出为 UTF-8，以正确显示中文字符
         os.system("chcp 65001 > nul")
+        os.system("set PYTHONIOENCODING=utf-8")
     except Exception as e:
         print(f"警告: 设置Windows代码页失败: {e}")
 
@@ -1245,7 +1246,21 @@ def start_interactive_repl(port):
     print_message(f"启动交互式REPL会话 (端口: {port})", "INFO")
     print_message("按 Ctrl+] 或 Ctrl+X 退出REPL", "INFO")
     try:
-        subprocess.run([MPREMOTE_EXECUTABLE, 'connect', port, 'repl'], check=True)
+        # 使用简单的subprocess.run，让mpremote自己处理终端
+        subprocess.run(
+            [MPREMOTE_EXECUTABLE, 'connect', port, 'repl'],
+            check=True,
+            encoding='utf-8',
+            errors='ignore'
+        )
+    except subprocess.CalledProcessError as e:
+        # mpremote正常退出时的异常，不视为错误
+        if e.returncode == 0 or "exit" in str(e).lower():
+            pass  # 正常退出
+        else:
+            print_message(f"REPL执行错误: {e}", "WARNING")
+    except KeyboardInterrupt:
+        print_message("\nREPL会话已由用户中断", "INFO")
     except Exception as e:
         print_message(f"REPL启动失败: {e}", "ERROR")
 
