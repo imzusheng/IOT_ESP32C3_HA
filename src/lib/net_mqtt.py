@@ -20,6 +20,41 @@ import time
 import gc
 import config
 
+# --- 新增代码：全局实例管理 ---
+_global_mqtt_instance = None
+
+def init_client(client_id, server, port=None, user=None, password=None, topic=None, keepalive=None):
+    """
+    初始化并注册全局唯一的MQTT客户端实例。
+    这个函数应该在 main.py 中被调用一次。
+    """
+    global _global_mqtt_instance
+    if _global_mqtt_instance is None:
+        # 使用 MqttServer 类创建实例
+        _global_mqtt_instance = MqttServer(
+            client_id, server, port, user, password, topic, keepalive
+        )
+        print("[MQTT Service] Global MQTT client instance created.")
+    else:
+        print("[MQTT Service] Global MQTT client instance already exists.")
+    return _global_mqtt_instance
+
+def get_client():
+    """
+    获取全局的MQTT客户端实例。
+    任何需要MQTT的模块都应该调用此函数。
+    """
+    if _global_mqtt_instance is None:
+        # 理论上不应该发生，因为main会先调用init_client
+        raise RuntimeError("MQTT client has not been initialized. Call init_client() first.")
+    return _global_mqtt_instance
+
+def is_ready():
+    """检查客户端是否已初始化"""
+    return _global_mqtt_instance is not None
+# --- 新增代码结束 ---
+
+
 # MQTT配置从config.py中获取
 
 # 全局MQTT配置变量

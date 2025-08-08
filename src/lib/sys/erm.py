@@ -25,6 +25,7 @@ from lib.sys import fsm as fsm
 from lib.sys import memo as object_pool
 import utils
 import config
+from lib import net_mqtt
 
 # =============================================================================
 # 恢复策略配置
@@ -140,10 +141,10 @@ class NetworkRecoveryAction(EnhancedRecoveryAction):
                     time.sleep_ms(self.retry_delay)
                     continue
                 
-                # 重连MQTT（如果有MQTT客户端）
-                mqtt_client = error_data.get('mqtt_client')
-                if mqtt_client and hasattr(mqtt_client, 'connect'):
-                    if not mqtt_client.connect():
+                # 重连MQTT
+                if net_mqtt.is_ready():
+                    client = net_mqtt.get_client()
+                    if client and not client.connect():
                         time.sleep_ms(self.retry_delay)
                         continue
                 
@@ -226,9 +227,10 @@ class ServiceRecoveryAction(EnhancedRecoveryAction):
                 return False
             
             # 重置MQTT客户端连接
-            mqtt_client = error_data.get('mqtt_client')
-            if mqtt_client and hasattr(mqtt_client, 'connect'):
-                mqtt_client.connect()
+            if net_mqtt.is_ready():
+                client = net_mqtt.get_client()
+                if client:
+                    client.connect()
             
             print("[Recovery] Service recovery successful")
             return True
@@ -281,11 +283,13 @@ class HardwareRecoveryAction(EnhancedRecoveryAction):
             print("[Recovery] Hardware error, preparing system restart...")
             
             # 记录重启原因
-            if error_data.get('mqtt_client'):
-                try:
-                    error_data['mqtt_client'].log("CRITICAL", f"硬件恢复: 系统重启 - {error_type}")
-                except:
-                    pass
+            if net_mqtt.is_ready():
+                client = net_mqtt.get_client()
+                if client:
+                    try:
+                        client.log("CRITICAL", f"硬件恢复: 系统重启 - {error_type}")
+                    except:
+                        pass
             
             # 延迟重启
             time.sleep_ms(2000)

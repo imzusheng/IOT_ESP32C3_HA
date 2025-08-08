@@ -19,6 +19,7 @@
 
 import time
 import gc
+from lib import net_mqtt
 
 # =============================================================================
 # 错误类型和严重程度定义
@@ -234,8 +235,7 @@ class LogBuffer:
 class UnifiedLogger:
     """统一日志记录器"""
     
-    def __init__(self, mqtt_client=None):
-        self._mqtt_client = mqtt_client
+    def __init__(self):
         self._log_level = LogLevel.INFO
         self._log_buffer = LogBuffer()
         self._console_enabled = True
@@ -245,10 +245,6 @@ class UnifiedLogger:
     def set_log_level(self, level: str):
         """设置日志级别"""
         self._log_level = level
-    
-    def set_mqtt_client(self, mqtt_client):
-        """设置MQTT客户端"""
-        self._mqtt_client = mqtt_client
     
     def enable_console(self, enabled: bool):
         """启用/禁用控制台输出"""
@@ -283,14 +279,15 @@ class UnifiedLogger:
             print(formatted_msg)
         
         # MQTT输出
-        if self._mqtt_enabled and self._mqtt_client and hasattr(self._mqtt_client, 'is_connected') and self._mqtt_client.is_connected:
-            try:
-                if hasattr(self._mqtt_client, 'publish'):
+        if self._mqtt_enabled and net_mqtt.is_ready():
+            client = net_mqtt.get_client()
+            if client and client.is_connected:
+                try:
                     topic = f"esp32c3/logs/{level.lower()}"
-                    self._mqtt_client.publish(topic, formatted_msg)
-            except Exception:
-                # MQTT发送失败时不影响主流程
-                pass
+                    client.publish(topic, formatted_msg)
+                except Exception:
+                    # MQTT发送失败时不影响主流程
+                    pass
     
     def debug(self, message: str, module: str = ""):
         """调试日志"""
@@ -622,10 +619,6 @@ def get_logger():
 def get_error_handler():
     """获取全局错误处理器"""
     return _error_handler
-
-def set_mqtt_client(mqtt_client):
-    """设置MQTT客户端"""
-    _logger.set_mqtt_client(mqtt_client)
 
 def set_log_level(level: LogLevel):
     """设置日志级别"""

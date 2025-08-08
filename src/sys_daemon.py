@@ -25,6 +25,7 @@ import gc
 from lib.sys import led as led_preset
 import utils
 import config
+from lib import net_mqtt
 
 # 守护进程配置从config.py中获取
 
@@ -112,7 +113,6 @@ _last_error_time = 0
 
 # 硬件对象实例
 _timer = None
-_mqtt_client = None
 # 看门狗已移至主循环管理，此处不再需要_wdt变量
 
 # =============================================================================
@@ -215,12 +215,13 @@ def _enter_safe_mode(reason: str):
         _safe_mode_start_time = time.ticks_ms()
         
         # 记录日志
-        if _mqtt_client and hasattr(_mqtt_client, 'is_connected') and _mqtt_client.is_connected:
-            try:
-                if hasattr(_mqtt_client, 'log'):
-                    _mqtt_client.log("CRITICAL", f"进入安全模式: {reason}")
-            except Exception:
-                pass
+        if net_mqtt.is_ready():
+            client = net_mqtt.get_client()
+            if client and client.is_connected:
+                try:
+                    client.log("CRITICAL", f"进入安全模式: {reason}")
+                except Exception:
+                    pass
         
         # 执行深度垃圾回收
         for _ in range(2):
@@ -299,12 +300,13 @@ def _monitor_callback(timer):
         _last_error_time = time.ticks_ms()
         
         # 发送错误日志
-        if _mqtt_client and hasattr(_mqtt_client, 'is_connected') and _mqtt_client.is_connected:
-            try:
-                if hasattr(_mqtt_client, 'log'):
-                    _mqtt_client.log("ERROR", f"监控错误:{e}")
-            except Exception:
-                pass
+        if net_mqtt.is_ready():
+            client = net_mqtt.get_client()
+            if client and client.is_connected:
+                try:
+                    client.log("ERROR", f"监控错误:{e}")
+                except Exception:
+                    pass
 
 def _build_error_message(details):
     """构建优化的错误消息"""
@@ -363,9 +365,13 @@ def _deep_cleanup():
 
 def _log_system_status():
     """记录系统状态 - 优化内存使用"""
-    if not _mqtt_client or not hasattr(_mqtt_client, 'is_connected') or not _mqtt_client.is_connected:
+    if not net_mqtt.is_ready():
         return
     
+    client = net_mqtt.get_client()
+    if not client or not client.is_connected:
+        return
+
     try:
         # 减少变量创建，直接构建消息
         uptime = time.ticks_diff(time.ticks_ms(), _start_time) // 1000
@@ -381,8 +387,7 @@ def _log_system_status():
         
         status_msg += f",错误:{_error_count},监控:{_monitor_count},安全模式:{'是' if _safe_mode_active else '否'}"
         
-        if hasattr(_mqtt_client, 'log'):
-            _mqtt_client.log("INFO", f"系统状态: {status_msg}")
+        client.log("INFO", f"系统状态: {status_msg}")
         
     except Exception:
         pass
@@ -430,12 +435,13 @@ class SystemDaemon:
             print("[Daemon] Daemon startup successful")
             
             # 记录启动日志
-            if _mqtt_client and hasattr(_mqtt_client, 'is_connected') and _mqtt_client.is_connected:
-                try:
-                    if hasattr(_mqtt_client, 'log'):
-                        _mqtt_client.log("INFO", "守护进程启动成功")
-                except Exception:
-                    pass
+            if net_mqtt.is_ready():
+                client = net_mqtt.get_client()
+                if client and client.is_connected:
+                    try:
+                        client.log("INFO", "守护进程启动成功")
+                    except Exception:
+                        pass
             
             return True
             
@@ -451,12 +457,13 @@ class SystemDaemon:
             self._initialized = False
             
             # 记录错误日志
-            if _mqtt_client and hasattr(_mqtt_client, 'is_connected') and _mqtt_client.is_connected:
-                try:
-                    if hasattr(_mqtt_client, 'log'):
-                        _mqtt_client.log("CRITICAL", f"守护进程启动失败: {e}")
-                except Exception:
-                    pass
+            if net_mqtt.is_ready():
+                client = net_mqtt.get_client()
+                if client and client.is_connected:
+                    try:
+                        client.log("CRITICAL", f"守护进程启动失败: {e}")
+                    except Exception:
+                        pass
             
             return False
     
@@ -475,12 +482,13 @@ class SystemDaemon:
         reset_led_state()
         
         # 记录停止日志
-        if _mqtt_client and hasattr(_mqtt_client, 'is_connected') and _mqtt_client.is_connected:
-            try:
-                if hasattr(_mqtt_client, 'log'):
-                    _mqtt_client.log("INFO", "守护进程已停止")
-            except Exception:
-                pass
+        if net_mqtt.is_ready():
+            client = net_mqtt.get_client()
+            if client and client.is_connected:
+                try:
+                    client.log("INFO", "守护进程已停止")
+                except Exception:
+                    pass
         
         gc.collect()
     
@@ -521,10 +529,7 @@ class SystemDaemon:
 # 创建全局守护进程实例
 _daemon = SystemDaemon()
 
-def set_mqtt_client(mqtt_client):
-    """设置MQTT客户端实例"""
-    global _mqtt_client
-    _mqtt_client = mqtt_client
+
 
 def start_daemon() -> bool:
     """启动守护进程的公共接口"""
@@ -572,12 +577,13 @@ def force_safe_mode(reason: str = "未知错误"):
         _safe_mode_start_time = time.ticks_ms()
         
         # 记录日志
-        if _mqtt_client and hasattr(_mqtt_client, 'is_connected') and _mqtt_client.is_connected:
-            try:
-                if hasattr(_mqtt_client, 'log'):
-                    _mqtt_client.log("CRITICAL", f"强制进入安全模式:{reason}")
-            except Exception:
-                pass
+        if net_mqtt.is_ready():
+            client = net_mqtt.get_client()
+            if client and client.is_connected:
+                try:
+                    client.log("CRITICAL", f"强制进入安全模式:{reason}")
+                except Exception:
+                    pass
         
         # 设置LED为安全模式（SOS闪烁）
         print("[Daemon] Setting LED to safe mode (SOS pattern)")

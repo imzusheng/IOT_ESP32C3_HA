@@ -147,9 +147,10 @@ def connect_networks():
 # =============================================================================
 
 def create_mqtt_client(client_id, broker, port=1883, topic='lzs/esp32c3', keepalive=60):
-    """创建MQTT客户端（所有参数从config.py获取）"""
+    """创建并初始化全局MQTT客户端实例"""
     try:
-        mqtt_client = net_mqtt.MqttServer(
+        # 使用服务模块初始化客户端
+        mqtt_client = net_mqtt.init_client(
             client_id, broker, port=port, 
             topic=topic, keepalive=keepalive
         )
@@ -165,16 +166,7 @@ def create_mqtt_client(client_id, broker, port=1883, topic='lzs/esp32c3', keepal
             
     except Exception as e:
         print(f"[Main] MQTT client creation failed: {e}")
-        # 即使创建失败，也尝试创建一个基本的客户端对象
-        try:
-            mqtt_client = net_mqtt.MqttServer(
-                client_id, broker, port=port, 
-                topic=topic, keepalive=keepalive
-            )
-            return mqtt_client
-        except:
-            print("[Main] Failed to create MQTT client object")
-            return None
+        return None
 
 # =============================================================================
 # 看门狗管理
@@ -421,7 +413,6 @@ def main_loop(sys_config, mqtt_client, main_start_time):
             print(f"[Main] Main loop error: {e}")
             # 使用恢复管理器处理错误
             error_data = {
-                'mqtt_client': mqtt_client,
                 'loop_count': loop_count,
                 'state': state_machine.get_current_state()
             }
@@ -576,7 +567,7 @@ def _handle_recovery_state(sys_config, mqtt_client):
 
 def _perform_status_report(loop_count, mqtt_client, health_cache, status_cache, main_start_time):
     """执行状态报告"""
-    if not (health_cache and mqtt_client and mqtt_client.is_connected):
+    if not health_cache:
         return
     
     try:
@@ -598,8 +589,17 @@ def _perform_status_report(loop_count, mqtt_client, health_cache, status_cache, 
             loop_count, current_state, uptime, memory_percent, temp_str, daemon_status, wdt_status
         )
         
-        mqtt_client.log("INFO", status_msg)
-        print(f"[Main] {status_msg}")
+        # 统一日志格式，使其在控制台和MQTT中完全相同
+        # MQTT日志会自动添加[INFO]和时间戳前缀
+        full_log_msg = f"[Main] {status_msg}"
+
+        # 始终在控制台打印状态
+        print(full_log_msg)
+
+        # 如果MQTT客户端存在且已连接，则发送日志
+        if mqtt_client and mqtt_client.is_connected:
+            # 发送完整的消息，包括[Main]前缀，以确保日志一致性
+            mqtt_client.log("INFO", full_log_msg)
         
     except Exception as e:
         print(f"[Main] Status report failed: {e}")
@@ -674,11 +674,9 @@ def main():
             sys_config['mqtt_keepalive']
         )
         
-        # 设置MQTT客户端给其他模块
-        if mqtt_client:
-            sys_daemon.set_mqtt_client(mqtt_client)
-            sys_error.set_mqtt_client(mqtt_client)
-            print("[Main] MQTT client configuration complete")
+        # 检查MQTT客户端是否已通过服务初始化
+        if net_mqtt.is_ready():
+            print("[Main] MQTT client has been initialized via service.")
         else:
             print("[Main] MQTT client creation failed - continuing without MQTT")
         
@@ -715,7 +713,6 @@ def main():
         print(f"[Main] Main program error: {e}")
         # 使用恢复管理器处理致命错误
         error_data = {
-            'mqtt_client': mqtt_client if 'mqtt_client' in locals() else None,
             'sys_config': sys_config if 'sys_config' in locals() else None
         }
         recovery_manager.handle_error_with_recovery(
