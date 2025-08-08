@@ -104,7 +104,7 @@ def _scan_for_ssids(wlan):
                     # 检查是否有相似的SSID（用于调试）
                     for target_ssid in target_ssids:
                         # 避免空字符串匹配和过短的字符串匹配
-                        if (ssid and target_ssid and len(ssid.strip()) > 0 and len(target_ssid.strip()) > 0 and 
+                        if (ssid and target_ssid and len(ssid.strip()) > 0 and len(target_ssid.strip()) > 0 and
                             len(ssid) >= 3 and len(target_ssid) >= 3 and
                             (target_ssid.lower() in ssid.lower() or ssid.lower() in target_ssid.lower())):
                             print(f"[WiFi] Found similar network: '{ssid}' (target: '{target_ssid}')")
@@ -126,10 +126,16 @@ def _scan_for_ssids(wlan):
         # 按RSSI强度排序
         scanned_networks.sort(key=lambda x: x[1], reverse=True)
         print(f"[WiFi] Matched networks count: {len(scanned_networks)}")
+        # --- 内存优化 ---
+        del scan_results
+        gc.collect()
         return scanned_networks
         
     except Exception as e:
         print(f"\033[1;31m[WiFi] Network scan failed: {e}\033[0m")
+        del scan_results
+        del scanned_networks
+        gc.collect()
         return []
 
 

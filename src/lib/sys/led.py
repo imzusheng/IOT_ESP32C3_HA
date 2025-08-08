@@ -1,558 +1,225 @@
 # -*- coding: utf-8 -*-
 """
-LED预设模块
+通用LED预设闪烁模块 (v4.2 - 单例模式)
 
-提供标准化的LED状态指示预设模式，用于系统状态显示和用户反馈。
-所有LED闪烁效果都通过此模块统一管理。
+主要特性:
+- 单例模式: 防止重复实例化，保证硬件控制的唯一性。
+- 高度统一: 所有模式均由同一逻辑驱动。
+- 易于扩展: 添加新模式只需定义一个新的时间序列。
 """
 
 import machine
 import time
-import config
+import micropython
 
-# =============================================================================
-# LED预设模式常量
-# =============================================================================
+# 尝试导入uasyncio，如果失败则禁用该功能
+try:
+    import uasyncio
+    UASYNCIO_AVAILABLE = True
+except ImportError:
+    UASYNCIO_AVAILABLE = False
 
-# 系统状态模式
-SYSTEM_NORMAL = "normal"          # 正常运行：LED1亮，LED2灭
-SYSTEM_WARNING = "warning"        # 警告状态：LED1亮，LED2亮
-SYSTEM_ERROR = "error"            # 错误状态：LED1灭，LED2亮
-SYSTEM_OFF = "off"                # 关闭状态：LED1灭，LED2灭
-SYSTEM_SAFE_MODE = "safe_mode"    # 安全模式：SOS模式
+class LEDPatternController:
+    """
+    管理一组LED并根据预设ID播放闪烁模式。
+    采用单例模式实现，并使用一个通用的序列处理器来驱动所有模式。
+    """
+    _instance = None
+    _initialized = False
 
-# =============================================================================
-# LED预设管理器类
-# =============================================================================
+    def __new__(cls, *args, **kwargs):
+        if not cls._instance:
+            cls._instance = super(LEDPatternController, cls).__new__(cls)
+        return cls._instance
 
-class LEDPresetManager:
-    """LED预设管理器 - 统一管理所有LED状态显示"""
-    
-    def __init__(self, pin1: int = None, pin2: int = None):
+    # --- 模式参数常量 ---
+    TIMER_PERIOD_MS = 50
+
+    # 所有模式均定义为“亮-灭”时间序列 (单位: ms)
+    BLINK_SEQUENCE = [500, 500]
+    PULSE_SEQUENCE = [150, 150, 150, 850]
+    CRUISE_SEQUENCE = [50, 950]
+    SOS_SEQUENCE = [
+        200, 200, 200, 200, 200, 700, # S
+        600, 200, 600, 200, 600, 700, # O
+        200, 200, 200, 200, 200, 2000, # S
+    ]
+
+    def __init__(self, led_pins: list = None):
         """
-        初始化LED预设管理器
-        
+        初始化LED模式控制器。
+        由于是单例，只有在第一次实例化时led_pins参数才会生效。
+
         Args:
-            pin1: 第一个LED引脚（从config.py获取）
-            pin2: 第二个LED引脚（从config.py获取）
+            led_pins (list, optional): 一个包含LED引脚编号的列表。仅在首次创建时需要。
         """
-        self.pin1 = pin1
-        self.pin2 = pin2
-        self.led1 = machine.Pin(pin1, machine.Pin.OUT)
-        self.led2 = machine.Pin(pin2, machine.Pin.OUT)
-        
-        # 初始化状态
-        self.current_mode = SYSTEM_OFF
-        self.sos_state = 'IDLE'  # SOS状态机: IDLE, THREE_SHORT, THREE_LONG, THREE_SHORT_AGAIN, PAUSE
-        self.sos_step = 0
-        self.sos_last_update = 0
-        self.sos_led_index = 0
-        
-        # 设置初始状态
-        self.set_system_status(SYSTEM_OFF)
-        
-        # print(f"[LED] LED预设管理器初始化完成，引脚: {pin1}, {pin2}")
-    
-    def set_system_status(self, status: str):
-        """
-        设置系统状态LED显示
-        
-        Args:
-            status: 系统状态，支持：
-                   - normal: 正常运行
-                   - warning: 警告状态  
-                   - error: 错误状态
-                   - off: 关闭状态
-                   - safe_mode: 安全模式（SOS模式）
-        """
-        status = status.lower()
-        
-        if status == SYSTEM_NORMAL:
-            # 正常运行：LED1亮，LED2灭
-            self.current_mode = SYSTEM_NORMAL
-            self.led1.on()
-            self.led2.off()
-            # print("[LED] 系统状态：正常运行")
-            
-        elif status == SYSTEM_WARNING:
-            # 警告状态：LED1亮，LED2亮
-            self.current_mode = SYSTEM_WARNING
-            self.led1.on()
-            self.led2.on()
-            # print("[LED] 系统状态：警告")
-            
-        elif status == SYSTEM_ERROR:
-            # 错误状态：LED1灭，LED2亮
-            self.current_mode = SYSTEM_ERROR
-            self.led1.off()
-            self.led2.on()
-            # print("[LED] 系统状态：错误")
-            
-        elif status == SYSTEM_OFF:
-            # 关闭状态：LED1灭，LED2灭
-            self.current_mode = SYSTEM_OFF
-            self.led1.off()
-            self.led2.off()
-            # print("[LED] 系统状态：关闭")
-            
-        elif status == SYSTEM_SAFE_MODE:
-            # 安全模式：SOS模式 - 初始化SOS状态机
-            # print("[LED] 系统状态：安全模式（SOS模式）")
-            self.current_mode = SYSTEM_SAFE_MODE
-            self.sos_state = 'THREE_SHORT'
-            self.sos_step = 0
-            self.sos_last_update = time.ticks_ms()
-            self.sos_led_index = 0
-            # 初始状态关闭LED
-            self.led1.off()
-            self.led2.off()
-            
-        else:
-            print(f"[LED] Unknown status: {status}")
-            self.set_system_status(SYSTEM_OFF)
-    
-    def update(self):
-        """非阻塞LED状态更新方法 - 在主循环中调用"""
-        try:
-            if self.current_mode == SYSTEM_SAFE_MODE:
-                self._update_sos_pattern()
-        except Exception as e:
-            print(f"[LED] LED update failed: {e}")
-    
-    def _update_sos_pattern(self):
-        """非阻塞SOS模式更新"""
-        current_time = time.ticks_ms()
-        
-        # 获取要控制的LED
-        led = self.led1 if self.sos_led_index == 0 else self.led2
-        
-        if self.sos_state == 'THREE_SHORT':
-            # 三短模式
-            if self.sos_step < 6:  # 3次开 + 3次关
-                if time.ticks_diff(current_time, self.sos_last_update) >= 200:
-                    if self.sos_step % 2 == 0:
-                        led.on()
-                    else:
-                        led.off()
-                    self.sos_step += 1
-                    self.sos_last_update = current_time
-            else:
-                # 三短完成，进入暂停
-                self.sos_state = 'PAUSE'
-                self.sos_step = 0  # 标记这是从三短来的暂停
-                self.sos_last_update = current_time
-                
-        elif self.sos_state == 'THREE_LONG':
-            # 三长模式
-            if self.sos_step < 6:  # 3次开 + 3次关
-                if time.ticks_diff(current_time, self.sos_last_update) >= (600 if self.sos_step % 2 == 0 else 200):
-                    if self.sos_step % 2 == 0:
-                        led.on()
-                    else:
-                        led.off()
-                    self.sos_step += 1
-                    self.sos_last_update = current_time
-            else:
-                # 三长完成，进入暂停
-                self.sos_state = 'PAUSE'
-                self.sos_step = 1  # 标记这是从三长来的暂停
-                self.sos_last_update = current_time
-                
-        elif self.sos_state == 'THREE_SHORT_AGAIN':
-            # 再次三短模式
-            if self.sos_step < 6:  # 3次开 + 3次关
-                if time.ticks_diff(current_time, self.sos_last_update) >= 200:
-                    if self.sos_step % 2 == 0:
-                        led.on()
-                    else:
-                        led.off()
-                    self.sos_step += 1
-                    self.sos_last_update = current_time
-            else:
-                # SOS完成，进入长暂停
-                self.sos_state = 'LONG_PAUSE'
-                self.sos_step = 0
-                self.sos_last_update = current_time
-                
-        elif self.sos_state == 'PAUSE':
-            # 短暂停
-            if time.ticks_diff(current_time, self.sos_last_update) >= 300:
-                if self.sos_step == 0:
-                    # 从三短切换到三长
-                    self.sos_state = 'THREE_LONG'
-                    self.sos_step = 0
-                elif self.sos_step == 1:
-                    # 从三长切换到再次三短
-                    self.sos_state = 'THREE_SHORT_AGAIN'
-                    self.sos_step = 0
-                self.sos_last_update = current_time
-                
-        elif self.sos_state == 'LONG_PAUSE':
-            # 长暂停，然后重新开始SOS
-            if time.ticks_diff(current_time, self.sos_last_update) >= 2000:
-                self.sos_state = 'THREE_SHORT'
-                self.sos_step = 0
-                self.sos_last_update = current_time
-    
-    def _execute_sos_safe_mode(self):
-        """执行安全模式SOS闪烁 - 保持向后兼容性"""
-        # 现在这个方法只是设置状态，实际更新由update()方法处理
-        self.set_system_status(SYSTEM_SAFE_MODE)
-    
-    def get_status(self):
-        """获取LED管理器状态"""
-        return {
-            'pin1': self.pin1,
-            'pin2': self.pin2,
-            'led1_state': self.led1.value(),
-            'led2_state': self.led2.value()
+        if self._initialized:
+            return
+
+        if not led_pins:
+            print("[LED] Error: At least one LED pin must be provided on first instantiation.")
+            return
+
+        self.led_pins = led_pins
+        self.leds = self._init_leds()
+
+        if not self.leds:
+            print("[LED] Error: No valid LEDs were initialized.")
+            return
+
+        # 模式和状态变量
+        self.current_pattern_id = 'off'
+        self.pattern_state = {}
+
+        # 模式字典
+        self.patterns = {
+            'off': self._update_off,
+            'blink': lambda: self._update_sequence(self.BLINK_SEQUENCE),
+            'pulse': lambda: self._update_sequence(self.PULSE_SEQUENCE),
+            'cruise': lambda: self._update_sequence(self.CRUISE_SEQUENCE),
+            'sos': lambda: self._update_sequence(self.SOS_SEQUENCE),
         }
 
-# =============================================================================
-# 全局LED预设管理器实例
-# =============================================================================
+        # 运行控制器 (定时器或uasyncio任务)
+        self.timer = None
+        self.uasyncio_task = None
+        self._start_controller()
 
-# 全局LED预设管理器实例 - 优化单例模式
-_led_preset_manager = None
-_led_manager_initialized = False
-_led_manager_pins = config.get_config('daemon', 'led_pins', [12, 13])  # 默认引脚配置
-_led_manager_lock = False  # 防止并发初始化
+        self._initialized = True
+        print(f"[LED] Controller initialized for pins: {self.led_pins}")
 
-def get_led_manager():
-    """获取全局LED预设管理器实例 - 线程安全的单例模式"""
-    global _led_preset_manager, _led_manager_initialized, _led_manager_lock
-    
-    if _led_preset_manager is None and not _led_manager_lock:
-        _led_manager_lock = True
-        try:
-            _led_preset_manager = LEDPresetManager(_led_manager_pins[0], _led_manager_pins[1])
-            _led_manager_initialized = True
-            print(f"[LED] LED preset manager singleton instance created, pins: {_led_manager_pins}")
-        finally:
-            _led_manager_lock = False
-    
-    return _led_preset_manager
 
-def init_led_manager(pin1: int = None, pin2: int = None):
-    """初始化全局LED预设管理器 - 优化的单例模式（从config.py获取）"""
-    global _led_preset_manager, _led_manager_initialized, _led_manager_pins, _led_manager_lock
-    
-    if _led_manager_lock:
-        print("[LED] LED manager is initializing, please wait...")
-        return _led_preset_manager
-    
-    _led_manager_lock = True
-    try:
-        # 检查是否需要重新初始化
-        if _led_preset_manager is None:
-            # 首次初始化
-            print(f"[LED] Creating LED preset manager instance, pins: {pin1}, {pin2}")
-            _led_manager_pins = [pin1, pin2]
-            _led_preset_manager = LEDPresetManager(pin1, pin2)
-            _led_manager_initialized = True
-            print(f"[LED] LED preset manager initialized successfully, pins: {pin1}, {pin2}")
-        
-        elif not _led_manager_initialized or _led_manager_pins != [pin1, pin2]:
-            # 引脚配置变化或未正确初始化，需要重新初始化
-            print(f"[LED] LED preset manager reinitializing, new pins: {pin1}, {pin2}")
-            
-            # 清理旧实例
-            old_manager = _led_preset_manager
-            _led_preset_manager = None
-            _led_manager_initialized = False
-            
-            # 执行垃圾回收
-            import gc
-            gc.collect()
-            
-            # 创建新实例
-            _led_manager_pins = [pin1, pin2]
-            _led_preset_manager = LEDPresetManager(pin1, pin2)
-            _led_manager_initialized = True
-            
-            print(f"[LED] LED preset manager reinitialization completed")
-        
-        else:
-            print(f"[LED] LED preset manager already exists, skipping duplicate initialization")
-        
-        return _led_preset_manager
-        
-    except Exception as e:
-        print(f"[LED] LED manager initialization failed: {e}")
-        _led_manager_lock = False
-        return None
-        
-    finally:
-        _led_manager_lock = False
-
-def cleanup_led_manager():
-    """清理LED管理器实例 - 安全释放内存"""
-    global _led_preset_manager, _led_manager_initialized, _led_manager_lock
-    
-    if _led_manager_lock:
-        print("[LED] LED manager is cleaning up, please wait...")
-        return
-    
-    _led_manager_lock = True
-    try:
-        if _led_preset_manager is not None:
-            print("[LED] Starting cleanup of LED preset manager instance...")
-            
-            # 关闭所有LED
+    def _init_leds(self) -> list:
+        """根据引脚列表初始化LED对象。"""
+        leds = []
+        for pin in self.led_pins:
             try:
-                _led_preset_manager.set_system_status('off')
-            except:
-                pass
-            
-            # 清理实例
-            _led_preset_manager = None
-            _led_manager_initialized = False
-            
-            print("[LED] LED preset manager instance cleaned up")
-            
-            # 执行垃圾回收
-            import gc
-            gc.collect()
-            
-            print(f"[LED] Memory cleanup completed, remaining memory: {gc.mem_free()} bytes")
-        
-    except Exception as e:
-        print(f"[LED] LED manager cleanup failed: {e}")
-        
-    finally:
-        _led_manager_lock = False
+                leds.append(machine.Pin(pin, machine.Pin.OUT, value=0))
+            except Exception as e:
+                print(f"[LED] Error: Failed to initialize LED on pin {pin}: {e}")
+                leds.append(None)
+        return [led for led in leds if led is not None]
 
-def get_led_manager_status():
-    """获取LED管理器状态"""
-    global _led_preset_manager, _led_manager_initialized, _led_manager_pins
-    
-    return {
-        'exists': _led_preset_manager is not None,
-        'initialized': _led_manager_initialized,
-        'pins': _led_manager_pins.copy(),
-        'locked': _led_manager_lock
-    }
+    def _start_controller(self):
+        """尝试启动硬件定时器，如果失败则尝试启动uasyncio任务。"""
+        if self._start_hardware_timer():
+            return
+        if UASYNCIO_AVAILABLE and self._start_uasyncio_task():
+            return
+        print("[LED] Warning: Could not start a controller. Patterns will not run.")
 
-def reset_led_manager():
-    """重置LED管理器 - 强制重新初始化"""
-    global _led_preset_manager, _led_manager_initialized, _led_manager_lock
-    
-    if _led_manager_lock:
-        print("[LED] LED manager is resetting, please wait...")
+    def _start_hardware_timer(self) -> bool:
+        """尝试启动一个硬件定时器。"""
+        for i in range(4):
+            try:
+                self.timer = machine.Timer(i)
+                self.timer.init(period=self.TIMER_PERIOD_MS, mode=machine.Timer.PERIODIC, callback=self._update_callback)
+                return True
+            except (ValueError, OSError):
+                self.timer = None
+                continue
         return False
-    
-    _led_manager_lock = True
-    try:
-        print("[LED] Starting LED manager reset...")
-        
-        # 清理现有实例
-        cleanup_led_manager()
-        
-        # 重置配置
-        _led_manager_pins = config.get_config('daemon', 'led_pins', [12, 13])
-        
-        # 短暂延迟
-        import time
-        time.sleep_ms(100)
-        
-        print("[LED] LED manager reset completed")
-        return True
-        
-    except Exception as e:
-        print(f"[LED] LED manager reset failed: {e}")
-        return False
-        
-    finally:
-        _led_manager_lock = False
 
-# =============================================================================
-# 便捷函数
-# =============================================================================
+    def _start_uasyncio_task(self) -> bool:
+        """启动一个uasyncio任务作为备用方案。"""
+        try:
+            self.uasyncio_task = uasyncio.create_task(self._uasyncio_loop())
+            return True
+        except Exception as e:
+            print(f"[LED] Error: Failed to start uasyncio task: {e}")
+            return False
 
-def set_system_status(status: str):
-    """设置系统状态的便捷函数"""
-    manager = get_led_manager()
-    manager.set_system_status(status)
+    async def _uasyncio_loop(self):
+        """uasyncio的异步更新循环。"""
+        while True:
+            self._update_patterns()
+            await uasyncio.sleep_ms(self.TIMER_PERIOD_MS)
 
-def update():
-    """非阻塞LED状态更新的便捷函数"""
-    manager = get_led_manager()
-    if manager:
-        manager.update()
+    def _update_callback(self, timer):
+        """硬件定时器的回调函数。"""
+        micropython.schedule(self._update_patterns, 0)
 
-# =============================================================================
-# 从led_preset_temp_data.py移植的便捷函数
-# =============================================================================
+    def play(self, pattern_id: str):
+        """播放一个预设的闪烁模式。"""
+        if pattern_id not in self.patterns:
+            print(f"[LED] Error: Unknown pattern_id '{pattern_id}'.")
+            return
 
-def quick_flash_three(led_index=0):
-    """快闪三下模式的便捷函数"""
-    manager = get_led_manager()
-    # print(f"[LED] LED {led_index} 快闪三下模式")
-    for _ in range(3):
-        if led_index == 0:
-            manager.led1.on()
-            time.sleep(0.1)
-            manager.led1.off()
-            time.sleep(0.1)
+        self.current_pattern_id = pattern_id
+        self.pattern_state = {'step': 0, 'last_update': time.ticks_ms()}
+
+        if pattern_id == 'off':
+            self._set_all_leds(0)
         else:
-            manager.led2.on()
-            time.sleep(0.1)
-            manager.led2.off()
-            time.sleep(0.1)
-    time.sleep(0.3)
+            self._set_all_leds(1)
 
-def one_long_two_short(led_index=0):
-    """一长两短模式的便捷函数"""
-    manager = get_led_manager()
-    # print(f"[LED] LED {led_index} 一长两短模式")
-    if led_index == 0:
-        manager.led1.on()
-        time.sleep(0.8)
-        manager.led1.off()
-        time.sleep(0.2)
-        for _ in range(2):
-            manager.led1.on()
-            time.sleep(0.2)
-            manager.led1.off()
-            time.sleep(0.2)
-    else:
-        manager.led2.on()
-        time.sleep(0.8)
-        manager.led2.off()
-        time.sleep(0.2)
-        for _ in range(2):
-            manager.led2.on()
-            time.sleep(0.2)
-            manager.led2.off()
-            time.sleep(0.2)
-    time.sleep(0.3)
+    def _update_patterns(self, _=None):
+        """根据当前模式ID调用相应的更新函数。"""
+        try:
+            handler = self.patterns.get(self.current_pattern_id)
+            if handler:
+                handler()
+        except Exception as e:
+            print(f"[LED] Error in update_patterns: {e}")
 
-def sos_pattern(led_index=0):
-    """SOS求救信号模式的便捷函数 (··· --- ···) - 优化内存使用"""
-    manager = get_led_manager()
-    # print(f"[LED] LED {led_index} SOS模式")
-    led = manager.led1 if led_index == 0 else manager.led2
-    
-    # 使用毫秒级延迟，提高响应性并减少内存占用
-    # 三短
-    for _ in range(3):
-        led.on()
-        time.sleep_ms(200)
-        led.off()
-        time.sleep_ms(200)
-    time.sleep_ms(300)
-    # 三长
-    for _ in range(3):
-        led.on()
-        time.sleep_ms(600)
-        led.off()
-        time.sleep_ms(200)
-    time.sleep_ms(300)
-    # 三短
-    for _ in range(3):
-        led.on()
-        time.sleep_ms(200)
-        led.off()
-        time.sleep_ms(200)
-    time.sleep_ms(500)
+    def _set_all_leds(self, value: int):
+        """辅助函数，设置所有LED的状态。"""
+        for led in self.leds:
+            led.value(value)
 
-def heartbeat(led_index=0, cycles=3):
-    """心跳模式的便捷函数"""
-    manager = get_led_manager()
-    # print(f"[LED] LED {led_index} 心跳模式 ({cycles}次)")
-    led = manager.led1 if led_index == 0 else manager.led2
-    for _ in range(cycles):
-        led.on()
-        time.sleep(0.1)
-        led.off()
-        time.sleep(0.1)
-        time.sleep(0.3)
-        led.on()
-        time.sleep(0.1)
-        led.off()
-        time.sleep(0.9)
+    def _update_off(self):
+        """关闭所有LED。"""
+        self._set_all_leds(0)
 
-def police_lights(cycles=3):
-    """警灯模式的便捷函数（双LED交替闪烁）"""
-    manager = get_led_manager()
-    # print(f"[LED] 警灯模式 ({cycles}次)")
-    for _ in range(cycles):
-        for _ in range(3):
-            manager.led1.on()
-            time.sleep(0.1)
-            manager.led1.off()
-            time.sleep(0.1)
-        for _ in range(3):
-            manager.led2.on()
-            time.sleep(0.1)
-            manager.led2.off()
-            time.sleep(0.1)
+    def _update_sequence(self, sequence: list):
+        """通用序列处理器。"""
+        state = self.pattern_state
+        current_time = time.ticks_ms()
+        step = state.get('step', 0)
 
-def knight_rider(cycles=2):
-    """霹雳游侠模式的便捷函数（来回扫描）"""
-    manager = get_led_manager()
-    # print(f"[LED] 霹雳游侠模式 ({cycles}次)")
-    for _ in range(cycles):
-        # 从左到右
-        manager.led1.on()
-        time.sleep(0.1)
-        manager.led1.off()
-        time.sleep(0.05)
-        manager.led2.on()
-        time.sleep(0.1)
-        manager.led2.off()
-        time.sleep(0.05)
-        # 从右到左
-        manager.led2.on()
-        time.sleep(0.1)
-        manager.led2.off()
-        time.sleep(0.05)
-        manager.led1.on()
-        time.sleep(0.1)
-        manager.led1.off()
-        time.sleep(0.05)
+        if time.ticks_diff(current_time, state['last_update']) >= sequence[step]:
+            state['step'] = (step + 1) % len(sequence)
+            state['last_update'] = current_time
+            is_on = state['step'] % 2 == 0
+            self._set_all_leds(is_on)
 
-def counting_blink(led_index=0, count=5):
-    """计数闪烁模式的便捷函数"""
-    manager = get_led_manager()
-    # print(f"[LED] LED {led_index} 计数闪烁模式 (1-{count})")
-    led = manager.led1 if led_index == 0 else manager.led2
-    for i in range(1, count + 1):
-        for _ in range(i):
-            led.on()
-            time.sleep(0.1)
-            led.off()
-            time.sleep(0.1)
-        time.sleep(0.4)
+    def cleanup(self):
+        """清理资源，停止控制器。"""
+        if self.timer:
+            self.timer.deinit()
+            self.timer = None
+        if self.uasyncio_task:
+            self.uasyncio_task.cancel()
+            self.uasyncio_task = None
+        self._set_all_leds(0)
+        print("[LED] Controller cleaned up.")
 
-def breathing_light(led_index=0, cycles=3):
-    """呼吸灯模式的便捷函数"""
-    manager = get_led_manager()
-    print(f"[LED] LED {led_index} breathing light mode ({cycles} cycles)")
-    led = manager.led1 if led_index == 0 else manager.led2
-    for _ in range(cycles):
-        # 渐亮
-        for i in range(10):
-            # 由于ESP32-C3的GPIO不支持PWM，用短闪烁模拟
-            if i < 5:
-                led.on()
-                time.sleep(0.01)
-                led.off()
-                time.sleep(0.09)
-            else:
-                led.on()
-                time.sleep(0.05)
-                led.off()
-                time.sleep(0.05)
-        time.sleep(0.2)
+# =============================================================================
+# 独立运行和调试
+# =============================================================================
+def sync_test_runner(controller):
+    """同步测试循环。"""
+    patterns_to_test = ['blink', 'pulse', 'cruise', 'sos', 'off']
+    for i in range(2): # 运行两次循环
+        for pattern in patterns_to_test:
+            print(f"\nPlaying pattern: '{pattern}'...")
+            controller.play(pattern)
+            delay = 3 if pattern == 'off' else 15 if pattern == 'sos' else 10
+            print(f"  (running for {delay} seconds)")
+            time.sleep(delay)
 
-def custom_pattern(pattern, led_index=0):
-    """自定义模式的便捷函数"""
-    manager = get_led_manager()
-    print(f"[LED] LED {led_index} custom pattern")
-    led = manager.led1 if led_index == 0 else manager.led2
-    for on_time, off_time in pattern:
-        led.on()
-        time.sleep(on_time)
-        led.off()
-        time.sleep(off_time)
+def main():
+    led_pins = [12, 13]
+    controller = LEDPatternController(led_pins)
+    try:
+        sync_test_runner(controller)
+    except KeyboardInterrupt:
+        print("\nTest stopped by user.")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+    finally:
+        print("Cleaning up...")
+        controller.cleanup()
+
+if __name__ == "__main__":
+    main()

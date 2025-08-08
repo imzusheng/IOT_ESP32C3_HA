@@ -217,11 +217,43 @@ class SystemStateMachine:
     
     def _on_state_enter(self, state):
         """状态进入时的钩子函数，用于执行特定状态的初始化操作。"""
-        if state == SystemState.SAFE_MODE:
-            # 进入安全模式是严重事件，执行最高级别的内存清理
-            print("[StateMachine] INFO: Entering safe mode, executing emergency memory cleanup...")
-            mem_opt.clear_all_pools()
-            gc.collect()
+        # 根据状态设置LED显示
+        try:
+            from lib.sys import led as led_preset
+            
+            # 获取全局LED控制器实例
+            led_controller = None
+            if 'led_controller' in globals():
+                led_controller = globals()['led_controller']
+            
+            # 如果全局实例不存在或不可用，创建一个临时实例
+            if led_controller is None:
+                led_pins = config.get_config('daemon', 'led_pins', [12, 13])
+                led_controller = led_preset.LEDPatternController(led_pins)
+            
+            # 根据状态映射到LED模式
+            if state == SystemState.INIT:
+                led_controller.play('off')
+            elif state == SystemState.NETWORKING:
+                led_controller.play('blink')  # 使用闪烁模式表示网络连接中
+            elif state == SystemState.RUNNING:
+                led_controller.play('cruise')  # 使用巡航模式表示正常运行
+            elif state == SystemState.WARNING:
+                led_controller.play('blink')  # 使用闪烁模式表示警告状态
+            elif state == SystemState.ERROR:
+                led_controller.play('blink')  # 使用闪烁模式表示错误状态
+            elif state == SystemState.SAFE_MODE:
+                led_controller.play('sos')    # 使用SOS模式表示安全模式
+                # 进入安全模式是严重事件，执行最高级别的内存清理
+                print("[StateMachine] INFO: Entering safe mode, executing emergency memory cleanup...")
+                mem_opt.clear_all_pools()
+                gc.collect()
+            elif state == SystemState.RECOVERY:
+                led_controller.play('blink')  # 使用闪烁模式表示恢复模式
+            elif state == SystemState.SHUTDOWN:
+                led_controller.play('off')    # 关闭LED
+        except Exception as e:
+            print(f"[StateMachine] ERROR: Failed to set LED status for state {state}: {e}")
     
     def _on_state_exit(self, state):
         """状态退出时的钩子函数，用于执行清理操作。"""
@@ -234,10 +266,52 @@ class SystemStateMachine:
     
     def _handle_networking_state(self):
         """处理网络连接状态，包含一个30秒的超时逻辑。"""
+        # 检查状态持续时间，超时则触发网络失败事件
         if self._state_duration > config.get_config('daemon', 'safe_mode_cooldown', 30000): # 从config.py中获取
             self.handle_event(StateEvent.NETWORK_FAILED)
+        
+        # 检查WiFi连接状态
+        try:
+            import net_wifi
+            wifi_status = net_wifi.get_wifi_status()
+            if not wifi_status.get('connected', False):
+                self.handle_event(StateEvent.NETWORK_FAILED)
+            else:
+                # 网络连接成功，尝试MQTT连接
+                try:
+                    import net_mqtt
+                    mqtt_client = net_mqtt.get_client()
+                    if mqtt_client and not mqtt_client.is_connected:
+                        if mqtt_client.connect():
+                            self.handle_event(StateEvent.NETWORK_SUCCESS)
+                except Exception:
+                    pass
+        except Exception:
+            pass
     
-    def _handle_running_state(self): pass
+    def _handle_running_state(self):
+        """处理运行状态"""
+        # 检查MQTT连接状态
+        try:
+            import net_mqtt
+            mqtt_client = net_mqtt.get_client()
+            if mqtt_client and not mqtt_client.is_connected:
+                print("[StateMachine] MQTT disconnected in running state, attempting reconnect...")
+                if mqtt_client.connect():
+                    print("[StateMachine] MQTT reconnection successful")
+                else:
+                    self.handle_event(StateEvent.NETWORK_FAILED)
+        except Exception:
+            pass
+        
+        # 检查系统内存状态
+        try:
+            from lib import utils
+            memory_status = utils.check_memory()
+            if memory_status and memory_status['percent'] > 90:
+                self.handle_event(StateEvent.MEMORY_CRITICAL)
+        except Exception:
+            pass
     
     def _handle_warning_state(self):
         """处理警告状态，如果1分钟内没有解决，则尝试自动恢复。"""
@@ -246,8 +320,22 @@ class SystemStateMachine:
     
     def _handle_error_state(self):
         """处理错误状态，如果30秒内没有解决，则尝试自动恢复。"""
+        # 检查状态持续时间，超时则尝试恢复
         if self._state_duration > config.get_config('daemon', 'safe_mode_cooldown', 30000): # 从config.py中获取
             self.handle_event(StateEvent.RECOVERY_SUCCESS)
+        
+        # 尝试MQTT重连
+        try:
+            import net_mqtt
+            mqtt_client = net_mqtt.get_client()
+            if mqtt_client and not mqtt_client.is_connected:
+                print("[StateMachine] Attempting MQTT reconnection in error state...")
+                if mqtt_client.connect():
+                    print("[StateMachine] MQTT reconnection successful in error state")
+                    # 如果MQTT重连成功，尝试转换到警告状态
+                    self.handle_event(StateEvent.SYSTEM_WARNING)
+        except Exception:
+            pass
     
     def _handle_safe_mode_state(self):
         """处理安全模式，如果5分钟没有解决，则尝试自动恢复。"""

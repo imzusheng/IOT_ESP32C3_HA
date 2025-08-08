@@ -120,20 +120,52 @@ _timer = None
 # =============================================================================
 
 def set_led_status(status: str):
-    """设置LED状态 - 使用LED预设管理器"""
+    """设置LED状态 - 使用LED控制器"""
     try:
         from lib.sys import led as led_preset
-        led_preset.set_system_status(status)
+        
+        # 获取全局LED控制器实例
+        if 'led_controller' in globals():
+            led_controller = globals()['led_controller']
+        else:
+            # 如果全局实例不存在，创建一个临时实例
+            led_pins = _daemon_config.get('led_pins', [12, 13])
+            led_controller = led_preset.LEDPatternController(led_pins)
+        
+        # 根据状态映射到LED模式
+        if status == 'normal':
+            led_controller.play('cruise')  # 使用巡航模式表示正常状态
+        elif status == 'warning':
+            led_controller.play('blink')  # 使用闪烁模式表示警告状态
+        elif status == 'error':
+            led_controller.play('blink')  # 使用闪烁模式表示错误状态
+        elif status == 'safe_mode':
+            led_controller.play('sos')   # 使用SOS模式表示安全模式
+        elif status == 'off':
+            led_controller.play('off')    # 关闭LED
+        else:
+            led_controller.play('off')    # 默认关闭LED
+            
         return True
     except Exception as e:
         print(f"[Daemon] LED status setting failed: {e}")
         return False
 
 def update_safe_mode_led():
-    """更新安全模式LED状态 - 使用LED预设管理器的非阻塞更新"""
+    """更新安全模式LED状态 - 使用LED控制器的SOS模式"""
     try:
         from lib.sys import led as led_preset
-        led_preset.update()  # 调用非阻塞LED更新
+        
+        # 获取全局LED控制器实例
+        if 'led_controller' in globals():
+            led_controller = globals()['led_controller']
+        else:
+            # 如果全局实例不存在，创建一个临时实例
+            led_pins = _daemon_config.get('led_pins', [12, 13])
+            led_controller = led_preset.LEDPatternController(led_pins)
+        
+        # 安全模式使用SOS闪烁模式
+        led_controller.play('sos')
         return True
     except Exception as e:
         print(f"[Daemon] Safe mode LED update failed: {e}")
@@ -143,7 +175,17 @@ def reset_led_state():
     """重置LED状态"""
     try:
         from lib.sys import led as led_preset
-        led_preset.set_system_status('off')
+        
+        # 获取全局LED控制器实例
+        if 'led_controller' in globals():
+            led_controller = globals()['led_controller']
+        else:
+            # 如果全局实例不存在，创建一个临时实例
+            led_pins = _daemon_config.get('led_pins', [12, 13])
+            led_controller = led_preset.LEDPatternController(led_pins)
+        
+        # 关闭LED
+        led_controller.play('off')
         print("[LED] LED state reset")
         return True
     except Exception as e:
@@ -481,6 +523,14 @@ class SystemDaemon:
         # 关闭LED
         reset_led_state()
         
+        # 清理LED控制器资源
+        try:
+            if 'led_controller' in globals():
+                globals()['led_controller'].cleanup()
+                print("[Daemon] LED controller cleaned up")
+        except Exception as e:
+            print(f"[Daemon] LED controller cleanup failed: {e}")
+        
         # 记录停止日志
         if net_mqtt.is_ready():
             client = net_mqtt.get_client()
@@ -606,29 +656,34 @@ def check_safe_mode_recovery():
     pass
 
 def test_led_functionality():
-    """测试LED功能 - 使用LED预设模块"""
+    """测试LED功能 - 使用LED控制器"""
     print("[Daemon] Starting LED functionality test...")
     
-    # 使用LED预设模块的测试功能
+    # 使用LED控制器测试功能
     try:
-        print("[Daemon] Testing LED hardware with LED preset module...")
+        print("[Daemon] Testing LED hardware with LED controller...")
         
-        # 测试LED预设管理器是否正常工作
+        # 获取LED引脚配置
+        led_pins = _daemon_config.get('led_pins', [12, 13])
+        
+        # 创建LED控制器实例进行测试
         from lib.sys import led as led_preset
-        manager = led_preset.get_led_manager()
+        led_controller = led_preset.LEDPatternController(led_pins)
         
-        if manager:
-            # 测试硬件功能
-            test_result = manager.test_hardware() if hasattr(manager, 'test_hardware') else True
+        if led_controller:
+            # 测试各种LED模式
+            patterns = ['off', 'blink', 'pulse', 'sos']
+            for pattern in patterns:
+                print(f"[Daemon] Testing LED pattern: {pattern}")
+                led_controller.play(pattern)
+                time.sleep_ms(1000)  # 每个模式测试1秒
             
-            if test_result:
-                print("[Daemon] LED functionality test passed")
-            else:
-                print("[Daemon] LED functionality test failed")
-            
-            return test_result
+            # 最终关闭LED
+            led_controller.play('off')
+            print("[Daemon] LED functionality test passed")
+            return True
         else:
-            print("[Daemon] LED manager not available")
+            print("[Daemon] LED controller not available")
             return False
     except Exception as e:
         print(f"[Daemon] LED test failed: {e}")

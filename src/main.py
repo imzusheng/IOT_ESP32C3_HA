@@ -79,18 +79,21 @@ def initialize_system():
     # 获取LED引脚配置
     led_pins = get_config_value(config, 'daemon', 'led_pins', [12, 13])
     
-    # 早期初始化LED预设管理器
-    print("[Main] Initializing LED preset manager...")
+    # 早期初始化LED控制器
+    print("[Main] Initializing LED controller...")
     try:
-        led_manager = led_preset.init_led_manager(led_pins[0], led_pins[1])
-        if led_manager:
-            print("[Main] LED preset manager initialized successfully")
-            # 设置初始状态为关闭
-            led_manager.set_system_status(led_preset.SYSTEM_OFF)
+        # 创建全局LED控制器实例
+        global led_controller
+        led_controller = led_preset.LEDPatternController(led_pins)
+        if led_controller:
+            print("[Main] LED controller initialized successfully")
+            # 设置初始状态为巡航模式
+            led_controller.play('cruise')
+            print("[Main] LED set to cruise mode")
         else:
-            print("[Main] LED preset manager initialization failed")
+            print("[Main] LED controller initialization failed")
     except Exception as e:
-        print(f"[Main] LED preset manager initialization error: {e}")
+        print(f"[Main] ERROR: LED controller initialization error: {e}")
     
     # 设置WiFi网络
     wifi_networks = get_config_value(config, 'wifi', 'networks', [])
@@ -324,6 +327,8 @@ def check_system_health():
         
     except Exception as e:
         print(f"[Main] System health check failed: {e}")
+        # 系统健康检查失败时触发系统警告事件
+        state_machine.handle_event(state_machine.StateEvent.SYSTEM_WARNING)
         return None
 
 # =============================================================================
@@ -340,9 +345,9 @@ def handle_safe_mode(mqtt_client=None):
         sys_daemon.force_safe_mode("系统异常")
         print("[Main] Safe mode forced, LED should be showing SOS pattern")
     
-    # 安全模式处理现在由主循环统一处理
-    # 这里只需要确保安全模式状态已设置，LED更新由主循环的led_preset.update()处理
-    print("[Main] Safe mode processing delegated to main loop")
+    # 安全模式处理现在由状态机统一处理
+    # LED更新由LED模块的硬件定时器或uasyncio自动处理
+    print("[Main] Safe mode processing delegated to state machine")
     
     # 安全模式下的特殊处理（如果需要）
     if sys_daemon.is_safe_mode():
@@ -367,6 +372,9 @@ def main_loop(sys_config, mqtt_client, main_start_time):
     status_interval = sys_config['status_interval']
     loop_delay = sys_config['loop_delay']
     
+    # --- 内存优化: 预定义状态字符串模板 ---
+    core_msg_template = "[Main] Loop:{},state:{},uptime:{}s,memory:{:.1f}%,temp:{},daemon:{},watchdog:{}"
+    
     # 使用对象池获取缓存字典
     health_cache = object_pool.get_dict()
     status_cache = object_pool.get_dict()
@@ -388,16 +396,14 @@ def main_loop(sys_config, mqtt_client, main_start_time):
             # 2. 更新状态机
             state_machine.update_state_machine()
             
-            # 3. 非阻塞LED状态更新 - 确保SOS闪烁正常工作
-            led_preset.update()
-            
-            # 4. 根据当前状态执行相应处理
+            # 3. 根据当前状态执行相应处理
             current_state = state_machine.get_current_state()
             _handle_state_specific_tasks(current_state, sys_config, mqtt_client, health_cache, status_cache)
             
             # 5. 定期状态报告
             if loop_count % status_interval == 0:
-                _perform_status_report(loop_count, mqtt_client, health_cache, status_cache, main_start_time)
+                # --- 内存优化: 传入预定义的模板 ---
+                _perform_status_report(loop_count, mqtt_client, health_cache, status_cache, main_start_time, core_msg_template)
             
             # 6. 内存管理和优化
             if loop_count % 100 == 0:  # 每100次循环执行一次内存优化
@@ -439,134 +445,43 @@ def _perform_system_maintenance():
         state_machine.handle_event(state_machine.StateEvent.WATCHDOG_TIMEOUT)
 
 def _update_led_for_state(current_state):
-    """根据状态更新LED显示"""
-    try:
-        if current_state == state_machine.SystemState.RUNNING:
-            led_preset.set_system_status(led_preset.SYSTEM_NORMAL)
-        elif current_state == state_machine.SystemState.NETWORKING:
-            led_preset.set_system_status(led_preset.SYSTEM_WARNING)
-        elif current_state == state_machine.SystemState.SAFE_MODE:
-            # 安全模式使用SOS闪烁 - 非阻塞方式
-            led_preset.set_system_status(led_preset.SYSTEM_SAFE_MODE)
-        elif current_state == state_machine.SystemState.WARNING:
-            led_preset.set_system_status(led_preset.SYSTEM_WARNING)
-        elif current_state == state_machine.SystemState.ERROR:
-            led_preset.set_system_status(led_preset.SYSTEM_ERROR)
-        elif current_state == state_machine.SystemState.RECOVERY:
-            led_preset.set_system_status(led_preset.SYSTEM_WARNING)
-        else:
-            led_preset.set_system_status(led_preset.SYSTEM_OFF)
-    except Exception as e:
-        print(f"[Main] LED state update failed: {e}")
+    """根据状态更新LED显示 - 现在由状态机自动处理，保留此函数以保持兼容性"""
+    # LED状态现在由状态机自动处理，无需在此处手动设置
+    # 此函数保留以保持代码兼容性，防止可能的调用错误
+    pass
 
 def _handle_state_specific_tasks(current_state, sys_config, mqtt_client, health_cache, status_cache):
     """根据状态执行特定任务"""
     # 首先根据状态更新LED显示
     _update_led_for_state(current_state)
     
+    # 状态机已经内置了状态处理逻辑，这里只需要处理一些特定于main.py的逻辑
     if current_state == state_machine.SystemState.RUNNING:
-        _handle_running_state(sys_config, mqtt_client, health_cache, status_cache)
+        # 运行状态下的额外处理
+        if mqtt_client and not mqtt_client.is_connected:
+            print("[Main] MQTT disconnected, attempting reconnect...")
+            if mqtt_client.connect():
+                print("[Main] MQTT reconnection successful")
+            else:
+                state_machine.handle_event(state_machine.StateEvent.NETWORK_FAILED)
+        
+        # 系统监控 - 重用字典对象
+        health = check_system_health()
+        if health:
+            health_cache.update(health)
+            
+            # 检查系统健康状态
+            if health_cache.get('memory', {}).get('percent', 0) > 90:
+                state_machine.handle_event(state_machine.StateEvent.MEMORY_CRITICAL)
+    
     elif current_state == state_machine.SystemState.NETWORKING:
-        _handle_networking_state(sys_config, mqtt_client)
-    elif current_state == state_machine.SystemState.SAFE_MODE:
-        _handle_safe_mode_state(mqtt_client)
-    elif current_state == state_machine.SystemState.WARNING:
-        _handle_warning_state(sys_config, mqtt_client, health_cache)
-    elif current_state == state_machine.SystemState.ERROR:
-        _handle_error_state(mqtt_client)
-    elif current_state == state_machine.SystemState.RECOVERY:
-        _handle_recovery_state(sys_config, mqtt_client)
-
-def _handle_running_state(sys_config, mqtt_client, health_cache, status_cache):
-    """处理运行状态"""
-    # 系统监控 - 重用字典对象
-    health = check_system_health()
-    if health:
-        health_cache.update(health)
-    
-    # 检查系统健康状态
-    if health_cache.get('memory', {}).get('percent', 0) > 90:
-        state_machine.handle_event(state_machine.StateEvent.MEMORY_CRITICAL)
-    
-    # MQTT连接检查
-    if mqtt_client and not mqtt_client.is_connected:
-        print("[Main] MQTT disconnected, attempting reconnect...")
-        if mqtt_client.connect():
-            print("[Main] MQTT reconnection successful")
-        else:
-            state_machine.handle_event(state_machine.StateEvent.NETWORK_FAILED)
-
-def _handle_networking_state(sys_config, mqtt_client):
-    """处理网络连接状态"""
-    # 网络连接已在初始化时完成，这里主要监控
-    wifi_connected = net_wifi.get_wifi_status().get('connected', False)
-    if not wifi_connected:
-        state_machine.handle_event(state_machine.StateEvent.NETWORK_FAILED)
-    else:
-        # 网络连接成功，尝试创建MQTT客户端
+        # 网络连接状态下的额外处理
         if mqtt_client and not mqtt_client.is_connected:
             if mqtt_client.connect():
                 state_machine.handle_event(state_machine.StateEvent.NETWORK_SUCCESS)
 
-def _handle_safe_mode_state(mqtt_client):
-    """处理安全模式状态"""
-    # 安全模式处理
-    if sys_daemon.is_safe_mode():
-        handle_safe_mode(mqtt_client)
-
-def _handle_warning_state(sys_config, mqtt_client, health_cache):
-    """处理警告状态"""
-    # 警告状态监控
-    health = check_system_health()
-    if health:
-        health_cache.update(health)
-    
-    # 检查是否恢复正常
-    if health_cache.get('daemon', {}).get('active', False):
-        if health_cache.get('memory', {}).get('percent', 0) < 70:
-            state_machine.handle_event(state_machine.StateEvent.RECOVERY_SUCCESS)
-
-def _handle_error_state(mqtt_client):
-    """处理错误状态"""
-    # 错误状态处理
-    print("[Main] Processing error state...")
-    
-    # 尝试MQTT重连
-    if mqtt_client and not mqtt_client.is_connected:
-        print("[Main] Attempting MQTT reconnection in error state...")
-        if mqtt_client.connect():
-            print("[Main] MQTT reconnection successful in error state")
-            # 如果MQTT重连成功，尝试转换到运行状态
-            state_machine.handle_event(state_machine.StateEvent.SYSTEM_WARNING)
-        else:
-            # 检查退避状态，避免频繁重试
-            try:
-                status = mqtt_client.get_connection_status()
-                if status['backoff_time'] > 0:
-                    print(f"[Main] MQTT in backoff mode, waiting {status['backoff_time']}s")
-            except Exception as e:
-                print(f"[Main] Error getting MQTT status: {e}")
-    elif mqtt_client is None:
-        print("[Main] MQTT client not available, skipping reconnection")
-    
-    time.sleep_ms(1000)  # 等待恢复
-
-def _handle_recovery_state(sys_config, mqtt_client):
-    """处理恢复状态"""
-    # 恢复状态处理
-    print("[Main] Processing recovery state...")
-    
-    # 尝试恢复网络连接
-    wifi_connected = net_wifi.connect_wifi()
-    if wifi_connected:
-        print("[Main] Network recovery successful")
-        state_machine.handle_event(state_machine.StateEvent.RECOVERY_SUCCESS)
-    else:
-        print("[Main] Network recovery failed")
-        state_machine.handle_event(state_machine.StateEvent.RECOVERY_FAILED)
-
-def _perform_status_report(loop_count, mqtt_client, health_cache, status_cache, main_start_time):
-    """执行状态报告"""
+def _perform_status_report(loop_count, mqtt_client, health_cache, status_cache, main_start_time, core_template):
+    """执行状态报告 - 经过内存优化并保持日志格式一致"""
     if not health_cache:
         return
     
@@ -578,31 +493,33 @@ def _perform_status_report(loop_count, mqtt_client, health_cache, status_cache, 
         daemon_status = status_cache['active_str'] if health_cache.get('daemon', {}).get('active', False) else status_cache['inactive_str']
         wdt_status = status_cache['enabled_str'] if _wdt else status_cache['disabled_str']
         memory_percent = health_cache.get('memory', {}).get('percent', 0)
-        current_state = state_machine.get_current_state()
+        
+        # --- 内存优化: 使用 memo.get_string 获取状态名的缓存实例 ---
+        current_state_name = object_pool.get_string(state_machine.get_current_state())
         
         # 使用健康缓存中的温度信息
         temp_str = health_cache.get('temperature', {}).get('celsius', 'N/A')
         
-        # 构建状态消息
-        status_msg = utils.format_string(
-            "Loop:{},state:{},uptime:{}s,memory:{:.1f}%,temp:{},daemon:{},watchdog:{}",
-            loop_count, current_state, uptime, memory_percent, temp_str, daemon_status, wdt_status
+        # --- 内存优化: 使用预定义的模板格式化核心消息 ---
+        core_msg = core_template.format(
+            loop_count, current_state_name, uptime, memory_percent, temp_str, daemon_status, wdt_status
         )
         
-        # 统一日志格式，使其在控制台和MQTT中完全相同
-        # MQTT日志会自动添加[INFO]和时间戳前缀
-        full_log_msg = f"[Main] {status_msg}"
+        # --- 日志格式修正 ---
+        # 1. 为本地控制台打印完整的带时间戳的日志
+        timestamp = utils.get_formatted_time()
+        console_log_msg = "[INFO][" + timestamp + "]" + core_msg
+        print(console_log_msg)
 
-        # 始终在控制台打印状态
-        print(full_log_msg)
-
-        # 如果MQTT客户端存在且已连接，则发送日志
+        # 2. 如果MQTT客户端存在且已连接，则发送核心消息
+        #    net_mqtt.log() 会自动处理 [INFO] 和时间戳前缀
         if mqtt_client and mqtt_client.is_connected:
-            # 发送完整的消息，包括[Main]前缀，以确保日志一致性
-            mqtt_client.log("INFO", full_log_msg)
+            mqtt_client.log("INFO", core_msg)
         
     except Exception as e:
         print(f"[Main] Status report failed: {e}")
+        # 状态报告失败时触发系统警告事件，以便LED能够响应
+        state_machine.handle_event(state_machine.StateEvent.SYSTEM_WARNING)
 
 def _perform_memory_optimization(health_cache):
     """执行内存优化"""
@@ -625,6 +542,8 @@ def _perform_memory_optimization(health_cache):
         
     except Exception as e:
         print(f"[Main] Memory optimization failed: {e}")
+        # 内存优化失败可能表示内存严重问题，触发内存临界事件
+        state_machine.handle_event(state_machine.StateEvent.MEMORY_CRITICAL)
 
 
 # =============================================================================
@@ -692,11 +611,15 @@ def main():
         debug_mode = get_config_value(sys_config['config'], 'system', 'debug_mode', False)
         if debug_mode:
             print("[Main] Testing LED functionality...")
-            led_test_result = sys_daemon.test_led_functionality()
-            if led_test_result:
-                print("[Main] LED functionality test passed")
-            else:
-                print("[Main] LED functionality test failed")
+            try:
+                # 测试LED控制器
+                if 'led_controller' in globals():
+                    led_controller.play('blink')
+                    print("[Main] LED functionality test passed")
+                else:
+                    print("[Main] LED controller not available")
+            except Exception as e:
+                print(f"[Main] LED functionality test failed: {e}")
         
         # 检查最终状态并进入主循环
         final_state = sm.get_current_state()
@@ -722,6 +645,15 @@ def main():
         # 进入安全模式
         sys_daemon.force_safe_mode("主程序异常")
         handle_safe_mode()
+        
+    finally:
+        # 程序退出时清理LED资源
+        try:
+            if 'led_controller' in globals():
+                globals()['led_controller'].cleanup()
+                print("[Main] LED controller cleaned up")
+        except Exception as e:
+            print(f"[Main] LED controller cleanup failed: {e}")
 
 # =============================================================================
 # 程序入口

@@ -97,6 +97,26 @@ def get_timestamp():
     """
     return time.ticks_ms()
 
+def get_formatted_time():
+    """
+    获取格式化的当前时间字符串（完整格式，不包含中文）
+    
+    返回:
+        格式化后的时间字符串，格式为 "YYYY-MM-DD HH:MM:SS"
+        如果无法获取时间，则返回 "1970-01-01 00:00:00"
+    """
+    try:
+        # 获取当前时间
+        current_time = time.localtime()
+        
+        # 格式化为完整时间字符串
+        formatted_time = f"{current_time[0]:04d}-{current_time[1]:02d}-{current_time[2]:02d} {current_time[3]:02d}:{current_time[4]:02d}:{current_time[5]:02d}"
+        
+        return formatted_time
+    except Exception:
+        # 如果获取时间失败，返回默认时间
+        return "1970-01-01 00:00:00"
+
 def get_elapsed_time(start_time):
     """
     计算从开始时间到当前时间的经过时间（毫秒）
