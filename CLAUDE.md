@@ -184,29 +184,35 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### 构建和部署
 
-使用 [`build.py`](build.py) 脚本编译和部署项目：
+使用 [`build_m.py`](build_m.py) 脚本编译和部署项目：
 
 ```bash
 # 构建项目（排除测试文件）
-python build.py
+python build_m.py
 
 # 构建项目（包含测试文件）
-python build.py --test
+python build_m.py --test
 
 # 仅编译不部署
-python build.py --compile
+python build_m.py --compile
 
 # 上传并监听设备输出
-python build.py --upload
+python build_m.py --upload
 
 # 指定端口上传
-python build.py --upload --port COM3
+python build_m.py --upload --port COM3
 
 # 启用完整REPL交互模式
-python build.py --upload --repl
+python build_m.py --upload --repl
 
 # 使用原始REPL模式（调试用）
-python build.py --upload --raw-repl
+python build_m.py --upload --raw-repl
+
+# 诊断设备安全模式状态
+python build_m.py --diagnose
+
+# 清理本地缓存
+python build_m.py --clean-cache
 ```
 
 构建脚本功能：
@@ -214,6 +220,8 @@ python build.py --upload --raw-repl
 - **上传**: 使用 mpremote 自动检测 ESP32 设备并上传文件
 - **监控**: 实时监控设备串口输出，支持中文编码处理
 - **设备检测**: 自动识别 ESP32-C3 设备端口（支持多种USB转串口芯片）
+- **安全模式处理**: 智能检测和处理设备安全模式状态
+- **缓存管理**: 智能文件上传缓存，避免重复上传未修改文件
 
 ### 文件上传到设备
 构建脚本会自动处理文件上传，也可手动使用 MicroPython 工具：
@@ -246,7 +254,7 @@ rshell cp dist/* /pyboard/ -r
 - 使用 `--verbose` 参数查看详细构建信息
 - 使用 `--repl` 参数进入完整交互模式进行远程调试
 - 监控模式下按 Ctrl+C 停止监听
-- 查看 ISSUE.md 了解已知问题和解决方案
+- 使用 `--diagnose` 参数诊断设备安全模式问题
 
 ## LED Preset Manager
 
@@ -272,7 +280,7 @@ rshell cp dist/* /pyboard/ -r
 from lib.sys import led as led_preset
 
 # 获取LED管理器实例
-led_manager = led_preset.LEDPresetManager(12, 13)
+led_manager = led_preset.get_led_manager()
 
 # 设置系统状态
 led_manager.set_system_status(led_preset.SYSTEM_NORMAL)  # 正常运行
@@ -511,6 +519,10 @@ led_pins = get_config_value(config, 'daemon', 'config', 'led_pins')
 - **问题**: mpremote 因特殊字符崩溃
 - **解决**: 构建脚本已实现智能编码处理，使用安全监控模式避免崩溃
 
+### 安全模式问题
+- **问题**: 设备进入安全模式后无法自动恢复
+- **解决**: 这是设计特性，安全模式需要手动重启设备才能退出，确保问题得到人工干预
+
 ## Monitoring and Debugging
 
 ### 系统监控指标
@@ -527,3 +539,33 @@ led_pins = get_config_value(config, 'daemon', 'config', 'led_pins')
 - 检查LED状态指示
 - 查看错误统计信息
 - 使用状态机监控系统状态
+
+### 串口日志
+设备通过串口输出详细日志：
+- WiFi连接状态
+- MQTT连接状态
+- 内存使用报告
+- 系统日志
+- LED状态指示
+
+### 安全模式特性
+
+#### 安全模式触发条件
+- CPU温度超过阈值（默认65°C）
+- 内存使用率超过阈值（默认80%）
+- 错误计数超过限制（默认10次）
+- 看门狗超时
+- 系统严重错误
+
+#### 安全模式行为
+- LED显示SOS闪烁模式
+- 禁用自动恢复功能
+- 执行深度垃圾回收
+- 记录关键错误日志
+- 等待手动重启
+
+#### 安全模式恢复
+- **必须手动重启设备**: 这是设计特性，确保问题得到人工干预
+- **断电重启**: 完全断开电源，等待10秒后重新上电
+- **检查硬件**: 确认设备没有过热或其他硬件问题
+- **检查配置**: 确认配置参数是否合理

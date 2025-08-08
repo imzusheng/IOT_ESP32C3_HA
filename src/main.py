@@ -303,11 +303,16 @@ def check_system_health():
         # 检查错误统计
         error_stats = sys_error.get_error_stats()
         
+        # 检查温度状态
+        temp = utils.get_temperature()
+        temp_status = {'value': temp, 'celsius': f"{temp:.1f}°C" if temp is not None else "N/A"}
+        
         # 使用预分配的字典结构，避免每次创建新对象
         health_data = {
             'daemon': daemon_status,
             'memory': memory_status,
-            'errors': error_stats
+            'errors': error_stats,
+            'temperature': temp_status
         }
         
         # 执行垃圾回收，释放临时变量
@@ -552,10 +557,13 @@ def _perform_status_report(loop_count, mqtt_client, health_cache, status_cache):
         memory_percent = health_cache.get('memory', {}).get('percent', 0)
         current_state = state_machine.get_current_state()
         
+        # 使用健康缓存中的温度信息
+        temp_str = health_cache.get('temperature', {}).get('celsius', 'N/A')
+        
         # 构建状态消息
         status_msg = utils.format_string(
-            "Loop:{},state:{},memory:{:.1f}%,daemon:{},watchdog:{}",
-            loop_count, current_state, memory_percent, daemon_status, wdt_status
+            "Loop:{},state:{},memory:{:.1f}%,temp:{},daemon:{},watchdog:{}",
+            loop_count, current_state, memory_percent, temp_str, daemon_status, wdt_status
         )
         
         mqtt_client.log("INFO", status_msg)
