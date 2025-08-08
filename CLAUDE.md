@@ -32,9 +32,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 4. **MQTT Client** (`src/lib/net_mqtt.py`)
    - 基于umqtt.simple的自定义MQTT包装器
-   - 连接管理和自动重连机制
+   - 智能连接管理和指数退避重连机制
    - 内存优化的日志发送（使用bytearray）
    - 心跳监控和连接状态跟踪
+   - 重连冷却时间和重置机制
 
 5. **System Daemon** (`src/sys_daemon.py`)
    - 系统监控和安全保护功能
@@ -82,7 +83,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Key Features
 
 - **多网络WiFi支持**: 自动扫描并连接信号最强的配置网络
-- **MQTT通信**: 高效的MQTT客户端，支持自动重连和内存优化
+- **MQTT通信**: 高效的MQTT客户端，支持指数退避重连策略和内存优化
 - **系统监控**: 实时监控温度、内存使用和系统健康状态
 - **错误恢复**: 智能错误处理和自动恢复机制
 - **内存管理**: 优化的垃圾回收策略，适合ESP32C3的264KB内存限制
@@ -104,17 +105,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### 主要配置类
 
-#### MQTT配置 (`src/config.py:18-50`)
+#### MQTT配置 (`src/config.py:18-62`)
 ```python
 "mqtt": {
   "broker": "192.168.3.15",
   "port": 1883,
   "topic": "lzs/esp32c3",
   "keepalive": 60,
-  "config": {
-    "reconnect_delay": 5,
-    "max_retries": 3
-  }
+  "reconnect_delay": 5,
+  "max_retries": 3,
+  "exponential_backoff": True,
+  "max_backoff_time": 300,
+  "backoff_multiplier": 2
 }
 ```
 
@@ -378,6 +380,46 @@ led_preset.heartbeat(1)    # LED2 心跳模式
 5. **守护进程启动**: 开始系统监控 → LED控制 → 系统健康检查
 6. **主循环**: 看门狗喂狗 → 内存管理 → 状态监控 → LED状态指示
 
+## MQTT 重连机制
+
+### 指数退避策略
+当MQTT连接断开时，系统采用智能的指数退避重连策略，避免频繁重试消耗资源：
+
+#### 重连流程
+1. **第1轮**: 立即重试3次
+2. **第2轮**: 等待5秒后重试3次
+3. **第3轮**: 等待10秒后重试3次
+4. **第4轮**: 等待20秒后重试3次
+5. **第5轮**: 等待40秒后重试3次
+6. **第6轮**: 等待80秒后重试3次
+7. **第7轮**: 等待160秒后重试3次
+8. **第8轮及以后**: 等待300秒（最大值）后重试3次
+
+#### 配置参数
+- `exponential_backoff`: 是否启用指数退避策略（默认：True）
+- `max_backoff_time`: 最大退避时间，单位秒（默认：300）
+- `backoff_multiplier`: 退避倍数因子（默认：2）
+- `reconnect_delay`: 初始重连延迟，单位秒（默认：5）
+- `max_retries`: 每轮最大重试次数（默认：3）
+
+#### 重连特性
+- **渐进式等待**: 重连间隔按指数增长，避免服务器压力
+- **最大限制**: 退避时间不会超过配置的最大值
+- **自动重置**: 连接成功后重置所有计数器
+- **内存优化**: 每轮重试后执行垃圾回收
+- **状态监控**: 提供详细的连接状态和重连统计
+
+#### 日志示例
+```
+[MQTT] Connection failed (attempt 1/3): ECONNRESET
+[MQTT] Connection failed (attempt 2/3): ECONNRESET
+[MQTT] Connection failed (attempt 3/3): ECONNRESET
+[MQTT] Starting exponential backoff: waiting 5s (cycle 1)
+[MQTT] Starting exponential backoff: waiting 10s (cycle 2)
+[MQTT] Starting exponential backoff: waiting 20s (cycle 3)
+[MQTT] MQTT connection successful
+```
+
 ## System Workflow
 
 ### 主循环流程
@@ -514,6 +556,12 @@ led_pins = get_config_value(config, 'daemon', 'config', 'led_pins')
 ### 网络超时问题
 - **问题**: MQTT连接失败显示 EHOSTUNREACH 错误
 - **解决**: 检查网络连接和MQTT服务器配置，确认IP地址和端口正确
+
+### MQTT重连问题
+- **问题**: MQTT断开后频繁重试，日志显示大量连接失败
+- **解决**: 系统已实现指数退避策略，会自动调整重连间隔：5s → 10s → 20s → 40s → 80s → 160s → 300s(max)
+- **配置**: 可通过 `config.py` 中的 `exponential_backoff`、`max_backoff_time`、`backoff_multiplier` 参数调整
+- **监控**: 通过 `get_connection_status()` 方法查看当前重连状态和退避时间
 
 ### 构建脚本问题
 - **问题**: mpremote 因特殊字符崩溃

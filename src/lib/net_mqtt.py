@@ -25,7 +25,10 @@ import config
 # 全局MQTT配置变量
 _mqtt_config = {
     'reconnect_delay': config.get_config('mqtt', 'reconnect_delay', 5),
-    'max_retries': config.get_config('mqtt', 'max_retries', 3)
+    'max_retries': config.get_config('mqtt', 'max_retries', 3),
+    'exponential_backoff': config.get_config('mqtt', 'exponential_backoff', True),
+    'max_backoff_time': config.get_config('mqtt', 'max_backoff_time', 300),
+    'backoff_multiplier': config.get_config('mqtt', 'backoff_multiplier', 2)
 }
 
 def set_mqtt_config(config_dict=None, **kwargs):
@@ -50,7 +53,10 @@ def load_mqtt_config_from_main(config_data):
         # 更新全局配置
         _mqtt_config.update({
             'reconnect_delay': mqtt_subconfig.get('reconnect_delay', config.get_config('mqtt', 'reconnect_delay', 5)),
-            'max_retries': mqtt_subconfig.get('max_retries', config.get_config('mqtt', 'max_retries', 3))
+            'max_retries': mqtt_subconfig.get('max_retries', config.get_config('mqtt', 'max_retries', 3)),
+            'exponential_backoff': mqtt_subconfig.get('exponential_backoff', config.get_config('mqtt', 'exponential_backoff', True)),
+            'max_backoff_time': mqtt_subconfig.get('max_backoff_time', config.get_config('mqtt', 'max_backoff_time', 300)),
+            'backoff_multiplier': mqtt_subconfig.get('backoff_multiplier', config.get_config('mqtt', 'backoff_multiplier', 2))
         })
         
         print("[MQTT] MQTT configuration loaded from main config file")
@@ -65,10 +71,22 @@ class MqttServer:
     MQTT服务器客户端
     
     特性：
-    - 自动重连机制
+    - 智能指数退避重连机制
     - 内存优化的日志发送
     - 连接状态监控
     - 错误恢复机制
+    - 重连冷却时间管理
+    - 自动重置计数器
+    
+    重连策略：
+    - 第1轮：立即重试3次
+    - 第2轮：等待5秒后重试3次
+    - 第3轮：等待10秒后重试3次
+    - 第4轮：等待20秒后重试3次
+    - 第5轮：等待40秒后重试3次
+    - 第6轮：等待80秒后重试3次
+    - 第7轮：等待160秒后重试3次
+    - 第8轮及以后：等待300秒（最大值）后重试3次
     """
     
     def __init__(self, client_id, server, port=None, user=None, password=None, topic=None, keepalive=None):
@@ -94,32 +112,40 @@ class MqttServer:
         # 创建MQTT客户端
         self.client = MQTTClient(client_id, server, self.port, user, password, keepalive=keepalive if keepalive is not None else config.get_config('mqtt', 'keepalive', 60))
         self.is_connected = False
-        self.connection_attempts = 0
-        self.last_connect_time = 0
+        self.connection_attempts = 0          # 当前重连周期内的重试次数
+        self.last_connect_time = 0            # 上次连接尝试时间
+        self.backoff_time = 0                 # 当前退避等待时间
+        self.total_retry_cycles = 0           # 总重连周期数
         
         print(f"[MQTT] MQTT client created, server: {server}:{port}, topic: '{topic}'")
 
     def connect(self):
         """
-        连接到MQTT代理
+        连接到MQTT代理 - 支持指数退避策略
+        
+        指数退避策略：
+        1. 立即重试3次
+        2. 如果都失败，启动指数退避：5s → 10s → 20s → 40s → 80s → 160s → 300s(max)
+        3. 每个退避周期内重试3次
+        4. 连接成功后重置所有计数器
         
         返回：
         - True: 连接成功
-        - False: 连接失败
+        - False: 连接失败（可能在退避期）
         """
         if self.is_connected:
             return True
             
-        # 检查重连间隔
         current_time = time.time()
-        if (current_time - self.last_connect_time < _mqtt_config['reconnect_delay'] and 
-            self.connection_attempts > 0):
+        
+        # 检查退避时间（如果在退避期内，则跳过本次连接尝试）
+        if self.backoff_time > 0 and current_time - self.last_connect_time < self.backoff_time:
             return False
             
         try:
             self.client.connect()
             self.is_connected = True
-            self.connection_attempts = 0
+            self.reset_backoff()
             self.last_connect_time = current_time
             print("\033[1;32m[MQTT] MQTT connection successful\033[0m")
             self.log("INFO", f"设备在线，ID: {self.client_id}")
@@ -131,12 +157,58 @@ class MqttServer:
             print(f"\033[1;31m[MQTT] Connection failed (attempt {self.connection_attempts}/{_mqtt_config['max_retries']}): {e}\033[0m")
             self.is_connected = False
             
-            # 如果超过最大重试次数，执行垃圾回收
+            # 如果超过最大重试次数，启动指数退避
             if self.connection_attempts >= _mqtt_config['max_retries']:
-                gc.collect()
-                self.connection_attempts = 0
+                self._start_exponential_backoff()
                 
             return False
+    
+    def _start_exponential_backoff(self):
+        """
+        启动指数退避策略
+        
+        计算逻辑：
+        - base_delay * (multiplier ^ (cycle - 1))
+        - 限制最大退避时间避免过长等待
+        - 执行垃圾回收释放内存
+        """
+        self.total_retry_cycles += 1
+        
+        if _mqtt_config['exponential_backoff']:
+            # 计算指数退避时间: base_delay * (multiplier ^ (cycle - 1))
+            base_delay = _mqtt_config['reconnect_delay']
+            multiplier = _mqtt_config['backoff_multiplier']
+            max_delay = _mqtt_config['max_backoff_time']
+            
+            # 计算退避时间
+            backoff = base_delay * (multiplier ** (self.total_retry_cycles - 1))
+            # 限制最大退避时间
+            self.backoff_time = min(backoff, max_delay)
+            
+            print(f"\033[1;33m[MQTT] Starting exponential backoff: waiting {self.backoff_time}s (cycle {self.total_retry_cycles})\033[0m")
+        else:
+            # 固定延迟模式
+            self.backoff_time = _mqtt_config['reconnect_delay']
+            print(f"\033[1;33m[MQTT] Starting fixed delay: waiting {self.backoff_time}s (cycle {self.total_retry_cycles})\033[0m")
+        
+        # 重置当前重试计数
+        self.connection_attempts = 0
+        
+        # 执行垃圾回收
+        gc.collect()
+    
+    def reset_backoff(self):
+        """
+        重置退避计数器（连接成功后调用）
+        
+        重置内容：
+        - 总重连周期数
+        - 当前退避等待时间
+        - 当前重连周期内的重试次数
+        """
+        self.total_retry_cycles = 0
+        self.backoff_time = 0
+        self.connection_attempts = 0
 
     def log(self, level, message):
         """
@@ -208,12 +280,26 @@ class MqttServer:
             pass
             
     def get_connection_status(self):
-        """获取连接状态信息"""
+        """
+        获取连接状态信息
+        
+        返回字典包含：
+        - connected: 是否已连接
+        - server: 服务器地址
+        - port: 端口号
+        - topic: 主题
+        - attempts: 当前重试次数
+        - client_id: 客户端ID
+        - backoff_time: 当前退避时间
+        - total_retry_cycles: 总重连周期数
+        """
         return {
             'connected': self.is_connected,
             'server': self.server,
             'port': self.port,
             'topic': self.topic,
             'attempts': self.connection_attempts,
-            'client_id': self.client_id
+            'client_id': self.client_id,
+            'backoff_time': self.backoff_time,
+            'total_retry_cycles': self.total_retry_cycles
         }

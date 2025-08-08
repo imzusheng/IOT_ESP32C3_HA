@@ -154,16 +154,27 @@ def create_mqtt_client(client_id, broker, port=1883, topic='lzs/esp32c3', keepal
             topic=topic, keepalive=keepalive
         )
         
-        # 连接MQTT
+        # 尝试连接MQTT，但即使失败也返回客户端对象
+        # 这样可以在错误状态下继续使用退避重连机制
         if mqtt_client.connect():
-            return mqtt_client
+            print("[Main] MQTT connection successful")
         else:
-            print("[Main] MQTT connection failed")
-            return None
+            print("[Main] MQTT connection failed - will retry in error state")
+        
+        return mqtt_client
             
     except Exception as e:
         print(f"[Main] MQTT client creation failed: {e}")
-        return None
+        # 即使创建失败，也尝试创建一个基本的客户端对象
+        try:
+            mqtt_client = net_mqtt.MqttServer(
+                client_id, broker, port=port, 
+                topic=topic, keepalive=keepalive
+            )
+            return mqtt_client
+        except:
+            print("[Main] Failed to create MQTT client object")
+            return None
 
 # =============================================================================
 # 看门狗管理
@@ -528,6 +539,25 @@ def _handle_error_state(mqtt_client):
     """处理错误状态"""
     # 错误状态处理
     print("[Main] Processing error state...")
+    
+    # 尝试MQTT重连
+    if mqtt_client and not mqtt_client.is_connected:
+        print("[Main] Attempting MQTT reconnection in error state...")
+        if mqtt_client.connect():
+            print("[Main] MQTT reconnection successful in error state")
+            # 如果MQTT重连成功，尝试转换到运行状态
+            state_machine.handle_event(state_machine.StateEvent.SYSTEM_WARNING)
+        else:
+            # 检查退避状态，避免频繁重试
+            try:
+                status = mqtt_client.get_connection_status()
+                if status['backoff_time'] > 0:
+                    print(f"[Main] MQTT in backoff mode, waiting {status['backoff_time']}s")
+            except Exception as e:
+                print(f"[Main] Error getting MQTT status: {e}")
+    elif mqtt_client is None:
+        print("[Main] MQTT client not available, skipping reconnection")
+    
     time.sleep_ms(1000)  # 等待恢复
 
 def _handle_recovery_state(sys_config, mqtt_client):
@@ -644,14 +674,13 @@ def main():
             sys_config['mqtt_keepalive']
         )
         
+        # 设置MQTT客户端给其他模块
         if mqtt_client:
-            # 设置MQTT客户端给其他模块
             sys_daemon.set_mqtt_client(mqtt_client)
             sys_error.set_mqtt_client(mqtt_client)
             print("[Main] MQTT client configuration complete")
         else:
-            print("[Main] MQTT client creation failed")
-            state_machine.handle_event(state_machine.StateEvent.SYSTEM_ERROR)
+            print("[Main] MQTT client creation failed - continuing without MQTT")
         
         # 启动守护进程
         daemon_started = sys_daemon.start_daemon()

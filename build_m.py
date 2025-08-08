@@ -1245,13 +1245,19 @@ def start_interactive_repl(port):
     """启动交互式REPL会话，自动绕过编码错误"""
     print_message(f"启动交互式REPL会话 (端口: {port})", "INFO")
     print_message("按 Ctrl+] 或 Ctrl+X 退出REPL", "INFO")
-    print_message("提示: 已启用编码错误自动处理，不会因UTF-8错误而崩溃", "INFO")
+    print_message("提示: 已启用多重编码错误处理机制", "INFO")
     
     try:
-        # 方法1: 使用环境变量和错误处理
+        # 方法1: 最强健的编码处理方式
         import os
         env = os.environ.copy()
         env['PYTHONIOENCODING'] = 'utf-8:replace'  # 设置Python的编码错误处理
+        env['PYTHONUTF8'] = '1'  # 启用Python UTF-8模式
+        env['PYTHONLEGACYWINDOWSSTDIO'] = '0'  # 禁用旧版Windows stdio
+        
+        # 在Windows上设置额外的环境变量
+        if sys.platform == "win32":
+            env['PYTHONIOENCODING'] = 'utf-8:surrogateescape'  # 使用surrogateescape处理
         
         # 尝试直接运行mpremote
         process = subprocess.Popen(
@@ -1272,6 +1278,10 @@ def start_interactive_repl(port):
         # 方法2: 使用原始字节处理
         try:
             print_message("启动备用REPL模式 (原始字节处理)", "INFO")
+            env = os.environ.copy()
+            env['PYTHONIOENCODING'] = 'utf-8:replace'
+            env['PYTHONUTF8'] = '1'
+            
             process = subprocess.Popen(
                 [MPREMOTE_EXECUTABLE, 'connect', port, 'repl'],
                 env=env,
@@ -1327,15 +1337,173 @@ def start_raw_repl(port):
 
 
 def monitor_device(port):
-    """启动设备输出监控"""
+    """启动设备输出监控，带有增强的编码错误处理"""
     print_message(f"开始监控设备输出 (端口: {port})", "INFO")
     print_message("按 Ctrl+C 停止监控", "INFO")
+    print_message("提示: 已启用多重编码错误处理机制", "INFO")
+    print_message("注意: 使用repl模式进行监控，按Ctrl+]退出REPL模式", "INFO")
+    
     try:
-        subprocess.run([MPREMOTE_EXECUTABLE, 'connect', port, 'monitor'], check=True)
+        # 方法1: 最强健的编码处理方式
+        import os
+        env = os.environ.copy()
+        env['PYTHONIOENCODING'] = 'utf-8:replace'  # 设置Python的编码错误处理
+        env['PYTHONUTF8'] = '1'  # 启用Python UTF-8模式
+        env['PYTHONLEGACYWINDOWSSTDIO'] = '0'  # 禁用旧版Windows stdio
+        
+        # 使用更安全的监控方式 - 通过exec命令持续读取输出
+        monitor_script = """
+import sys
+import time
+try:
+    # 尝试导入sys_daemon获取状态
+    import sys_daemon
+    daemon_available = True
+except ImportError:
+    daemon_available = False
+
+# 监控循环
+try:
+    while True:
+        try:
+            # 获取系统状态
+            if daemon_available:
+                status = sys_daemon.get_daemon_status()
+                print(f"[Main] {status}")
+            else:
+                print("[Main] 守护进程不可用")
+            
+            # 短暂延迟
+            time.sleep(1)
+            
+        except KeyboardInterrupt:
+            break
+        except Exception as e:
+            print(f"[Main] 监控错误: {e}")
+            time.sleep(5)  # 出错后等待更长时间
+            
+except KeyboardInterrupt:
+    print("监控已停止")
+"""
+        
+        # 使用exec命令运行监控脚本，避免repl模式的编码问题
+        process = subprocess.Popen(
+            [MPREMOTE_EXECUTABLE, 'connect', port, 'exec', monitor_script],
+            env=env,
+            encoding='utf-8',
+            errors='replace',  # 关键：替换无法解码的字符
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            stdin=subprocess.PIPE,
+        )
+        
+        # 实时处理输出
+        import threading
+        import queue
+        
+        output_queue = queue.Queue()
+        
+        def read_output(pipe, queue):
+            """读取输出的线程函数"""
+            try:
+                for line in iter(pipe.readline, ''):
+                    if line:
+                        queue.put(('output', line.rstrip()))
+                    else:
+                        break
+            except Exception as e:
+                queue.put(('error', f"读取输出错误: {e}"))
+            finally:
+                pipe.close()
+        
+        def read_error(pipe, queue):
+            """读取错误输出的线程函数"""
+            try:
+                for line in iter(pipe.readline, ''):
+                    if line:
+                        queue.put(('error', line.rstrip()))
+                    else:
+                        break
+            except Exception as e:
+                queue.put(('error', f"读取错误输出错误: {e}"))
+            finally:
+                pipe.close()
+        
+        # 启动读取线程
+        stdout_thread = threading.Thread(target=read_output, args=(process.stdout, output_queue))
+        stderr_thread = threading.Thread(target=read_error, args=(process.stderr, output_queue))
+        
+        stdout_thread.daemon = True
+        stderr_thread.daemon = True
+        
+        stdout_thread.start()
+        stderr_thread.start()
+        
+        # 处理输出
+        try:
+            while process.poll() is None:
+                try:
+                    msg_type, msg = output_queue.get(timeout=0.1)
+                    if msg_type == 'output':
+                        print(msg)
+                    elif msg_type == 'error':
+                        print_message(f"设备错误: {msg}", "WARNING")
+                except queue.Empty:
+                    continue
+                except KeyboardInterrupt:
+                    break
+            
+            # 处理剩余的输出
+            while not output_queue.empty():
+                msg_type, msg = output_queue.get_nowait()
+                if msg_type == 'output':
+                    print(msg)
+                elif msg_type == 'error':
+                    print_message(f"设备错误: {msg}", "WARNING")
+                    
+        except KeyboardInterrupt:
+            print_message("\n监控已停止", "INFO")
+        
+        # 终止进程
+        process.terminate()
+        process.wait(timeout=5)
+        
+    except UnicodeDecodeError as e:
+        print_message("检测到UTF-8编码错误，尝试备用方案...", "WARNING")
+        # 方法2: 使用原始字节处理
+        try:
+            print_message("启动备用监控模式 (原始字节处理)", "INFO")
+            env = os.environ.copy()
+            env['PYTHONIOENCODING'] = 'utf-8:replace'
+            env['PYTHONUTF8'] = '1'
+            
+            process = subprocess.Popen(
+                [MPREMOTE_EXECUTABLE, 'connect', port, 'repl'],
+                env=env,
+                encoding='utf-8',
+                errors='replace',
+                text=True,
+            )
+            process.wait()
+            print_message("备用监控已停止", "INFO")
+        except Exception as e2:
+            print_message(f"备用监控模式也失败: {e2}", "ERROR")
+            print_message("建议尝试以下解决方案:", "INFO")
+            print_message("  1. 重启设备后重试", "INFO")
+            print_message("  2. 检查设备连接是否正常", "INFO")
+            print_message("  3. 尝试使用原始REPL模式: python build_m.py --raw-repl", "INFO")
+        
     except KeyboardInterrupt:
         print_message("\n监控已停止", "INFO")
+        
     except Exception as e:
         print_message(f"监控启动失败: {e}", "ERROR")
+        print_message("建议尝试以下解决方案:", "INFO")
+        print_message("  1. 重启设备后重试", "INFO")
+        print_message("  2. 检查设备连接是否正常", "INFO")
+        print_message("  3. 检查mpremote工具是否正确安装", "INFO")
+        print_message("  4. 尝试使用原始REPL模式: python build_m.py --raw-repl", "INFO")
 
 # ==================== 文件上传 ====================
 
