@@ -17,6 +17,7 @@ class Logger:
     特性:
     - 基于 ulogging 的高效日志记录
     - 事件驱动日志记录
+    - 支持模块名称标注
     - 多级别日志支持 (DEBUG, INFO, WARN, ERROR)
     - 内存优化设计
     - 时间戳格式化
@@ -56,6 +57,9 @@ class Logger:
         
         # 事件总线引用
         self._event_bus = None
+        # 保留默认处理器引用用于后续判断回调是否被外部替换，
+        # 若被替换则在直接日志方法中采用兼容调用，避免传递未知关键字参数
+        self._default_handle_log = self._handle_log
         
     def _setup_logger_format(self):
         """配置 ulogging 的输出格式"""
@@ -121,11 +125,17 @@ class Logger:
         except:
             pass  # 如果 ulogging 不可用，忽略
 
-    def _handle_log(self, event_name, msg, *args):
+    def _handle_log(self, event_name, msg=None, *args, **kwargs):
         """
         处理接收到的日志事件。
         使用 ulogging 进行实际的日志记录。
+        支持模块来源标注。
         """
+        # 从旧格式兼容：如果 msg 是第一个位置参数
+        if msg is None and args:
+            msg = args[0]
+            args = args[1:]
+        
         log_level = self._level_map.get(event_name)
         if log_level is None or log_level < self._level:
             return
@@ -135,6 +145,38 @@ class Logger:
             full_msg = msg.format(*args)
         except:
             full_msg = msg
+        
+        # 添加模块来源标注
+        module_name = kwargs.get('module', None)
+        error_context = kwargs.get('error_context', None)
+        
+        # 如果有错误上下文，提取模块信息
+        if error_context and isinstance(error_context, dict):
+            if 'callback_name' in error_context:
+                # 从回调名提取模块信息
+                callback_name = error_context.get('callback_name', '')
+                if '.' in callback_name:
+                    parts = callback_name.split('.')
+                    if len(parts) >= 2:
+                        module_name = module_name or parts[0].upper()
+                
+            # 如果有源事件信息，也可以从中推断模块
+            source_event = error_context.get('event', '')
+            if source_event and not module_name:
+                if source_event.startswith('wifi.'):
+                    module_name = 'WiFi'
+                elif source_event.startswith('mqtt.'):
+                    module_name = 'MQTT'
+                elif source_event.startswith('system.'):
+                    module_name = 'System'
+                elif source_event.startswith('led.'):
+                    module_name = 'LED'
+                elif source_event.startswith('sensor.'):
+                    module_name = 'Sensor'
+
+        # 如果有模块名，添加前缀
+        if module_name:
+            full_msg = f"[{module_name}] {full_msg}"
 
         # 根据事件类型使用对应的 ulogging 方法
         if event_name == EVENT.LOG_DEBUG:
@@ -147,40 +189,111 @@ class Logger:
             self._logger.error(full_msg)
         else:
             self._logger.info(full_msg)
-            
-    # 直接日志方法 - 提供更直接的日志记录接口
-    def debug(self, msg, *args):
+
+    def _invoke_handler_compat(self, handler, event_name, msg, args, module):
+        """
+        安全调用（可能被外部替换的）_handle_log 回调，
+        逐步放宽参数，避免因未知关键字参数导致的 TypeError。
+        优先尝试保留 event_name 以及格式化参数。
+        """
+        try:
+            # 优先尝试包含 module 关键字（如果外部实现支持）
+            if module is not None:
+                return handler(event_name, msg, *args, module=module)
+            else:
+                return handler(event_name, msg, *args)
+        except TypeError:
+            pass
+        try:
+            # 去掉关键字参数，仅位置参数
+            return handler(event_name, msg, *args)
+        except TypeError:
+            pass
+        try:
+            # 退化为仅 event_name 与原始消息
+            return handler(event_name, msg)
+        except TypeError:
+            pass
+        try:
+            # 最后尝试仅传入消息（极端兼容）
+            return handler(msg)
+        except TypeError:
+            # 放弃调用，避免影响主流程
+            return
+        
+    # 直接日志方法 - 提供更直接的日志记录接口，支持模块标注
+    def debug(self, msg, *args, module=None):
         """直接记录调试日志"""
-        self._handle_log(EVENT.LOG_DEBUG, msg, *args)
+        handler = self._handle_log
+        if handler is self._default_handle_log:
+            handler(EVENT.LOG_DEBUG, msg, *args, module=module)
+        else:
+            self._invoke_handler_compat(handler, EVENT.LOG_DEBUG, msg, args, module)
         
-    def info(self, msg, *args):
+    def info(self, msg, *args, module=None):
         """直接记录信息日志"""
-        self._handle_log(EVENT.LOG_INFO, msg, *args)
+        handler = self._handle_log
+        if handler is self._default_handle_log:
+            handler(EVENT.LOG_INFO, msg, *args, module=module)
+        else:
+            self._invoke_handler_compat(handler, EVENT.LOG_INFO, msg, args, module)
         
-    def warning(self, msg, *args):
+    def warning(self, msg, *args, module=None):
         """直接记录警告日志"""
-        self._handle_log(EVENT.LOG_WARN, msg, *args)
+        handler = self._handle_log
+        if handler is self._default_handle_log:
+            handler(EVENT.LOG_WARN, msg, *args, module=module)
+        else:
+            self._invoke_handler_compat(handler, EVENT.LOG_WARN, msg, args, module)
         
-    def error(self, msg, *args):
+    def error(self, msg, *args, module=None):
         """直接记录错误日志"""
-        self._handle_log(EVENT.LOG_ERROR, msg, *args)
+        handler = self._handle_log
+        if handler is self._default_handle_log:
+            handler(EVENT.LOG_ERROR, msg, *args, module=module)
+        else:
+            self._invoke_handler_compat(handler, EVENT.LOG_ERROR, msg, args, module)
         
-    def critical(self, msg, *args):
+    def critical(self, msg, *args, module=None):
         """直接记录严重错误日志"""
         try:
             full_msg = msg.format(*args)
         except:
             full_msg = msg
-        self._logger.error(f"CRITICAL: {full_msg}")
+        
+        if module:
+            full_msg = f"[{module}] CRITICAL: {full_msg}"
+        else:
+            full_msg = f"CRITICAL: {full_msg}"
+            
+        self._logger.error(full_msg)
         
     # 事件发布辅助方法
-    def publish_log(self, event_name, msg, *args):
+    def publish_log(self, event_name, msg, *args, module=None):
         """通过事件总线发布日志事件"""
         if self._event_bus:
-            self._event_bus.publish(event_name, msg, *args)
+            # 兼容性发布：优先尝试带关键字参数的调用，不支持时逐步降级
+            try:
+                if module is not None:
+                    self._event_bus.publish(event_name, msg, *args, module=module)
+                else:
+                    self._event_bus.publish(event_name, msg, *args)
+            except TypeError:
+                try:
+                    self._event_bus.publish(event_name, msg, *args)
+                except TypeError:
+                    try:
+                        self._event_bus.publish(event_name, msg)
+                    except TypeError:
+                        # 最后降级为仅事件名
+                        self._event_bus.publish(event_name)
         else:
-            # 如果没有事件总线，直接记录
-            self._handle_log(event_name, msg, *args)
+            # 如果没有事件总线，直接记录（使用兼容调用，以适配外部替换）
+            handler = self._handle_log
+            if handler is self._default_handle_log:
+                handler(event_name, msg, *args, module=module)
+            else:
+                self._invoke_handler_compat(handler, event_name, msg, args, module)
 
 # 辅助函数，方便在代码中发布日志事件
 # 使用方法: log(event_bus, EVENT.LOG_INFO, "System started with config: {}", config)
@@ -209,28 +322,28 @@ def set_global_logger(logger):
     global _global_logger
     _global_logger = logger
     
-# 便捷的全局日志函数
-def debug(msg, *args):
+# 便捷的全局日志函数，支持模块标注
+def debug(msg, *args, module=None):
     """全局调试日志函数"""
     logger = get_global_logger()
-    logger.debug(msg, *args)
+    logger.debug(msg, *args, module=module)
     
-def info(msg, *args):
+def info(msg, *args, module=None):
     """全局信息日志函数"""
     logger = get_global_logger()
-    logger.info(msg, *args)
+    logger.info(msg, *args, module=module)
     
-def warning(msg, *args):
+def warning(msg, *args, module=None):
     """全局警告日志函数"""
     logger = get_global_logger()
-    logger.warning(msg, *args)
+    logger.warning(msg, *args, module=module)
     
-def error(msg, *args):
+def error(msg, *args, module=None):
     """全局错误日志函数"""
     logger = get_global_logger()
-    logger.error(msg, *args)
+    logger.error(msg, *args, module=module)
     
-def critical(msg, *args):
+def critical(msg, *args, module=None):
     """全局严重错误日志函数"""
     logger = get_global_logger()
-    logger.critical(msg, *args)
+    logger.critical(msg, *args, module=module)

@@ -67,7 +67,8 @@ CONFIG = {
         # 建议: 将最稳定或最常用的WiFi网络放在列表的最前面。
         "networks": [
             {"ssid": "zsm60p", "password": "25845600"},
-            {"ssid": "leju_software", "password": "leju123456"}
+            {"ssid": "leju_software", "password": "leju123456"},
+            {"ssid": "CMCC-pdRG", "password": "7k77ed5p"}
         ],
 
         # 描述: 连接单个WiFi网络时允许的最大超时时间，单位为秒。

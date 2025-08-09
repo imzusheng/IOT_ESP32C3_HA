@@ -2,16 +2,26 @@
 # 专为 MicroPython 环境设计
 import sys
 import time
-import os
+import gc
 
-# 确保可以从 tests 目录导入上级的 lib 包
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# MicroPython-compatible path handling
+try:
+    import os
+    # Robust cross-platform parent directory insertion
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    parent_dir = os.path.abspath(os.path.join(current_dir, '..'))
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
+except Exception:
+    # Fallback for MicroPython or restricted environments
+    if '..' not in sys.path:
+        sys.path.insert(0, '..')
 
-# 导入 event_bus 模块
+# Import EventBus module
 try:
     from lib.event_bus import EventBus
 except ImportError:
-    print("错误：无法导入 EventBus。请确保 event_bus.py 文件在正确的位置。")
+    print("Error: Unable to import EventBus. Please ensure event_bus.py is in correct location.")
     sys.exit(1)
 
 # 全局变量用于测试
@@ -25,11 +35,11 @@ def log_test_result(test_name, passed, message=""):
     test_count += 1
     if passed:
         passed_count += 1
-        status = "通过"
+        status = "PASSED"
     else:
-        status = "失败"
+        status = "FAILED"
     
-    print(f"[测试] {test_name}: {status}")
+    print(f"[Test] {test_name}: {status}")
     if message:
         print(f"      {message}")
     
@@ -551,24 +561,24 @@ def reset_test_results():
 def print_test_summary():
     """打印测试结果摘要"""
     print("\n" + "=" * 50)
-    print("测试结果摘要")
+    print("Test Results Summary")
     print("=" * 50)
-    print(f"总测试数: {test_count}")
-    print(f"通过数: {passed_count}")
-    print(f"失败数: {test_count - passed_count}")
+    print(f"Total tests: {test_count}")
+    print(f"Passed: {passed_count}")
+    print(f"Failed: {test_count - passed_count}")
     if test_count > 0:
-        print(f"成功率: {passed_count / test_count * 100:.1f}%")
+        print(f"Success rate: {passed_count / test_count * 100:.1f}%")
     
     if passed_count == test_count:
-        print("\n所有测试通过！EventBus 功能正常。")
+        print("\nAll tests passed! EventBus functionality is working correctly.")
     else:
-        print("\n部分测试失败。请检查上述失败测试的详细信息。")
+        print("\nSome tests failed. Please check the detailed test results above.")
 
 def run_all_tests():
     """运行所有测试"""
     reset_test_results()
     print("=" * 50)
-    print("运行所有 EventBus 功能测试")
+    print("Running all EventBus functionality tests")
     print("=" * 50)
     
     # 运行所有测试

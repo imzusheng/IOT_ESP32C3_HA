@@ -44,8 +44,8 @@ class MqttController:
             )
             self.client.set_callback(self._mqtt_callback)
         except Exception as e:
-            print(f"Error creating MQTT client: {e}")
-            self.event_bus.publish(EVENT.LOG_ERROR, "MQTT client setup failed: {}", e)
+            print(f"[MQTT] Error creating MQTT client: {e}")
+            self.event_bus.publish(EVENT.LOG_ERROR, "MQTT client setup failed: {}", e, module="MQTT")
 
     def _mqtt_callback(self, topic, msg):
         """
@@ -55,30 +55,29 @@ class MqttController:
         try:
             topic_str = topic.decode('utf-8')
             msg_str = msg.decode('utf-8')
-            print(f"MQTT Message Received: Topic='{topic_str}', Msg='{msg_str}'")
+            print(f"[MQTT] Message received: topic='{topic_str}', msg='{msg_str}'")
             self.event_bus.publish(EVENT.MQTT_MESSAGE, topic_str, msg_str)
         except Exception as e:
-            self.event_bus.publish(EVENT.LOG_ERROR, "Error processing MQTT message: {}", e)
+            self.event_bus.publish(EVENT.LOG_ERROR, "Error processing MQTT message: {}", e, module="MQTT")
 
     def connect(self):
         """连接到MQTT Broker。"""
         if self.is_connected or not self.client:
             return
 
-        print(f"Connecting to MQTT broker at {self.config['broker']}...")
+        print(f"[MQTT] Connecting to broker at {self.config['broker']}...")
         try:
-            # 修复: connect() 成功时不返回值, 失败时抛出异常
             self.client.connect()
             self.is_connected = True
-            print("MQTT connected successfully.")
+            print("[MQTT] Connected successfully.")
             self.event_bus.publish(EVENT.MQTT_CONNECTED)
-            # 订阅配置中指定的主题
             for topic in self.config.get('subscribe_topics', []):
                 self.subscribe(topic)
             self.last_ping_time = time.ticks_ms()
 
         except Exception as e:
-            print(f"Error connecting to MQTT: {e}")
+            print(f"[MQTT] Error connecting: {e}")
+            self.event_bus.publish(EVENT.LOG_ERROR, "MQTT connect failed: {}", e, module="MQTT")
             self.is_connected = False
             self.event_bus.publish(EVENT.MQTT_DISCONNECTED, str(e))
 
@@ -88,37 +87,38 @@ class MqttController:
             try:
                 self.client.disconnect()
             except Exception as e:
-                print(f"Error during MQTT disconnect: {e}")
+                print(f"[MQTT] Error during disconnect: {e}")
+                self.event_bus.publish(EVENT.LOG_WARN, "MQTT disconnect error: {}", e, module="MQTT")
         self.is_connected = False
-        print("MQTT disconnected.")
-        # Do not publish event here, as disconnects are usually commanded by FSM
-        # which already knows the state.
+        print("[MQTT] Disconnected.")
+        self.event_bus.publish(EVENT.LOG_INFO, "MQTT disconnected", module="MQTT")
 
     def publish(self, topic, msg, retain=False, qos=0):
         """发布消息。"""
         if not self.is_connected or not self.client:
-            self.event_bus.publish(EVENT.LOG_WARN, "Cannot publish, MQTT not connected.")
+            self.event_bus.publish(EVENT.LOG_WARN, "Cannot publish, MQTT not connected.", module="MQTT")
             return
 
         try:
             self.client.publish(topic, msg, retain, qos)
         except Exception as e:
-            print(f"MQTT publish error: {e}")
-            # Assume connection is lost
+            print(f"[MQTT] Publish error: {e}")
+            self.event_bus.publish(EVENT.LOG_ERROR, "MQTT publish error: {}", e, module="MQTT")
             self.is_connected = False
             self.event_bus.publish(EVENT.MQTT_DISCONNECTED, "PUBLISH_ERROR")
 
     def subscribe(self, topic, qos=0):
         """订阅主题。"""
         if not self.is_connected or not self.client:
-            self.event_bus.publish(EVENT.LOG_WARN, "Cannot subscribe, MQTT not connected.")
+            self.event_bus.publish(EVENT.LOG_WARN, "Cannot subscribe, MQTT not connected.", module="MQTT")
             return
         
         try:
-            print(f"Subscribing to topic: {topic}")
+            print(f"[MQTT] Subscribing topic: {topic}")
             self.client.subscribe(topic, qos)
         except Exception as e:
-            print(f"MQTT subscribe error: {e}")
+            print(f"[MQTT] Subscribe error: {e}")
+            self.event_bus.publish(EVENT.LOG_ERROR, "MQTT subscribe error: {}", e, module="MQTT")
             self.is_connected = False
             self.event_bus.publish(EVENT.MQTT_DISCONNECTED, "SUBSCRIBE_ERROR")
 
@@ -142,7 +142,8 @@ class MqttController:
                     self.last_ping_time = time.ticks_ms()
 
             except Exception as e:
-                print(f"MQTT loop error: {e}. Connection lost.")
+                print(f"[MQTT] Loop error: {e}. Connection lost.")
+                self.event_bus.publish(EVENT.LOG_WARN, "MQTT loop error: {}", e, module="MQTT")
                 self.is_connected = False
                 self.event_bus.publish(EVENT.MQTT_DISCONNECTED, "LOOP_ERROR")
         else:

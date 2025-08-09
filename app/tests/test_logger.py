@@ -2,10 +2,19 @@
 # 专为 MicroPython 环境设计，测试基于 ulogging 的日志系统
 import sys
 import time
-import os
 
-# 确保可以从 tests 目录导入上级的 lib 包
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# MicroPython-compatible path handling
+try:
+    import os
+    # Robust cross-platform parent directory insertion
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    parent_dir = os.path.abspath(os.path.join(current_dir, '..'))
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
+except Exception:
+    # Fallback for MicroPython or restricted environments
+    if '..' not in sys.path:
+        sys.path.insert(0, '..')
 
 # 导入 logger 模块和相关依赖
 try:
@@ -13,7 +22,7 @@ try:
     from lib.event_bus import EventBus
     from event_const import EVENT
 except ImportError:
-    print("错误：无法导入 Logger 或相关模块。请确保文件在正确的位置。")
+    print("Error: Unable to import Logger or related modules. Please ensure files are in correct location.")
     sys.exit(1)
 
 # 全局变量用于测试
@@ -28,11 +37,11 @@ def log_test_result(test_name, passed, message=""):
     test_count += 1
     if passed:
         passed_count += 1
-        status = "通过"
+        status = "PASSED"
     else:
-        status = "失败"
+        status = "FAILED"
     
-    print(f"[测试] {test_name}: {status}")
+    print(f"[Test] {test_name}: {status}")
     if message:
         print(f"      {message}")
     
@@ -76,14 +85,14 @@ def test_logger_initialization():
         has_event_bus_ref = hasattr(logger1, '_event_bus')
         
         if has_logger_attr and has_level_map and has_event_bus_ref:
-            log_test_result("Logger 初始化", True)
+            log_test_result("Logger initialization", True)
             return True
         else:
-            log_test_result("Logger 初始化", False, "缺少必要的实例属性")
+            log_test_result("Logger initialization", False, "Missing required instance attributes")
             return False
             
     except Exception as e:
-        log_test_result("Logger 初始化", False, f"初始化异常: {e}")
+        log_test_result("Logger initialization", False, f"Initialization exception: {e}")
         return False
 
 def test_event_bus_setup():
@@ -109,15 +118,15 @@ def test_event_bus_setup():
         time.sleep(0.1)
         
         if bus_reference_set and has_info_subscribers and has_warn_subscribers and has_error_subscribers:
-            log_test_result("事件总线集成", True)
+            log_test_result("Event bus integration", True)
             return True
         else:
-            log_test_result("事件总线集成", False, 
-                           f"总线引用: {bus_reference_set}, 订阅状态: DEBUG={has_debug_subscribers}, INFO={has_info_subscribers}, WARN={has_warn_subscribers}, ERROR={has_error_subscribers}")
+            log_test_result("Event bus integration", False, 
+                           f"Bus reference: {bus_reference_set}, Subscription status: DEBUG={has_debug_subscribers}, INFO={has_info_subscribers}, WARN={has_warn_subscribers}, ERROR={has_error_subscribers}")
             return False
             
     except Exception as e:
-        log_test_result("事件总线集成", False, f"集成异常: {e}")
+        log_test_result("Event bus integration", False, f"Integration exception: {e}")
         return False
 
 def test_log_level_setting():
@@ -133,14 +142,14 @@ def test_log_level_setting():
             expected_internal_level = logger._level_map[level]
             
             if logger._level != expected_internal_level:
-                log_test_result("日志级别设置", False, f"级别 {level} 设置失败")
+                log_test_result("Log level setting", False, f"Level {level} setting failed")
                 return False
         
-        log_test_result("日志级别设置", True)
+        log_test_result("Log level setting", True)
         return True
         
     except Exception as e:
-        log_test_result("日志级别设置", False, f"级别设置异常: {e}")
+        log_test_result("Log level setting", False, f"Level setting exception: {e}")
         return False
 
 def test_direct_logging_methods():
@@ -528,20 +537,20 @@ def reset_test_results():
 def print_test_summary():
     """打印测试结果摘要"""
     print("\n" + "=" * 50)
-    print("Logger 测试结果摘要")
+    print("Logger Test Results Summary")
     print("=" * 50)
-    print(f"总测试数: {test_count}")
-    print(f"通过数: {passed_count}")
-    print(f"失败数: {test_count - passed_count}")
+    print(f"Total tests: {test_count}")
+    print(f"Passed: {passed_count}")
+    print(f"Failed: {test_count - passed_count}")
     if test_count > 0:
-        print(f"成功率: {passed_count / test_count * 100:.1f}%")
+        print(f"Success rate: {passed_count / test_count * 100:.1f}%")
     
     if passed_count == test_count:
-        print("\n所有测试通过！Logger 功能正常。")
+        print("\nAll tests passed! Logger functionality is working correctly.")
     else:
-        print("\n部分测试失败。请检查上述失败测试的详细信息。")
+        print("\nSome tests failed. Please check the detailed test results above.")
         
-    print("\n详细测试结果:")
+    print("\nDetailed test results:")
     for test_name, passed, message in test_results:
         status = "✓" if passed else "✗"
         print(f"  {status} {test_name}")
@@ -552,7 +561,7 @@ def run_all_tests():
     """运行所有测试"""
     reset_test_results()
     print("=" * 50)
-    print("运行所有 Logger 功能测试")
+    print("Running all Logger functionality tests")
     print("=" * 50)
     
     # 运行所有测试

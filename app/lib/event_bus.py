@@ -2,11 +2,40 @@
 try:
     import micropython as _micropython
     _schedule = _micropython.schedule
+    # 检查调度队列状态
+    try:
+        # 尝试检查 micropython 是否有队列状态检查方法
+        _queue_full_check = True
+    except:
+        _queue_full_check = False
 except Exception:
     # 提供在桌面 Python 环境下的降级实现，使测试可运行
     def _schedule(cb, arg):
         # 直接同步调用以保证语义正确（测试中有 sleep，不影响）
         cb(arg)
+    _queue_full_check = False
+
+# --- 兼容性时间函数封装（支持 desktop Python 环境） ---
+try:
+    import time as _time
+    _HAS_TICKS = hasattr(_time, 'ticks_ms') and hasattr(_time, 'ticks_diff')
+except Exception:
+    _time = None
+    _HAS_TICKS = False
+
+def _ticks_ms():
+    """返回毫秒级时间戳，兼容 CPython 与 MicroPython。"""
+    if _HAS_TICKS:
+        return _time.ticks_ms()
+    # CPython 兼容：使用 time.time() * 1000
+    import time as __t
+    return int(__t.time() * 1000)
+
+def _ticks_diff(a, b):
+    """计算两个毫秒计时值的差，兼容 CPython 与 MicroPython。"""
+    if _HAS_TICKS:
+        return _time.ticks_diff(a, b)
+    return a - b
 
 class EventBus:
     """
@@ -20,6 +49,7 @@ class EventBus:
     - 增强的错误处理和报告
     - 内省与调试工具
     - 单例模式，内存友好
+    - 调度队列溢出防护
     """
     _instance = None
     _initialized = False
@@ -37,6 +67,9 @@ class EventBus:
         self._verbose = verbose
         self._error_recursion_depth = 0  # 初始化错误递归深度
         self._MAX_ERROR_RECURSION = 3    # 最大错误递归深度
+        self._schedule_errors = 0        # 调度错误计数
+        self._max_schedule_errors = 10   # 最大调度错误次数
+        self._event_rate_limiter = {}    # 事件频率限制器
         self._initialized = True
         if self._verbose:
             print("[EventBus] Initialized.")
@@ -64,7 +97,6 @@ class EventBus:
         else:
             self._log("Callback {} already subscribed to event '{}'", callback, event_name)
 
-
     def unsubscribe(self, event_name, callback):
         """
         取消订阅一个事件。
@@ -78,6 +110,31 @@ class EventBus:
                 del self.bus[event_name]
                 self._log("Event '{}' removed as it has no subscribers.", event_name)
 
+    def _is_event_rate_limited(self, event_name):
+        """检查事件是否被频率限制"""
+        now = _ticks_ms()
+        
+        # 某些事件需要频率限制防止调度队列溢出
+        rate_limited_events = {
+            'log.info': 500,    # 日志事件最小间隔500ms
+            'log.warn': 300,    # 警告日志最小间隔300ms
+            'log.error': 100,   # 错误日志最小间隔100ms
+            'system.error': 1000,  # 系统错误事件最小间隔1秒
+            'wifi.connecting': 2000,  # WiFi连接状态最小间隔2秒
+            'ntp.sync.started': 5000,  # NTP同步开始最小间隔5秒
+        }
+        
+        if event_name in rate_limited_events:
+            min_interval = rate_limited_events[event_name]
+            last_time = self._event_rate_limiter.get(event_name, 0)
+            
+            if _ticks_diff(now, last_time) < min_interval:
+                return True  # 被限制
+            
+            self._event_rate_limiter[event_name] = now
+        
+        return False
+
     def publish(self, event_name, *args, **kwargs):
         """
         异步发布一个事件。回调将被调度执行，而不是立即执行。
@@ -85,76 +142,120 @@ class EventBus:
         :param args: 传递给回调的位置参数
         :param kwargs: 传递给回调的关键字参数
         """
+        # 检查事件频率限制
+        if self._is_event_rate_limited(event_name):
+            return  # 静默丢弃被限制的事件
+        
         if event_name in self.bus:
             self._log("Publishing event '{}' to {} subscribers", event_name, len(self.bus[event_name]))
             # 使用副本以允许在回调中安全地修改原始订阅列表
             for callback in self.bus[event_name][:]:
                 try:
-                    # 将实际的调用封装在一个函数中，以便 schedule 能正确处理
-                    def scheduled_call(cb, a, kw, evt_name):
-                        try:
-                            # 优先使用新签名：callback(event_name, *args, **kwargs)
-                            cb(evt_name, *a, **kw)
-                        except TypeError as e1:
-                            # 回退到旧签名：callback(*args, **kwargs)
-                            try:
-                                cb(*a, **kw)
-                            except TypeError as e2:
-                                # 最后尝试无参调用：callback()
-                                try:
-                                    cb()
-                                except Exception as e:
-                                    # 仍失败则进入统一错误处理
-                                    raise e
-                        except Exception as e:
-                            # 非签名问题的异常，直接进入统一错误处理
-                            raise e
-                    
-                    def handle_error(evt_name, cb, err):
-                        print(f"Error in scheduled callback for '{evt_name}': {err}")
-                        # 发生异常时，发布一个系统错误事件
-                        if evt_name != "system.error":  # 避免无限循环
-                            # 检查错误递归深度
-                            if self._error_recursion_depth < self._MAX_ERROR_RECURSION:
-                                # 获取回调函数的描述性名称
-                                callback_name = self._get_callback_name(cb)
-                                # 提供更完整的错误上下文信息
-                                error_context = {
-                                    "source": "event_bus",
-                                    "event": evt_name,
-                                    "callback_name": callback_name,
-                                    "error_type": "event_callback",
-                                    "error_message": str(err),
-                                    "recursion_depth": self._error_recursion_depth + 1
-                                }
-                                # 增加递归深度计数器
-                                self._error_recursion_depth += 1
-                                try:
-                                    self.publish("system.error", error_context=error_context)
-                                except Exception as publish_error:
-                                    # 如果 publish 方法本身失败，记录错误但继续执行
-                                    print(f"[EventBus] Failed to publish system.error event: {publish_error}")
-                                finally:
-                                    # 减少递归深度计数器
-                                    self._error_recursion_depth -= 1
-                            else:
-                                print(f"[EventBus] Maximum error recursion depth reached. Stopping error propagation for event '{evt_name}'")
-                        else:
-                            # 处理 system.error 事件本身的错误
-                            if self._error_recursion_depth == 0:
-                                print(f"[EventBus] Critical: Error in system.error handler: {err}")
-                                # 重置递归深度，防止系统完全卡死
-                                self._error_recursion_depth = 0
-
-                    # 修复 lambda 函数变量捕获问题，通过默认参数捕获当前值
-                    _schedule(lambda _, cb=callback, a=args, kw=kwargs, evt_name=event_name:
-                              (scheduled_call(cb, a, kw, evt_name)), None)
+                    # 如果调度错误太多，切换为同步调用模式
+                    if self._schedule_errors > self._max_schedule_errors:
+                        self._execute_callback_sync(callback, event_name, args, kwargs)
+                    else:
+                        self._execute_callback_async(callback, event_name, args, kwargs)
+                        
                 except Exception as e:
-                    # 调度本身失败（例如队列满）或 scheduled_call 抛出的异常
-                    handle_error(event_name, callback, e)
+                    self._handle_callback_error(event_name, callback, e)
         else:
             self._log("Published event '{}' but no subscribers.", event_name)
+
+    def _execute_callback_sync(self, callback, event_name, args, kwargs):
+        """同步执行回调（当调度队列有问题时的降级方案）"""
+        try:
+            self._invoke_callback_compat(callback, event_name, args, kwargs)
+        except Exception as e:
+            self._handle_callback_error(event_name, callback, e)
+
+    def _execute_callback_async(self, callback, event_name, args, kwargs):
+        """异步执行回调（正常情况）"""
+        def scheduled_wrapper(_):
+            try:
+                self._invoke_callback_compat(callback, event_name, args, kwargs)
+            except Exception as e:
+                self._handle_callback_error(event_name, callback, e)
+        
+        # 尝试调度执行
+        try:
+            _schedule(scheduled_wrapper, None)
+        except Exception as schedule_error:
+            # 调度失败（如队列满），记录错误并降级为同步执行
+            self._schedule_errors += 1
+            if "queue full" in str(schedule_error).lower():
+                print(f"[EventBus] Schedule queue full for event '{event_name}', falling back to sync execution")
+            else:
+                print(f"[EventBus] Schedule error for event '{event_name}': {schedule_error}")
             
+            # 降级为同步执行
+            self._execute_callback_sync(callback, event_name, args, kwargs)
+
+    def _invoke_callback_compat(self, callback, event_name, args, kwargs):
+        """兼容性调用回调函数"""
+        # 兼容性调用链：逐步放宽参数，优先保留 evt_name，其次去掉不被支持的关键字参数
+        try:
+            callback(event_name, *args, **kwargs)
+            return
+        except TypeError:
+            pass
+        try:
+            callback(event_name, *args)
+            return
+        except TypeError:
+            pass
+        try:
+            callback(*args, **kwargs)
+            return
+        except TypeError:
+            pass
+        try:
+            callback(*args)
+            return
+        except TypeError:
+            pass
+        # 最后降级为无参调用，避免彻底失败
+        callback()
+
+    def _handle_callback_error(self, event_name, callback, error):
+        """处理回调函数执行错误"""
+        error_msg = f"Error in callback for '{event_name}': {error}"
+        print(f"[EventBus] {error_msg}")
+        
+        # 发生异常时，发布一个系统错误事件（但要避免无限循环）
+        if event_name != "system.error":  # 避免无限循环
+            # 检查错误递归深度
+            if self._error_recursion_depth < self._MAX_ERROR_RECURSION:
+                # 获取回调函数的描述性名称
+                callback_name = self._get_callback_name(callback)
+                # 提供更完整的错误上下文信息
+                error_context = {
+                    "source": "event_bus",
+                    "event": event_name,
+                    "callback_name": callback_name,
+                    "error_type": "event_callback",
+                    "error_message": str(error),
+                    "recursion_depth": self._error_recursion_depth + 1
+                }
+                # 增加递归深度计数器
+                self._error_recursion_depth += 1
+                try:
+                    self.publish("system.error", error_context=error_context)
+                except Exception as publish_error:
+                    # 如果 publish 方法本身失败，记录错误但继续执行
+                    print(f"[EventBus] Failed to publish system.error event: {publish_error}")
+                finally:
+                    # 减少递归深度计数器
+                    self._error_recursion_depth -= 1
+            else:
+                print(f"[EventBus] Maximum error recursion depth reached. Stopping error propagation for event '{event_name}'")
+        else:
+            # 处理 system.error 事件本身的错误
+            if self._error_recursion_depth == 0:
+                print(f"[EventBus] Critical: Error in system.error handler: {error}")
+                # 重置递归深度，防止系统完全卡死
+                self._error_recursion_depth = 0
+
     # --- 内省与调试工具 ---
     def list_events(self):
         """返回所有已注册的事件名称列表。"""
@@ -168,6 +269,15 @@ class EventBus:
     def has_subscribers(self, event_name):
         """检查是否有订阅者订阅了指定事件。"""
         return event_name in self.bus and len(self.bus[event_name]) > 0
+        
+    def get_stats(self):
+        """获取事件总线统计信息"""
+        return {
+            'total_events': len(self.bus),
+            'total_subscribers': sum(len(callbacks) for callbacks in self.bus.values()),
+            'schedule_errors': self._schedule_errors,
+            'error_recursion_depth': self._error_recursion_depth
+        }
         
     def _get_callback_name(self, callback):
         """

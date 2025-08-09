@@ -70,6 +70,8 @@ class LEDPatternController:
         # 模式和状态变量
         self.current_pattern_id = 'off'
         self.pattern_state = {}
+        # 调度标记：避免重复调度导致队列溢出
+        self._is_update_scheduled = False
 
         # 模式字典
         self.patterns = {
@@ -137,7 +139,25 @@ class LEDPatternController:
 
     def _update_callback(self, timer):
         """硬件定时器的回调函数。"""
-        micropython.schedule(self._update_patterns, 0)
+        # 使用 schedule 在非中断上下文执行更新逻辑，并通过标志防止队列被塞满
+        if not self._is_update_scheduled:
+            self._is_update_scheduled = True
+            try:
+                micropython.schedule(self._scheduled_update, 0)
+            except Exception as e:
+                # 如果调度失败（例如队列满），立即清除标志，等待下次尝试
+                self._is_update_scheduled = False
+                print(f"[LED] Schedule failed: {e}")
+
+    def _scheduled_update(self, _):
+        """被调度执行的更新函数，保证不在中断上下文中运行。"""
+        try:
+            self._update_patterns()
+        except Exception as e:
+            print(f"[LED] Error in scheduled update: {e}")
+        finally:
+            # 清除调度中的标记，允许下一次调度
+            self._is_update_scheduled = False
 
     def play(self, pattern_id: str):
         """

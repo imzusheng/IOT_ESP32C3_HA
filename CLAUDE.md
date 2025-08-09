@@ -2,9 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-- 全程使用中文
+- 始终使用中文回答
+- 完成后若有额外建议则记录在SUG.md中
 - app 内的所有代码都是在 ESP32C3 MicroPython 上运行的, 不需要在本地测试和运行
 - app/tests 的代码也是在 ESP32C3 MicroPython 上运行的， 用来测试 app 内的代码，也不需要在本地测试和运行
+- 若有差异以 README.md 为准
+
 
 ## Project Overview
 

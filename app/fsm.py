@@ -317,15 +317,17 @@ class SystemFSM:
             self.transition_to(SystemState.ERROR, "WiFi manager missing")
             return
         
-        # 持续驱动WiFi管理器更新
+        # 仅驱动WiFi管理器更新，实际的连接/断开事件由 WifiManager 统一发布
+        # 避免在此处根据瞬时状态再次发布 WIFI_CONNECTED/WIFI_DISCONNECTED，防止重复事件
         self.wifi_manager.update()
-
-        # 检查WiFi连接状态
-        if self.wifi_manager.is_connected():
-            self.event_bus.publish(EVENT.WIFI_CONNECTED)
-        elif self.state_duration > self.config.get('wifi', {}).get('timeout', 30) * 1000:  # 使用配置的超时
-            print("[FSM] Network connection timeout")
-            self.event_bus.publish(EVENT.WIFI_DISCONNECTED, "Timeout")
+        
+        # 超时与重试等逻辑交由 WifiManager 内部处理，以保持日志与事件的线性与一致
+        # （已移除以下手动事件发布）
+        # if self.wifi_manager.is_connected():
+        #     self.event_bus.publish(EVENT.WIFI_CONNECTED)
+        # elif self.state_duration > self.config.get('wifi', {}).get('timeout', 30) * 1000:
+        #     print("[FSM] Network connection timeout")
+        #     self.event_bus.publish(EVENT.WIFI_DISCONNECTED, "Timeout")
     
     def _handle_running_state(self):
         """运行状态处理"""

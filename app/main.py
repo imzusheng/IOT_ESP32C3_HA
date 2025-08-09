@@ -86,12 +86,12 @@ class MainController:
     # =================== NTP 时间同步事件处理 ===================
     def _on_ntp_sync_started(self, event_name, ntp_server=None):
         """处理 NTP 同步开始事件"""
-        print(f"[Main] NTP sync started with server: {ntp_server or 'default'}")
-        self.logger.info(f"开始 NTP 时间同步: {ntp_server or 'default'}")
+        print("[Main] Starting NTP time synchronization...")
+        self.logger.info(f"Starting NTP time sync: {ntp_server or 'default'}")
     
-    def _on_ntp_sync_success(self, event_name, ntp_server=None, attempts=None):
+    def _on_ntp_sync_success(self, event_name, ntp_server=None, attempts=None, timestamp=None):
         """处理 NTP 同步成功事件"""
-        msg = f"NTP 时间同步成功！服务器: {ntp_server or 'unknown'}, 尝试次数: {attempts or 'unknown'}"
+        msg = f"NTP time sync successful! Server: {ntp_server or 'unknown'}, attempts: {attempts or 'unknown'}"
         print(f"[Main] {msg}")
         self.logger.info(msg)
         
@@ -99,94 +99,101 @@ class MainController:
         try:
             import time
             current_time = time.localtime()
-            time_str = f"{current_time[0]:04d}-{current_time[1]:02d}-{current_time[2]:02d} " \
-                      f"{current_time[3]:02d}:{current_time[4]:02d}:{current_time[5]:02d}"
-            print(f"[Main] 系统时间已更新: {time_str}")
-            self.logger.info(f"系统时间已更新: {time_str}")
+            time_str = f"{current_time[0]}-{current_time[1]:02d}-{current_time[2]:02d} {current_time[3]:02d}:{current_time[4]:02d}:{current_time[5]:02d}"
+            print(f"[Main] System time updated: {time_str}")
+            self.logger.info(f"System time updated: {time_str}")
         except Exception as e:
-            print(f"[Main] 获取时间失败: {e}")
+            print(f"[Main] Failed to get time: {e}")
     
-    def _on_ntp_sync_failed(self, event_name, error_msg=None, attempts=None):
+    def _on_ntp_sync_failed(self, event_name, ntp_server=None, attempts=None, error=None):
         """处理 NTP 同步失败事件"""
-        msg = f"NTP 时间同步失败: {error_msg or 'unknown'}, 尝试次数: {attempts or 'unknown'}"
+        if isinstance(error, Exception):
+            error_msg = str(error)
+        else:
+            error_msg = error or "unknown error"
+        
+        msg = f"NTP sync failed after {attempts} attempts. Error: {error_msg}"
+        print(f"[Main] {msg}")
+        self.logger.warning(msg)
+        
+        print(f"[Main] System time updated, other modules can start time-dependent functions")
+    
+    # =================== WiFi 连接事件处理 ===================
+    def _on_wifi_connecting(self, event_name):
+        """处理 WiFi 连接开始事件"""
+        print(f"[Main] WiFi connecting...")
+        self.logger.info("Starting WiFi connection")
+    
+    def _on_wifi_connected(self, event_name, ip=None, ssid=None):
+        """处理 WiFi 连接成功事件"""
+        ssid_info = f" (SSID: {ssid})" if ssid else ""
+        msg = f"WiFi connected successfully! IP address: {ip}{ssid_info}"
+        print(f"[Main] {msg}")
+        self.logger.info(msg)
+        
+        print(f"[Main] Network ready, can start network services")
+    
+    def _on_wifi_disconnected(self, event_name, reason=None, ssid=None):
+        """处理 WiFi 断开事件"""
+        ssid_info = f" (SSID: {ssid})" if ssid else ""
+        msg = f"WiFi disconnected: {reason or 'unknown'}{ssid_info}"
+        print(f"[Main] {msg}")
+        self.logger.warning(msg)
+    
+    # =================== MQTT 连接事件处理 ===================
+    def _on_mqtt_connected(self, event_name, broker=None):
+        """处理 MQTT 连接成功事件"""
+        msg = f"MQTT connected successfully!"
+        if broker:
+            msg += f" Broker: {broker}"
+        print(f"[Main] {msg}")
+        self.logger.info(msg)
+    
+    def _on_mqtt_disconnected(self, event_name, reason=None, broker=None):
+        """处理 MQTT 断开事件"""
+        broker_info = f" (Broker: {broker})" if broker else ""
+        msg = f"MQTT disconnected: {reason or 'unknown'}{broker_info}"
         print(f"[Main] {msg}")
         self.logger.warning(msg)
     
     def _on_time_updated(self, event_name, timestamp=None, **kwargs):
         """处理时间更新事件"""
         if timestamp:
-            # 时间戳载荷可用，显示更详细的信息
             try:
                 import time
                 time_tuple = time.localtime(timestamp)
                 time_str = f"{time_tuple[0]:04d}-{time_tuple[1]:02d}-{time_tuple[2]:02d} " \
                           f"{time_tuple[3]:02d}:{time_tuple[4]:02d}:{time_tuple[5]:02d}"
-                msg = f"系统时间已更新至: {time_str} (时间戳: {timestamp}), 其他模块可以开始依赖时间的功能"
+                msg = f"System time updated to: {time_str} (timestamp: {timestamp}), other modules can start time-dependent functions"
                 print(f"[Main] {msg}")
                 self.logger.info(msg)
             except Exception as e:
-                print(f"[Main] 解析时间戳失败: {e}, 时间戳: {timestamp}")
-                self.logger.info(f"系统时间更新完成 (时间戳: {timestamp})")
+                print(f"[Main] Failed to parse timestamp: {e}, timestamp: {timestamp}")
+                self.logger.info(f"System time updated (timestamp: {timestamp})")
         else:
-            # 保持向后兼容，无时间戳载荷时的默认处理
-            print(f"[Main] 系统时间已更新，其他模块可以开始依赖时间的功能")
-            self.logger.info("系统时间更新完成")
-    
-    # =================== WiFi 连接事件处理 ===================
-    def _on_wifi_connecting(self, event_name):
-        """处理 WiFi 连接开始事件"""
-        print(f"[Main] WiFi 连接中...")
-        self.logger.info("开始连接 WiFi")
-    
-    def _on_wifi_connected(self, event_name, ip_info=None):
-        """处理 WiFi 连接成功事件"""
-        ip = ip_info[0] if ip_info else "unknown"
-        msg = f"WiFi 连接成功！IP 地址: {ip}"
-        print(f"[Main] {msg}")
-        self.logger.info(msg)
-        
-        # WiFi 连接成功后，可以开始 MQTT 连接等其他网络服务
-        print(f"[Main] 网络已就绪，可以启动网络服务")
-    
-    def _on_wifi_disconnected(self, event_name, reason=None):
-        """处理 WiFi 断开连接事件"""
-        msg = f"WiFi 连接断开: {reason or 'unknown'}"
-        print(f"[Main] {msg}")
-        self.logger.warning(msg)
-    
-    # =================== MQTT 连接事件处理 ===================
-    def _on_mqtt_connected(self, event_name):
-        """处理 MQTT 连接成功事件"""
-        print(f"[Main] MQTT 连接成功")
-        self.logger.info("MQTT 连接成功，设备已上线")
-    
-    def _on_mqtt_disconnected(self, event_name, reason=None):
-        """处理 MQTT 断开连接事件"""
-        msg = f"MQTT 连接断开: {reason or 'unknown'}"
-        print(f"[Main] {msg}")
-        self.logger.warning(msg)
+            print(f"[Main] System time updated, other modules can start time-dependent functions")
+            self.logger.info("System time update completed")
     
     # =================== 系统状态事件处理 ===================
     def _on_system_error(self, event_name, error_msg=None):
         """处理系统错误事件"""
-        msg = f"系统错误: {error_msg or 'unknown'}"
+        msg = f"System error: {error_msg or 'unknown'}"
         print(f"[Main] {msg}")
         self.logger.error(msg)
     
     def _on_system_warning(self, event_name, warning_msg=None):
         """处理系统警告事件"""
-        msg = f"系统警告: {warning_msg or 'unknown'}"
+        msg = f"System warning: {warning_msg or 'unknown'}"
         print(f"[Main] {msg}")
         self.logger.warning(msg)
     
     def _on_memory_critical(self, event_name, mem_info=None):
         """处理内存临界事件"""
-        msg = f"内存使用临界: {mem_info or 'unknown'}"
+        msg = f"Critical memory usage: {mem_info or 'unknown'}"
         print(f"[Main] {msg}")
         self.logger.error(msg)
         
-        # 执行紧急垃圾回收
-        print(f"[Main] 执行紧急垃圾回收...")
+        print(f"[Main] Performing emergency garbage collection...")
         for _ in range(3):
             gc.collect()
             time.sleep_ms(50)
@@ -264,3 +271,19 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+    def on_emergency_shutdown(self, event_name, error_context=None):
+        """处理紧急关机事件"""
+        print("[Main] Emergency shutdown triggered!")
+        self.logger.critical("Emergency shutdown triggered!")
+        
+        if error_context:
+            print(f"[Main] Shutdown reason: {error_context}")
+            self.logger.critical(f"Shutdown reason: {error_context}")
+        
+        # 执行紧急清理
+        self.emergency_cleanup()
+
+    def emergency_cleanup(self):
+        """紧急清理程序"""
+        print(f"[Main] Performing emergency garbage collection...")

@@ -45,6 +45,7 @@ class WifiManager:
         # NTP 同步标记，避免重复同步
         self._ntp_synced = False
         self._ntp_attempts = 0
+        self._last_connect_event = 0  # 防止重复连接事件
         
         # 激活WLAN接口
         if not self.wlan.active():
@@ -55,20 +56,19 @@ class WifiManager:
         """检查WiFi是否已连接。"""
         return self.status == self.STATUS_CONNECTED and self.wlan.isconnected()
 
-
     def connect(self):
         """开始连接到最佳可用WiFi网络，非阻塞。"""
         if self.status == self.STATUS_CONNECTING or self.status == self.STATUS_CONNECTED:
             return
 
-        print("Starting WiFi connection process...")
-        self.event_bus.publish(EVENT.WIFI_CONNECTING)
+        print("[WiFi] Starting WiFi connection process...")
+        self.event_bus.publish(EVENT.WIFI_CONNECTING, module="WiFi")
         
         best_network = self._find_best_network()
         if not best_network:
-            print("No configured WiFi networks found.")
+            print("[WiFi] No configured WiFi networks found.")
             self.status = self.STATUS_ERROR
-            self.event_bus.publish(EVENT.WIFI_DISCONNECTED, "NO_NETWORKS_FOUND")
+            self.event_bus.publish(EVENT.WIFI_DISCONNECTED, reason="NO_NETWORKS_FOUND", module="WiFi")
             return
 
         self.target_network = best_network
@@ -76,11 +76,12 @@ class WifiManager:
 
     def _find_best_network(self):
         """扫描并找到信号最好的已配置网络。"""
-        print("Scanning for networks...")
+        print("[WiFi] Scanning for networks...")
         try:
             scan_results = self.wlan.scan()
         except OSError as e:
-            print(f"Error during WiFi scan: {e}")
+            print(f"[WiFi] Error during WiFi scan: {e}")
+            self.event_bus.publish(EVENT.LOG_ERROR, "Error during WiFi scan: {}", e, module="WiFi")
             return None
             
         configured_ssids = {net['ssid'] for net in self.config.get('networks', [])}
@@ -100,6 +101,7 @@ class WifiManager:
         # 按RSSI排序
         found_networks.sort(key=lambda x: x['rssi'], reverse=True)
         best_ssid = found_networks[0]['ssid']
+        print(f"[WiFi] Found best network: {best_ssid} (RSSI: {found_networks[0]['rssi']})")
         
         # 从原始配置中查找密码并返回整个网络配置
         for net_config in self.config.get('networks', []):
@@ -112,7 +114,8 @@ class WifiManager:
         if not self.target_network:
             return
 
-        print(f"Attempting to connect to '{self.target_network['ssid']}'...")
+        print(f"[WiFi] Attempting to connect to '{self.target_network['ssid']}'...")
+        self.event_bus.publish(EVENT.LOG_INFO, "Attempting to connect to WiFi network: {}", self.target_network['ssid'], module="WiFi")
         self.status = self.STATUS_CONNECTING
         self.connection_start_time = time.ticks_ms()
         self.wlan.connect(self.target_network['ssid'], self.target_network['password'])
@@ -122,11 +125,13 @@ class WifiManager:
         if self.wlan.isconnected():
             self.wlan.disconnect()
         self.status = self.STATUS_DISCONNECTED
-        print("WiFi disconnected.")
+        print("[WiFi] WiFi disconnected.")
+        self.event_bus.publish(EVENT.LOG_INFO, "WiFi manually disconnected", module="WiFi")
         # 断开连接后重置 NTP 状态，便于下次成功后再次同步
         self._ntp_synced = False
         self._ntp_attempts = 0
-        self.event_bus.publish(EVENT.WIFI_DISCONNECTED, "MANUAL_DISCONNECT")
+        self._last_connect_event = 0
+        self.event_bus.publish(EVENT.WIFI_DISCONNECTED, reason="MANUAL_DISCONNECT", module="WiFi")
 
     def update(self):
         """
@@ -138,29 +143,50 @@ class WifiManager:
             if self.wlan.isconnected():
                 self.status = self.STATUS_CONNECTED
                 ip_info = self.wlan.ifconfig()
-                print(f"WiFi connected! IP: {ip_info[0]}")
-                self.event_bus.publish(EVENT.WIFI_CONNECTED, ip_info)
-                # 联网成功后尝试进行 NTP 时间同步
-                self._try_ntp_sync()
+                
+                # 检查 IP 地址是否有效
+                if ip_info and ip_info[0] and ip_info[0] != "0.0.0.0":
+                    ip_address = ip_info[0]
+                    ssid = self.target_network.get('ssid', 'unknown')
+                    
+                    # 防止重复连接事件
+                    now = time.ticks_ms()
+                    if time.ticks_diff(now, self._last_connect_event) > 5000:  # 5秒防重复
+                        self._last_connect_event = now
+                        
+                        print(f"[WiFi] WiFi connected! IP: {ip_address}, SSID: {ssid}")
+                        self.event_bus.publish(EVENT.LOG_INFO, "WiFi connected successfully! IP: {}, SSID: {}", ip_address, ssid, module="WiFi")
+                        self.event_bus.publish(EVENT.WIFI_CONNECTED, ip=ip_address, ssid=ssid, module="WiFi")
+                        
+                        # 联网成功后尝试进行 NTP 时间同步
+                        self._try_ntp_sync()
+                else:
+                    print("[WiFi] WiFi connected but no valid IP address obtained, retrying...")
+                    self.wlan.disconnect()
+                    # 重新开始连接过程，不改变状态
+                    self.connection_start_time = time.ticks_ms()
+                    
             # 检查是否连接超时
             elif time.ticks_diff(time.ticks_ms(), self.connection_start_time) > self.config.get('timeout', 15) * 1000:
-                print("WiFi connection timed out.")
+                print("[WiFi] WiFi connection timed out.")
+                self.event_bus.publish(EVENT.LOG_WARN, "WiFi connection timeout for network: {}", self.target_network['ssid'], module="WiFi")
                 self.wlan.disconnect() # 确保停止尝试
                 self.status = self.STATUS_ERROR
-                self.event_bus.publish(EVENT.WIFI_DISCONNECTED, "TIMEOUT")
+                self.event_bus.publish(EVENT.WIFI_DISCONNECTED, reason="TIMEOUT", ssid=self.target_network.get('ssid'), module="WiFi")
                 self.last_attempt_time = time.ticks_ms()
 
         elif self.status == self.STATUS_CONNECTED:
             # 持续检查连接是否丢失
             if not self.wlan.isconnected():
-                print("WiFi connection lost.")
+                print("[WiFi] WiFi connection lost.")
+                self.event_bus.publish(EVENT.LOG_WARN, "WiFi connection lost", module="WiFi")
                 self.status = self.STATUS_DISCONNECTED
-                self.event_bus.publish(EVENT.WIFI_DISCONNECTED, "CONNECTION_LOST")
+                self.event_bus.publish(EVENT.WIFI_DISCONNECTED, reason="CONNECTION_LOST", module="WiFi")
                 self.last_attempt_time = time.ticks_ms()
-            else:
-                # 已连接状态且未同步过，尝试 NTP 同步（冥等）
-                if not self._ntp_synced:
-                    self._try_ntp_sync()
+                # 重置 NTP 同步状态
+                self._ntp_synced = False
+                self._ntp_attempts = 0
+                self._last_connect_event = 0
 
         elif self.status in (self.STATUS_DISCONNECTED, self.STATUS_ERROR):
             # 检查是否到了重试时间
@@ -179,7 +205,8 @@ class WifiManager:
             return
         if ntptime is None:
             # 环境不支持 ntptime（可能是PC端），跳过但报告失败事件
-            self.event_bus.publish(EVENT.NTP_SYNC_FAILED, "NTP_MODULE_NOT_AVAILABLE")
+            self.event_bus.publish(EVENT.NTP_SYNC_FAILED, reason="NTP_MODULE_NOT_AVAILABLE", module="WiFi")
+            self.event_bus.publish(EVENT.LOG_WARN, "NTP module not available, skipping time sync", module="WiFi")
             return
         
         # 通过配置允许自定义 NTP 服务器，默认使用阿里云 NTP 池
@@ -194,8 +221,9 @@ class WifiManager:
             # 某些端口的 ntptime 不支持设置 host，忽略
             pass
         
-        # 发布开始事件
-        self.event_bus.publish(EVENT.NTP_SYNC_STARTED, ntp_server)
+        # 发布开始事件（只发布一次）
+        print(f"[WiFi] Starting NTP sync with server: {ntp_server}")
+        self.event_bus.publish(EVENT.NTP_SYNC_STARTED, ntp_server=ntp_server, module="WiFi")
         
         for i in range(max_attempts):
             self._ntp_attempts = i + 1
@@ -204,14 +232,23 @@ class WifiManager:
                 ntptime.settime()
                 # 成功
                 self._ntp_synced = True
-                self.event_bus.publish(EVENT.NTP_SYNC_SUCCESS, ntp_server, self._ntp_attempts)
-                # 广播 TIME_UPDATED 事件，包含时间戳载荷供其它模块感知
                 timestamp = time.time()  # 获取当前时间戳
-                self.event_bus.publish(EVENT.TIME_UPDATED, timestamp=timestamp)
-                print(f"[NTP] Time synchronized successfully, timestamp: {timestamp}")
+                
+                print(f"[WiFi] NTP sync successful after {self._ntp_attempts} attempts, timestamp: {timestamp}")
+                
+                # 发布成功事件
+                self.event_bus.publish(EVENT.NTP_SYNC_SUCCESS, ntp_server=ntp_server, attempts=self._ntp_attempts, timestamp=timestamp, module="WiFi")
+                
+                # 广播 TIME_UPDATED 事件，包含时间戳载荷供其它模块感知
+                self.event_bus.publish(EVENT.TIME_UPDATED, timestamp=timestamp, module="WiFi")
                 break
             except Exception as e:
                 # 失败则等待后重试
-                self.event_bus.publish(EVENT.NTP_SYNC_FAILED, str(e), self._ntp_attempts)
-                if i < max_attempts - 1:
+                print(f"[WiFi] NTP sync failed, attempt {self._ntp_attempts}/{max_attempts}: {e}")
+                self.event_bus.publish(EVENT.LOG_WARN, "NTP sync failed, attempt {}/{}: {}", self._ntp_attempts, max_attempts, str(e), module="WiFi")
+                
+                # 最后一次尝试失败才发布失败事件
+                if i == max_attempts - 1:
+                    self.event_bus.publish(EVENT.NTP_SYNC_FAILED, error=str(e), attempts=self._ntp_attempts, ntp_server=ntp_server, module="WiFi")
+                else:
                     time.sleep(retry_interval)
