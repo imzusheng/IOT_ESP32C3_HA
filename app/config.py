@@ -28,7 +28,7 @@ CONFIG = {
 
         # 描述: 设备发布和订阅消息的基础主题(Topic)。
         # 影响: 定义了设备在MQTT网络中的"通信频道"。应确保其唯一性，以防与其他设备发生消息错乱。
-        # 建议: 采用层级结构，如 "iot_project/living_room/esp32_sensor_1"。
+        # 建议: 采用层级结构，如 "lzs/esp32c3"。
         "topic": "lzs/esp32c3",
 
         # 描述: MQTT连接的保活心跳时间，单位为秒。
@@ -88,7 +88,20 @@ CONFIG = {
         # 描述: 对单个WiFi网络进行连接尝试的最大次数。
         # 影响: 避免对一个持续无效的网络进行过多无效尝试，从而能更快地切换到列表中的下一个网络。
         # 建议: 3-5 次。
-        "max_attempts": 3
+        "max_attempts": 3,
+
+        # 描述: NTP 时间同步服务器地址。
+        # 影响: 连接成功后将自动向此服务器发起时间同步。
+        # 建议: 国内网络使用阿里云 ntp1.aliyun.com 或 pool.ntp.org 池。
+        "ntp_server": "ntp1.aliyun.com",
+
+        # 描述: NTP 同步最大重试次数。
+        # 建议: 3-5 次。
+        "ntp_max_attempts": 3,
+
+        # 描述: NTP 重试间隔（秒）。
+        # 建议: 1-5 秒。
+        "ntp_retry_interval": 2,
     },
     "daemon": {
         # 描述: 用于状态指示的LED硬件引脚列表。

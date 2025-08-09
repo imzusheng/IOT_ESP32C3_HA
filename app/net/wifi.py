@@ -2,7 +2,11 @@
 import network
 import time
 import gc
-from app.event_const import EVENT
+try:
+    import ntptime  # MicroPython NTP 客户端
+except Exception:
+    ntptime = None
+from event_const import EVENT
 
 class WifiManager:
     """
@@ -16,6 +20,7 @@ class WifiManager:
     - 自动信号强度排序
     - 指数退避重连策略
     - 事件驱动状态报告
+    - 联网成功后自动执行 NTP 同步（使用阿里云时间源）
     """
     # 连接状态
     STATUS_DISCONNECTED = 0
@@ -36,6 +41,10 @@ class WifiManager:
         self.last_attempt_time = 0
         self.connection_start_time = 0
         self.target_network = None
+        
+        # NTP 同步标记，避免重复同步
+        self._ntp_synced = False
+        self._ntp_attempts = 0
         
         # 激活WLAN接口
         if not self.wlan.active():
@@ -114,6 +123,9 @@ class WifiManager:
             self.wlan.disconnect()
         self.status = self.STATUS_DISCONNECTED
         print("WiFi disconnected.")
+        # 断开连接后重置 NTP 状态，便于下次成功后再次同步
+        self._ntp_synced = False
+        self._ntp_attempts = 0
         self.event_bus.publish(EVENT.WIFI_DISCONNECTED, "MANUAL_DISCONNECT")
 
     def update(self):
@@ -128,6 +140,8 @@ class WifiManager:
                 ip_info = self.wlan.ifconfig()
                 print(f"WiFi connected! IP: {ip_info[0]}")
                 self.event_bus.publish(EVENT.WIFI_CONNECTED, ip_info)
+                # 联网成功后尝试进行 NTP 时间同步
+                self._try_ntp_sync()
             # 检查是否连接超时
             elif time.ticks_diff(time.ticks_ms(), self.connection_start_time) > self.config.get('timeout', 15) * 1000:
                 print("WiFi connection timed out.")
@@ -143,6 +157,10 @@ class WifiManager:
                 self.status = self.STATUS_DISCONNECTED
                 self.event_bus.publish(EVENT.WIFI_DISCONNECTED, "CONNECTION_LOST")
                 self.last_attempt_time = time.ticks_ms()
+            else:
+                # 已连接状态且未同步过，尝试 NTP 同步（冥等）
+                if not self._ntp_synced:
+                    self._try_ntp_sync()
 
         elif self.status in (self.STATUS_DISCONNECTED, self.STATUS_ERROR):
             # 检查是否到了重试时间
@@ -151,3 +169,49 @@ class WifiManager:
                 self.connect() # 重新开始连接流程
         
         gc.collect()
+
+    # --------------------------- NTP 同步逻辑 ---------------------------
+    def _try_ntp_sync(self):
+        """尝试执行 NTP 时间同步（带重试与事件上报）。"""
+        if self._ntp_synced:
+            return
+        if not self.wlan.isconnected():
+            return
+        if ntptime is None:
+            # 环境不支持 ntptime（可能是PC端），跳过但报告失败事件
+            self.event_bus.publish(EVENT.NTP_SYNC_FAILED, "NTP_MODULE_NOT_AVAILABLE")
+            return
+        
+        # 通过配置允许自定义 NTP 服务器，默认使用阿里云 NTP 池
+        ntp_server = self.config.get('ntp_server', 'ntp1.aliyun.com')
+        max_attempts = int(self.config.get('ntp_max_attempts', 3))
+        retry_interval = int(self.config.get('ntp_retry_interval', 2))  # 秒
+        
+        try:
+            if hasattr(ntptime, 'host'):
+                ntptime.host = ntp_server  # 设置 NTP 服务器
+        except Exception:
+            # 某些端口的 ntptime 不支持设置 host，忽略
+            pass
+        
+        # 发布开始事件
+        self.event_bus.publish(EVENT.NTP_SYNC_STARTED, ntp_server)
+        
+        for i in range(max_attempts):
+            self._ntp_attempts = i + 1
+            try:
+                # ntptime.settime() 会从 NTP 获取时间并设置 RTC
+                ntptime.settime()
+                # 成功
+                self._ntp_synced = True
+                self.event_bus.publish(EVENT.NTP_SYNC_SUCCESS, ntp_server, self._ntp_attempts)
+                # 广播 TIME_UPDATED 事件，包含时间戳载荷供其它模块感知
+                timestamp = time.time()  # 获取当前时间戳
+                self.event_bus.publish(EVENT.TIME_UPDATED, timestamp=timestamp)
+                print(f"[NTP] Time synchronized successfully, timestamp: {timestamp}")
+                break
+            except Exception as e:
+                # 失败则等待后重试
+                self.event_bus.publish(EVENT.NTP_SYNC_FAILED, str(e), self._ntp_attempts)
+                if i < max_attempts - 1:
+                    time.sleep(retry_interval)

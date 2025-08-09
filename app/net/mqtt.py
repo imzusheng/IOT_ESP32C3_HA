@@ -1,8 +1,8 @@
 # app/net/mqtt.py
-from app.lib.umqtt.simple import MQTTClient
+from lib.lock.umqtt import MQTTClient
 import time
 import machine
-from app.event_const import EVENT
+from event_const import EVENT
 
 class MqttController:
     """

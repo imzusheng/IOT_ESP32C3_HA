@@ -78,14 +78,19 @@ graph TD
 
 ### 应用层
 
-#### main.py
-- **职责**：依赖注入容器，负责创建和连接所有对象。
+#### MainController (app/main.py)
+- **职责**：主控制器，负责系统初始化与事件订阅管理，是依赖注入容器的核心实现。
 - **功能**：
-  - 加载配置
-  - 初始化核心服务
-  - 创建模块控制器
-  - 创建并启动状态机
-  - 系统启动和错误处理
+  - 初始化核心服务（EventBus、ObjectPool、StaticCache、Logger）
+  - 初始化模块控制器（WiFi、MQTT、LED、Sensor）
+  - 创建并启动 SystemFSM 状态机
+  - 统一订阅与处理系统级事件（WiFi/MQTT/NTP/系统告警）
+  - 统一日志输出与串口信息打印，便于调试与追踪
+- **事件订阅（NTP相关）**：
+  - EVENT.NTP_SYNC_STARTED → 打印同步开始日志
+  - EVENT.NTP_SYNC_SUCCESS → 打印成功信息并输出当前时间
+  - EVENT.NTP_SYNC_FAILED → 打印失败原因与重试次数
+  - EVENT.TIME_UPDATED → 处理时间更新事件，兼容携带 timestamp 的载荷
 
 #### SystemFSM (app/fsm.py)
 - **职责**：系统状态机，负责协调所有模块的初始化和运行。
@@ -116,16 +121,18 @@ graph TD
   - 提供事件名称的集中管理
 
 #### app/lib/event_bus.py
-- **职责**：事件总线，实现同步发布订阅模式。
+- **职责**：事件总线，实现异步非阻塞的发布订阅模式（基于 micropython.schedule，桌面环境降级为同步调用）。
 - **接口**：
   - `subscribe(event_name, callback)`: 订阅事件
   - `publish(event_name, *args, **kwargs)`: 发布事件
   - `unsubscribe(event_name, callback)`: 取消订阅
 - **功能**：
   - 提供模块间的松耦合通信
-  - 支持事件参数传递
-  - 错误隔离和恢复
-  - 详细的日志记录
+  - 支持事件参数传递（位置参数、关键字参数）
+  - 错误隔离和恢复，带递归深度保护的 system.error 发布
+  - 详细的日志记录与内省（list_events/list_subscribers）
+- **回调签名约定**：优先 callback(event_name, *args, **kwargs)，自动兼容 callback(*args, **kwargs) 与 callback() 降级。
+- **事件载荷约定**：TIME_UPDATED 携带关键字参数 timestamp（秒级Unix时间戳）。
 
 #### app/lib/logger.py
 - **职责**：日志系统，订阅事件总线事件并处理日志输出。
@@ -166,55 +173,34 @@ graph TD
 #### app/net/wifi.py
 - **职责**：WiFi连接管理器。
 - **接口**：
-  - `__init__(self, event_bus, config)`: 初始化
-  - `connect(self)`: 启动非阻塞连接
+  - `connect(self)`: 开始连接
   - `disconnect(self)`: 断开连接
-  - `loop(self)`: 循环处理
-  - `start(self)`: 激活WLAN接口
+  - `update(self)`: 在主循环中调用以更新状态
+  - `_try_ntp_sync(self)`: WiFi连接成功后自动执行NTP时间同步，发布NTP与TIME_UPDATED事件
 - **功能**：
-  - 管理WiFi连接状态
-  - 多网络选择和RSSI排序
-  - 发布WiFi相关事件
-  - 非阻塞连接模式
-  - 自动重连机制
+  - 非阻塞连接与自动重连
+  - 信号强度排序
+  - 指数退避策略
+  - NTP时间同步（可配置服务器/重试次数/间隔）
+  - TIME_UPDATED 事件包含 timestamp 载荷
 
 #### app/net/mqtt.py
-- **职责**：MQTT控制器。
+- **职责**：MQTT控制器，管理连接、订阅与消息发布。
 - **接口**：
-  - `__init__(self, event_bus, config)`: 初始化
-  - `connect(self)`: 连接到MQTT代理
-  - `disconnect(self)`: 断开连接
-  - `publish(self, topic, msg, retain=False, qos=0)`: 发布消息
-  - `subscribe(self, topic, qos=0)`: 订阅主题
-  - `loop(self)`: 循环处理
+  - `connect(self)`: 连接到MQTT服务器
+  - `publish(self, topic, payload)`: 发布消息
+  - `subscribe(self, topic, callback)`: 订阅主题
+  - `loop(self)`: 维护连接与消息循环
 - **功能**：
-  - 管理MQTT连接状态
-  - 处理消息收发
-  - 发布MQTT相关事件
-  - 指数退避重连策略
-  - 心跳保持和超时检测
-
-### 业务逻辑层
-
-#### app/hw/sensor.py
-- **职责**：传感器管理器。
-- **接口**：
-  - `__init__(self, event_bus, object_pool)`: 初始化
-  - `update_all_sensors(self)`: 更新所有传感器
-  - `add_sensor(self, sensor_id, read_func, interval, enabled)`: 添加传感器
-  - `read_sensor(self, sensor_id)`: 读取传感器数据
-- **功能**：
-  - 管理多个传感器
-  - 采集传感器数据
-  - 通过事件总线发布数据
-  - 支持内部和外部传感器
-  - 使用对象池优化数据处理
+  - 自动重连
+  - 保持心跳
+  - Topic管理
 
 #### app/hw/led.py
 - **职责**：LED模式控制器。
 - **接口**：
-  - `__init__(self, led_pins)`: 初始化
-  - `play(self, pattern_id)`: 播放LED模式
+  - `set_pattern(self, pattern)`: 设置LED模式
+  - `update(self)`: 周期性更新LED状态
   - `cleanup(self)`: 清理资源
 - **功能**：
   - 控制LED显示
@@ -227,34 +213,43 @@ graph TD
 ## 初始化顺序
 
 1. **boot.py**：平台相关启动，执行最小化硬件初始化
-2. **main.py**：系统主入口，作为依赖注入容器
+2. **main.py (MainController)**：系统主入口，作为依赖注入容器
    - 加载配置
    - 初始化核心服务（EventBus, ObjectPool, StaticCache, Logger）
    - 初始化模块控制器（WiFi, MQTT, LED, Sensor）
    - 创建并启动状态机
+   - 订阅NTP同步相关事件（NTP_SYNC_* 与 TIME_UPDATED）
 3. **SystemFSM**：状态机负责按状态初始化其他模块
-   - 初始化WiFi
+   - 初始化WiFi（成功后自动触发NTP同步）
    - 初始化MQTT
    - 初始化硬件模块
    - 进入运行状态
 
 ## 事件流程
 
-### 系统启动流程
+### 系统启动流程（含NTP与时间更新）
 1. `main.py` 发布 `EVENT.SYSTEM_BOOT`
 2. `SystemFSM` 接收事件，进入 `STATE_BOOT` 状态
 3. `SystemFSM` 初始化WiFi，进入 `STATE_WIFI_CONNECTING` 状态
 4. WiFi连接成功，发布 `EVENT.WIFI_CONNECTED`
-5. `SystemFSM` 接收事件，初始化MQTT，进入 `STATE_MQTT_CONNECTING` 状态
-6. MQTT连接成功，发布 `EVENT.MQTT_CONNECTED`
-7. `SystemFSM` 接收事件，初始化硬件模块，进入 `STATE_RUNNING` 状态
-8. `SystemFSM` 发布 `EVENT.SYSTEM_READY`
+5. WifiManager 自动执行 `_try_ntp_sync()` 并发布：
+   - `EVENT.NTP_SYNC_STARTED`
+   - 成功：`EVENT.NTP_SYNC_SUCCESS` → 随后发布 `EVENT.TIME_UPDATED`（携带 `timestamp` 载荷）
+   - 失败：`EVENT.NTP_SYNC_FAILED`（可按配置重试）
+6. MainController 订阅上述事件并统一记录日志与串口输出
+7. `SystemFSM` 初始化MQTT，进入 `STATE_MQTT_CONNECTING` 状态
+8. MQTT连接成功，发布 `EVENT.MQTT_CONNECTED`
+9. `SystemFSM` 初始化硬件模块，进入 `STATE_RUNNING` 状态
 
 ### 错误处理流程
 1. 网络模块检测到错误，发布相应的错误事件
 2. `SystemFSM` 接收错误事件，进入 `STATE_RECONNECTING` 状态
 3. `SystemFSM` 执行重连策略
 4. 重连成功或失败后，根据结果转换到相应状态
+
+## 事件载荷约定
+- `EVENT.TIME_UPDATED`：携带 `timestamp`（秒级Unix时间戳）关键字参数，订阅方应优先按新签名处理：`callback(event_name, timestamp=None, **kwargs)`。
+- 事件总线回调签名兼容策略：优先 `callback(event_name, *args, **kwargs)`，若不兼容自动降级为 `callback(*args, **kwargs)`，再降级为 `callback()`。
 
 ## 资源管理
 
@@ -272,7 +267,6 @@ graph TD
 ## 测试策略
 
 ### 单元测试
-- **app/tests/test_object_pool.py**: 测试对象池功能
 - **app/tests/test_event_bus.py**: 测试事件总线功能
 - 其他模块的单元测试可以陆续添加
 
@@ -331,7 +325,7 @@ ESP32-C3 IoT 设备的软件架构已完成重构，采用事件驱动和模块�
 
 ### 重构改进点
 
-1. **事件驱动架构**：通过EventBus实现松耦合的模块间通信
+1. **事件驱动架构**：通过EventBus实现松耦合模块间通信
 2. **内存优化**：使用对象池和静态缓存减少GC压力
 3. **错误恢复**：多层次的错误处理和自动恢复机制
 4. **状态管理**：清晰的状态机系统管理设备生命周期

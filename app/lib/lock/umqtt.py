@@ -1,8 +1,8 @@
-# app/lib/umqtt/simple.py
+# app/lib/lock/umqtt.py
 """
-MicroPython MQTT客户端的简化实现 (重构版本)
+umqtt 模块的简化版本, 不可编辑
 
-基于umqtt.simple库的轻量级版本，专为ESP32-C3优化。
+基于umqtt库的轻量级版本，专为ESP32-C3优化。
 是事件驱动架构的MQTT通信基础组件。
 
 特性:
@@ -14,7 +14,6 @@ MicroPython MQTT客户端的简化实现 (重构版本)
 """
 
 import socket
-import sys
 import time
 import ustruct
 import uerrno

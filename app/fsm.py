@@ -10,9 +10,9 @@
 import time
 import gc
 import machine  # 导入 machine 模块
-from app.event_const import EVENT
-from app.lib.object_pool import ObjectPoolManager
-from app.lib.static_cache import StaticCache
+from event_const import EVENT
+from lib.object_pool import ObjectPoolManager
+from lib.static_cache import StaticCache
 
 class SystemState:
     """系统状态定义"""
@@ -381,7 +381,7 @@ class SystemFSM:
             
             # 检查温度
             try:
-                from app.utils.helpers import get_temperature
+                from utils.helpers import get_temperature
                 temp = get_temperature()
                 if temp:
                     temp_threshold = self.config.get('daemon', {}).get('temp_threshold', 65)

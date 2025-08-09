@@ -3,6 +3,8 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 - 全程使用中文
+- app 内的所有代码都是在 ESP32C3 MicroPython 上运行的, 不需要在本地测试和运行
+- app/tests 的代码也是在 ESP32C3 MicroPython 上运行的， 用来测试 app 内的代码，也不需要在本地测试和运行
 
 ## Project Overview
 
@@ -86,9 +88,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **功能**: 丰富的定时器工具集
 - **包含**: 防抖定时器、周期定时器、超时定时器、硬件定时器管理器
 
-#### 15. MQTT客户端库 - `app/lib/umqtt/simple.py`
+#### 15. MQTT客户端库 - `app/lib/lock/umqtt.py`
 - **功能**: 轻量级MQTT客户端库
 - **特性**: 内存优化、断线重连、心跳保持
+
+#### 16. 轻量级日志库 - `app/lib/lock/ulogging.py`
+- **功能**: 基础日志记录功能
+- **特性**: 轻量级、低内存占用
 
 ## Key Features
 
@@ -143,6 +149,13 @@ python build.py --clean-cache
 IOT_ESP32C3/
 ├── app/                    # 开发源代码目录（编译后直接上传到设备根目录）
 │   ├── lib/               # 通用库和工具模块
+│   │   ├── event_bus.py   # 事件总线
+│   │   ├── object_pool.py # 对象池管理器
+│   │   ├── static_cache.py # 静态缓存系统
+│   │   ├── logger.py      # 日志系统
+│   │   └── lock/          # 不可编辑的外部库
+│   │       ├── umqtt.py   # MQTT客户端库
+│   │       └── ulogging.py # 轻量级日志库
 │   ├── hw/                # 硬件相关模块
 │   ├── net/               # 网络通信模块
 │   ├── utils/             # 工具函数模块
@@ -161,7 +174,7 @@ IOT_ESP32C3/
 ### 重要说明
 - **设备目录结构**: 编译后的 `app/` 目录内容直接上传到 ESP32-C3 设备的根目录 `/`，因此设备根目录下的文件结构就是 `app/` 目录的镜像
 - **文件位置**: 代码开发在 `./app` 目录下，但运行时直接位于设备根目录
-- **路径引用**: 设备代码中的导入语句使用 `from app.xxx import xxx`，因为文件直接位于根目录
+- **路径引用**: 设备代码中的导入语句使用 `from lib.xxx import xxx`、`from hw.xxx import xxx` 等，因为文件直接位于根目录，MicroPython会自动识别 `lib/` 目录
 
 ## Configuration Management
 
@@ -284,7 +297,7 @@ object_pool.release(msg_obj)
 
 ### 运行依赖
 - **MicroPython标准库**: network, time, machine, ntptime, gc
-- **自定义库**: umqtt.simple (轻量级MQTT客户端)
+- **自定义库**: umqtt (轻量级MQTT客户端), ulogging (轻量级日志库)
 
 ## Development Guidelines
 
@@ -299,6 +312,22 @@ object_pool.release(msg_obj)
 项目使用依赖注入模式，在 `main.py` 中创建和连接所有对象：
 
 ```python
+# 初始化核心服务
+from config import get_config
+from lib.event_bus import EventBus
+from lib.object_pool import ObjectPoolManager
+from lib.static_cache import StaticCache
+from lib.logger import Logger, set_global_logger
+from event_const import EVENT
+from fsm import SystemFSM
+from net.wifi import WifiManager
+from net.mqtt import MqttController
+from hw.led import LEDPatternController
+from hw.sensor import SensorManager
+
+# 加载配置
+config = get_config()
+
 # 初始化核心服务
 event_bus = EventBus()
 object_pool = ObjectPoolManager()
@@ -316,8 +345,9 @@ fsm = SystemFSM(event_bus, object_pool, static_cache, config, wifi, mqtt)
 ## Important Notes
 
 - **内存限制**: ESP32C3只有264KB内存，必须时刻注意内存使用
-- **文件位置**: 只允许编辑 `./app` 下一级目录的文件
+- **文件位置**: 只允许编辑 `./app` 下一级目录的文件，`app/lib/lock/` 目录下的外部库文件不可编辑
 - **测试代码**: 不要添加测试代码和文件
 - **文档**: 不要擅自添加说明文档
 - **语言**: 始终使用中文进行代码注释和文档
 - **架构**: 项目已完成事件驱动架构重构，使用松耦合设计
+- **外部库**: `app/lib/lock/` 目录包含外部下载的库文件，这些文件不应被修改

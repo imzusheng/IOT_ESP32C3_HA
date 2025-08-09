@@ -14,8 +14,8 @@ ESP32-C3传感器管理器 (重构版本)
 """
 
 import time
-from app.lib.object_pool import ObjectPoolManager
-from app.event_const import EVENT
+from lib.object_pool import ObjectPoolManager
+from event_const import EVENT
 import gc
 
 class SensorManager:
@@ -143,7 +143,7 @@ class SensorManager:
     def _read_internal_temperature(self):
         """读取ESP32-C3内部温度"""
         try:
-            from app.utils.helpers import get_temperature
+            from utils.helpers import get_temperature
             return get_temperature()
         except Exception as e:
             print(f"[Sensor] Internal temperature read error: {e}")

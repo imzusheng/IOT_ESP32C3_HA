@@ -2,28 +2,19 @@
 # 专为 MicroPython 环境设计，测试基于 ulogging 的日志系统
 import sys
 import time
+import os
 
-# 直接从当前目录导入 logger 模块和相关依赖
+# 确保可以从 tests 目录导入上级的 lib 包
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+# 导入 logger 模块和相关依赖
 try:
-    # 由于测试文件现在位于 app/tests/ 目录，需要使用相对导入
-    from ..lib.logger import Logger, log, get_global_logger, set_global_logger, debug, info, warning, error, critical
-    from ..lib.event_bus import EventBus
-    from ..event_const import EVENT
+    from lib.logger import Logger, log, get_global_logger, set_global_logger, debug, info, warning, error, critical
+    from lib.event_bus import EventBus
+    from event_const import EVENT
 except ImportError:
-    try:
-        # 如果相对导入失败，尝试绝对导入
-        from app.lib.logger import Logger, log, get_global_logger, set_global_logger, debug, info, warning, error, critical
-        from app.lib.event_bus import EventBus
-        from app.event_const import EVENT
-    except ImportError:
-        try:
-            # 如果上述导入失败，尝试直接导入
-            from logger import Logger, log, get_global_logger, set_global_logger, debug, info, warning, error, critical
-            from event_bus import EventBus
-            from event_const import EVENT
-        except ImportError:
-            print("错误：无法导入 Logger 或相关模块。请确保文件在正确的位置。")
-            sys.exit(1)
+    print("错误：无法导入 Logger 或相关模块。请确保文件在正确的位置。")
+    sys.exit(1)
 
 # 全局变量用于测试
 test_results = []

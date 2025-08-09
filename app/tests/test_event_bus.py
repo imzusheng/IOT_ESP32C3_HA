@@ -2,22 +2,17 @@
 # 专为 MicroPython 环境设计
 import sys
 import time
+import os
 
-# 直接从当前目录导入 event_bus 模块
+# 确保可以从 tests 目录导入上级的 lib 包
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+# 导入 event_bus 模块
 try:
-    # 由于测试文件现在位于 app/tests/ 目录，需要使用相对导入
-    from ..lib.event_bus import EventBus
+    from lib.event_bus import EventBus
 except ImportError:
-    try:
-        # 如果相对导入失败，尝试绝对导入
-        from app.lib.event_bus import EventBus
-    except ImportError:
-        try:
-            # 如果上述导入失败，尝试直接导入 event_bus
-            from event_bus import EventBus
-        except ImportError:
-            print("错误：无法导入 EventBus。请确保 event_bus.py 文件在正确的位置。")
-            sys.exit(1)
+    print("错误：无法导入 EventBus。请确保 event_bus.py 文件在正确的位置。")
+    sys.exit(1)
 
 # 全局变量用于测试
 test_results = []
@@ -41,22 +36,22 @@ def log_test_result(test_name, passed, message=""):
     test_results.append((test_name, passed, message))
 
 # 测试回调函数
-def simple_callback():
-    """简单回调函数，无参数"""
+def simple_callback(event_name):
+    """简单回调函数，接收event_name"""
     global simple_callback_called
     simple_callback_called = True
 
-def callback_with_args(arg1, arg2):
+def callback_with_args(event_name, arg1, arg2):
     """带位置参数的回调函数"""
     global callback_args_received
     callback_args_received = (arg1, arg2)
 
-def callback_with_kwargs(**kwargs):
+def callback_with_kwargs(event_name, **kwargs):
     """带关键字参数的回调函数"""
     global callback_kwargs_received
     callback_kwargs_received = kwargs
 
-def callback_with_mixed(arg1, arg2, kwarg1=None, kwarg2=None):
+def callback_with_mixed(event_name, arg1, arg2, kwarg1=None, kwarg2=None):
     """混合参数的回调函数"""
     global callback_mixed_received
     callback_mixed_received = {
@@ -64,11 +59,11 @@ def callback_with_mixed(arg1, arg2, kwarg1=None, kwarg2=None):
         'kwargs': {'kwarg1': kwarg1, 'kwarg2': kwarg2}
     }
 
-def error_callback():
+def error_callback(event_name):
     """会抛出异常的回调函数"""
     raise ValueError("这是一个测试异常")
 
-def system_error_callback(*args, **kwargs):
+def system_error_callback(event_name, *args, **kwargs):
     """系统错误回调函数"""
     global system_error_received
     # EventBus 可能以不同方式传递参数，尝试多种方式获取错误上下文

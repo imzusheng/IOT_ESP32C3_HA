@@ -32,6 +32,12 @@ class EVENT:
     RECOVERY_SUCCESS = "recovery.success"
     RECOVERY_FAILED = "recovery.failed"
 
+    # NTP 时间同步事件
+    NTP_SYNC_STARTED = "ntp.sync.started"
+    NTP_SYNC_SUCCESS = "ntp.sync.success"
+    NTP_SYNC_FAILED = "ntp.sync.failed"
+    TIME_UPDATED = "time.updated"
+
     # 硬件事件
     BUTTON_PRESSED = "button.pressed"
     SENSOR_DATA = "sensor.data"  # data: (sensor_id, value)

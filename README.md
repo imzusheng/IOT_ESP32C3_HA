@@ -1,6 +1,9 @@
 # ESP32-C3 MicroPython IoT 项目 (重构版)
 
 - 所有AI始终使用中文回答
+- AI 完成后若有额外建议则记录在SUG.md中
+- app 内的所有代码都是在 ESP32C3 MicroPython 上运行的, 不需要在本地测试和运行
+- app/tests 的代码也是在 ESP32C3 MicroPython 上运行的， 用来测试 app 内的代码，也不需要在本地测试和运行
 
 ## 📋 项目概述
 
@@ -19,6 +22,34 @@
 - **⚙️ 配置管理**: 集中式配置系统，支持运行时验证
 - **🌐 Web配置界面**: 基于Web Bluetooth的配置工具，支持Apple设计风格
 
+## 📁 项目结构
+
+```
+IOT_ESP32C3/
+├── app/                    # 开发源代码目录（编译后直接上传到设备根目录）
+│   ├── lib/               # 通用库和工具模块
+│   │   ├── event_bus.py   # 事件总线
+│   │   ├── object_pool.py # 对象池管理器
+│   │   ├── static_cache.py # 静态缓存系统
+│   │   ├── logger.py      # 日志系统
+│   │   └── lock/          # 不可编辑的外部库
+│   │       ├── umqtt.py   # MQTT客户端库
+│   │       └── ulogging.py # 轻量级日志库
+│   ├── hw/                # 硬件相关模块
+│   ├── net/               # 网络通信模块
+│   ├── utils/             # 工具函数模块
+│   ├── boot.py           # 启动引导
+│   ├── config.py         # 配置管理
+│   ├── event_const.py    # 事件常量定义
+│   ├── fsm.py            # 系统状态机
+│   ├── main.py           # 主程序入口
+│   └── logger.py         # 日志系统
+├── app/tests/             # 单元测试
+├── docs/                  # 文档
+├── build.py              # 构建脚本
+└── requirements.txt      # Python依赖
+```
+
 ## 🏗️ 重构架构设计
 
 ### 核心架构组件
@@ -26,7 +57,7 @@
 #### 1. 事件总线 (EventBus)
 - **位置**: [`app/lib/event_bus.py`](app/lib/event_bus.py)
 - **功能**: 模块间通信的核心枢纽，支持发布-订阅模式
-- **特性**: 同步事件处理、错误隔离、内存优化
+- **特性**: 异步非阻塞事件处理、错误隔离、内存优化
 
 #### 2. 对象池管理器 (ObjectPoolManager)
 - **位置**: [`app/lib/object_pool.py`](app/lib/object_pool.py)
@@ -110,7 +141,15 @@
 ### 事件流程示例
 ```
 传感器数据变化 → EventBus发布事件 → 相关模块订阅处理 → 状态更新 → LED指示变化
+WiFi连接成功 → NTP时间同步 → TIME_UPDATED事件 → 时间相关模块开始工作
 ```
+
+### 事件载荷与回调签名约定
+- 回调优先采用新签名：callback(event_name, *args, **kwargs)，事件名作为第一个参数，便于统一处理与日志追踪。
+- 兼容旧签名：若回调不接受 event_name，将自动降级为 callback(*args, **kwargs)；仍不兼容则尝试 callback()，确保向后兼容。
+- TIME_UPDATED 事件载荷：从"完成B"起，事件将附带关键字参数 timestamp（秒级Unix时间戳）。示例：
+  - 发布方：event_bus.publish(EVENT.TIME_UPDATED, timestamp=timestamp)
+  - 订阅方回调示例：def _on_time_updated(self, event_name, timestamp=None, **kwargs): ...
 
 ## ⚙️ 配置说明
 
@@ -160,14 +199,11 @@
         "monitor_interval": 5000,   # 监控间隔(毫秒)
         "temp_threshold": 65,       # 温度阈值(°C)
         "temp_hysteresis": 5,       # 温度迟滞(°C)
-        "memory_threshold": 80,     # 内存阈值(%)
-        "memory_hysteresis": 10,    # 内存迟滞(%)
-        "max_error_count": 10,      # 最大错误数
-        "safe_mode_cooldown": 60000 # 安全模式冷却(毫秒)
-    },
-    "wdt_timeout": 120000,          # 看门狗超时(毫秒)
-    "wdt_enabled": False,          # 看门狗开关
-    "gc_force_threshold": 95        # 强制GC阈值(%)
+        "memory_threshold": 50000,  # 内存阈值(字节)
+        "memory_gc_trigger": 30000, # GC触发阈值(字节)
+        "status_report_interval": 30000, # 状态报告间隔(毫秒)
+        "error_recovery_timeout": 120000 # 错误恢复超时(毫秒)
+    }
 }
 ```
 
@@ -200,7 +236,8 @@
 
 ### 软件依赖
 - **MicroPython固件**: ESP32-C3支持的MicroPython版本
-- **umqtt.simple**: 轻量级MQTT客户端库 ([`app/lib/umqtt/simple.py`](app/lib/umqtt/simple.py))
+- **umqtt.simple**: 轻量级MQTT客户端库 ([`app/lib/lock/umqtt.py`](app/lib/lock/umqtt.py))
+- **ulogging**: 轻量级日志库 ([`app/lib/lock/ulogging.py`](app/lib/lock/ulogging.py))
 - **MicroPython标准库**: network, time, machine, ntptime, gc
 
 ### 安装步骤
@@ -415,8 +452,9 @@ python build.py --clean-cache
 ## ⚠️ 重要说明
 
 - **内存限制**: ESP32C3只有264KB内存，必须时刻注意内存使用
-- **文件位置**: 主要代码位于 `./app` 目录
-- **配置管理**: 所有配置项都在 `app/config.py` 中定义
+- **文件位置**: 主要代码位于 `./app` 目录，但上传到设备时直接位于根目录
+- **路径引用**: 设备上使用 `from lib.event_bus import EventBus` 等相对导入，MicroPython自动识别 `lib/` 目录
+- **配置管理**: 所有配置项都在 `config.py` 中定义
 - **语言**: 代码注释和文档使用中文
 - **架构重构**: 已完成事件驱动架构重构，提升了系统的可维护性和扩展性
 

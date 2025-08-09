@@ -1,7 +1,10 @@
 # app/lib/logger.py
-import ulogging
-import utime as time
-from app.event_const import EVENT
+try:
+    import ulogging
+except ImportError:
+    from lib.lock import ulogging
+
+from event_const import EVENT
 
 class Logger:
     """
@@ -56,21 +59,28 @@ class Logger:
         
     def _setup_logger_format(self):
         """配置 ulogging 的输出格式"""
-        # 创建格式化器
-        formatter = ulogging.Formatter(
-            fmt='[%(asctime)s] [%(levelname)s] %(message)s',
-            datefmt='%H:%M:%S'
-        )
-        
-        # 获取根处理器并设置格式
-        for handler in self._logger.handlers:
-            handler.setFormatter(formatter)
+        # 检查是否支持 Formatter（简化版 ulogging 可能不支持）
+        if hasattr(ulogging, 'Formatter'):
+            # 创建格式化器
+            formatter = ulogging.Formatter(
+                fmt='[%(asctime)s] [%(levelname)s] %(message)s',
+                datefmt='%H:%M:%S'
+            )
             
-        # 如果没有处理器，添加一个流处理器
-        if not self._logger.handlers:
-            handler = ulogging.StreamHandler()
-            handler.setFormatter(formatter)
-            self._logger.addHandler(handler)
+            # 获取根处理器并设置格式
+            for handler in self._logger.handlers:
+                if hasattr(handler, 'setFormatter'):
+                    handler.setFormatter(formatter)
+                    
+            # 如果没有处理器，添加一个流处理器
+            if not self._logger.handlers:
+                if hasattr(ulogging, 'StreamHandler'):
+                    handler = ulogging.StreamHandler()
+                    handler.setFormatter(formatter)
+                    self._logger.addHandler(handler)
+        else:
+            # 简化版 ulogging，直接使用基本配置
+            ulogging.basicConfig(level=ulogging.INFO)
 
 
     def setup(self, event_bus):
@@ -87,8 +97,11 @@ class Logger:
         event_bus.subscribe(EVENT.LOG_WARN, self._handle_log)
         event_bus.subscribe(EVENT.LOG_ERROR, self._handle_log)
         
-        # 使用 ulogging 记录设置完成
-        self._logger.info("Logger setup complete. Subscribed to log events.")
+        # 使用 ulogging 记录设置完成（如果可用）
+        try:
+            self._logger.info("Logger setup complete. Subscribed to log events.")
+        except:
+            pass  # 如果 ulogging 还未完全初始化，忽略错误
 
     def set_level(self, new_level):
         """
@@ -102,8 +115,11 @@ class Logger:
         ulogging_level = self._ulogging_level_map.get(new_level, ulogging.INFO)
         self._logger.setLevel(ulogging_level)
         
-        # 记录级别变更
-        self._logger.info(f"Log level changed to: {new_level}")
+        # 记录级别变更（如果可用）
+        try:
+            self._logger.info(f"Log level changed to: {new_level}")
+        except:
+            pass  # 如果 ulogging 不可用，忽略
 
     def _handle_log(self, event_name, msg, *args):
         """

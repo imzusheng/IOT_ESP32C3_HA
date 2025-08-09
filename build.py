@@ -289,9 +289,42 @@ def compile_project(verbose=False, include_tests=False):
         if 'app/tests' in current_exclude_patterns:
             current_exclude_patterns.remove('app/tests')
 
+    # 首先处理 tests 目录，如果启用测试文件
+    if include_tests and os.path.exists(TESTS_DIR):
+        print_message("处理 tests 目录...", "INFO")
+        tests_target_dir = Path(DIST_DIR) / "tests"
+        tests_target_dir.mkdir(parents=True)
+        
+        for root, dirs, files in os.walk(TESTS_DIR, topdown=True):
+            # 过滤目录
+            dirs[:] = [d for d in dirs if not should_exclude(Path(root) / d, current_exclude_patterns)]
+            
+            rel_path = Path(root).relative_to(TESTS_DIR)
+            target_dir = tests_target_dir / rel_path
+            
+            if not target_dir.exists():
+                target_dir.mkdir(parents=True)
+            
+            for file in files:
+                src_file = Path(root) / file
+                if should_exclude(src_file, current_exclude_patterns):
+                    if verbose: print_message(f"排除文件: {src_file}", "INFO")
+                    continue
+                
+                # tests 目录下的所有文件都直接复制，不编译
+                target_file = target_dir / file
+                try:
+                    shutil.copy2(src_file, target_file)
+                    copied_count += 1
+                    if verbose: print_message(f"复制测试文件: {src_file} -> {target_file}", "INFO")
+                except IOError as e:
+                    error_count += 1
+                    print_message(f"复制测试文件失败: {src_file} - {e}", "ERROR")
+
+    # 处理其他非 tests 目录
     for root, dirs, files in os.walk(SRC_DIR, topdown=True):
-        # 过滤目录
-        dirs[:] = [d for d in dirs if not should_exclude(Path(root) / d, current_exclude_patterns)]
+        # 跳过 tests 目录，因为已经单独处理了
+        dirs[:] = [d for d in dirs if d != 'tests' and not should_exclude(Path(root) / d, current_exclude_patterns)]
         
         rel_path = Path(root).relative_to(SRC_DIR)
         target_dir = Path(DIST_DIR) / rel_path
@@ -568,32 +601,38 @@ def main():
         epilog="""
 示例用法:
   python build.py                # 编译并上传 (智能同步)
-  python build.py --compile      # 仅编译 app/ 目录到 dist/
-  python build.py --upload       # 仅上传到设备 (智能同步)
-  python build.py --clean        # 清理设备文件后，再执行上传
-  python build.py --full-upload  # 强制全量上传，忽略缓存
-  python build.py --repl         # 启动交互式REPL
-  python build.py --raw-repl     # 启动原始REPL
-  python build.py --monitor      # 监控设备输出
-  python build.py --diagnose     # 诊断设备连接状态
-  python build.py --upload --port COM3 # 指定端口上传
-  python build.py --test         # 编译时包含 tests/ 和 app/tests/ 目录
-  python build.py --clean-cache  # 清理本地缓存
+  python build.py -c 或 --compile      # 仅编译 app/ 目录到 dist/
+  python build.py -u 或 --upload       # 仅上传到设备 (智能同步)
+  python build.py -c -u 或 --compile --upload  # 编译并上传
+  python build.py -C 或 --clean        # 清理设备文件后，再执行上传
+  python build.py -f 或 --full-upload  # 强制全量上传，忽略缓存
+  python build.py -r 或 --repl         # 启动交互式REPL
+  python build.py -R 或 --raw-repl     # 启动原始REPL
+  python build.py -m 或 --monitor      # 监控设备输出
+  python build.py -d 或 --diagnose     # 诊断设备连接状态
+  python build.py -u -p COM3 或 --upload --port COM3  # 指定端口上传
+  python build.py -t 或 --test         # 编译时包含 tests/ 和 app/tests/ 目录
+  python build.py --clean-cache        # 清理本地缓存
+  
+短参数组合示例:
+  python build.py -cu    # 编译并上传
+  python build.py -Cv    # 清理设备并显示详细输出
+  python build.py -cu -t # 编译并上传（包含测试文件）
         """
     )
     
     # 操作模式
-    parser.add_argument("--compile", action="store_true", help="仅编译，不上传")
-    parser.add_argument("--upload", action="store_true", help="编译并上传 (或仅上传，如果 dist 存在)")
-    parser.add_argument("--repl", action="store_true", help="启动交互式REPL")
-    parser.add_argument("--raw-repl", action="store_true", help="启动原始REPL")
-    parser.add_argument("--monitor", action="store_true", help="监控设备输出")
-    parser.add_argument("--diagnose", action="store_true", help="诊断设备状态")
+    parser.add_argument("-c", "--compile", action="store_true", help="仅编译，不上传")
+    parser.add_argument("-u", "--upload", action="store_true", help="编译并上传 (或仅上传，如果 dist 存在)")
+    parser.add_argument("-r", "--repl", action="store_true", help="启动交互式REPL")
+    parser.add_argument("-R", "--raw-repl", action="store_true", help="启动原始REPL")
+    parser.add_argument("-m", "--monitor", action="store_true", help="监控设备输出")
+    parser.add_argument("-d", "--diagnose", action="store_true", help="诊断设备状态")
 
     # 构建和上传选项
-    parser.add_argument("--test", action="store_true", help="编译时包含测试文件 (app/tests/)")
-    parser.add_argument("--clean", action="store_true", help="上传前清空设备")
-    parser.add_argument("--full-upload", action="store_true", help="强制全量上传，忽略缓存")
+    parser.add_argument("-t", "--test", action="store_true", help="编译时包含测试文件 (app/tests/)")
+    parser.add_argument("-C", "--clean", action="store_true", help="上传前清空设备")
+    parser.add_argument("-f", "--full-upload", action="store_true", help="强制全量上传，忽略缓存")
     
     # 设备选项
     parser.add_argument("-p", "--port", type=str, help="指定设备端口，跳过自动检测")
