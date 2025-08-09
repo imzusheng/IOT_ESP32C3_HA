@@ -4,6 +4,7 @@ __pycache__
 .vscode
 .cline*
 .trae
+.kilo*
 .port_cache
 .upload_cache.json
 dist
