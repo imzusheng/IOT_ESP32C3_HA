@@ -140,18 +140,38 @@ class LEDPatternController:
         micropython.schedule(self._update_patterns, 0)
 
     def play(self, pattern_id: str):
-        """播放一个预设的闪烁模式。"""
+        """
+        播放一个预设的闪烁模式。
+        通过停止和重启定时器来确保状态切换的原子性。
+        """
         if pattern_id not in self.patterns:
             print(f"[LED] Error: Unknown pattern_id '{pattern_id}'.")
             return
 
+        # 修复: 停止控制器以避免并发问题
+        self._stop_controller()
+
         self.current_pattern_id = pattern_id
         self.pattern_state = {'step': 0, 'last_update': time.ticks_ms()}
 
+        # 立即设置初始状态
         if pattern_id == 'off':
             self._set_all_leds(0)
         else:
+            # 大多数模式以“亮”开始
             self._set_all_leds(1)
+        
+        # 重启控制器
+        self._start_controller()
+
+    def _stop_controller(self):
+        """停止定时器或uasyncio任务。"""
+        if self.timer:
+            self.timer.deinit()
+            self.timer = None
+        if self.uasyncio_task:
+            self.uasyncio_task.cancel()
+            self.uasyncio_task = None
 
     def _update_patterns(self, _=None):
         """根据当前模式ID调用相应的更新函数。"""

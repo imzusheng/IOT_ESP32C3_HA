@@ -272,8 +272,8 @@ graph TD
 ## 测试策略
 
 ### 单元测试
-- **tests/test_object_pool.py**: 测试对象池功能
-- **tests/test_event_bus.py**: 测试事件总线功能
+- **app/tests/test_object_pool.py**: 测试对象池功能
+- **app/tests/test_event_bus.py**: 测试事件总线功能
 - 其他模块的单元测试可以陆续添加
 
 ### 集成测试
@@ -316,7 +316,7 @@ IOT_ESP32C3/
 │   ├── event_const.py    # 事件常量定义
 │   ├── fsm.py            # 系统状态机
 │   └── main.py           # 主程序入口
-├── tests/                 # 单元测试
+├── app/tests/             # 单元测试
 │   ├── test_event_bus.py
 │   └── test_object_pool.py
 ├── docs/                  # 文档

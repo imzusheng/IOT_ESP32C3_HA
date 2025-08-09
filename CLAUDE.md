@@ -152,7 +152,7 @@ IOT_ESP32C3/
 │   ├── fsm.py            # 系统状态机
 │   ├── main.py           # 主程序入口
 │   └── logger.py         # 日志系统
-├── tests/                 # 单元测试
+├── app/tests/             # 单元测试
 ├── docs/                  # 文档
 ├── build.py              # 构建脚本
 └── requirements.txt      # Python依赖
@@ -218,7 +218,7 @@ IOT_ESP32C3/
 ### 测试框架
 - **测试工具**: pytest + unittest.mock
 - **测试覆盖**: 事件总线、对象池等核心组件
-- **测试文件**: `tests/test_event_bus.py`, `tests/test_object_pool.py`
+- **测试文件**: `app/tests/test_event_bus.py`, `app/tests/test_object_pool.py`
 
 ### 运行测试
 ```bash
@@ -226,13 +226,13 @@ IOT_ESP32C3/
 pip install -r requirements.txt
 
 # 运行所有测试
-pytest tests/
+pytest app/tests/
 
 # 运行特定测试
-pytest tests/test_event_bus.py
+pytest app/tests/test_event_bus.py
 
 # 带覆盖率报告
-pytest tests/ --cov=app
+pytest app/tests/ --cov=app
 ```
 
 ## Event-Driven Architecture

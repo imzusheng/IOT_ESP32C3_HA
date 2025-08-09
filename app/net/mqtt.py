@@ -65,20 +65,17 @@ class MqttController:
         if self.is_connected or not self.client:
             return
 
-        print(f"Connecting to MQTT broker at {self.config['server']}...")
+        print(f"Connecting to MQTT broker at {self.config['broker']}...")
         try:
-            if self.client.connect() == 0: # 0 is success for this library
-                self.is_connected = True
-                print("MQTT connected successfully.")
-                self.event_bus.publish(EVENT.MQTT_CONNECTED)
-                # 订阅配置中指定的主题
-                for topic in self.config.get('subscribe_topics', []):
-                    self.subscribe(topic)
-                self.last_ping_time = time.ticks_ms()
-            else:
-                print("MQTT connection failed (non-zero return).")
-                self.is_connected = False
-                self.event_bus.publish(EVENT.MQTT_DISCONNECTED, "CONNECTION_FAILED")
+            # 修复: connect() 成功时不返回值, 失败时抛出异常
+            self.client.connect()
+            self.is_connected = True
+            print("MQTT connected successfully.")
+            self.event_bus.publish(EVENT.MQTT_CONNECTED)
+            # 订阅配置中指定的主题
+            for topic in self.config.get('subscribe_topics', []):
+                self.subscribe(topic)
+            self.last_ping_time = time.ticks_ms()
 
         except Exception as e:
             print(f"Error connecting to MQTT: {e}")

@@ -106,9 +106,11 @@ class ObjectPoolManager:
             pool_name = self._object_to_pool[obj_id]
             if pool_name in self._pools:
                 self._pools[pool_name].release(obj)
-                # 从跟踪字典中移除
+                # 修复: 从跟踪字典中移除，防止内存泄漏
                 del self._object_to_pool[obj_id]
             else:
+                # 如果池不存在，也应该从跟踪字典中移除
+                del self._object_to_pool[obj_id]
                 print(f"Error: Pool with name '{pool_name}' not found when trying to release.")
         else:
             print(f"Warning: Trying to release an object not acquired from any pool.")

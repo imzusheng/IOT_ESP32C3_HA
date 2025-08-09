@@ -13,7 +13,7 @@ from app.config import get_config
 from app.lib.event_bus import EventBus
 from app.lib.object_pool import ObjectPoolManager
 from app.lib.static_cache import StaticCache
-from app.lib.logger import Logger
+from app.lib.logger import Logger, set_global_logger
 from app.event_const import EVENT
 from app.fsm import SystemFSM
 from app.net.wifi import WifiManager
@@ -36,6 +36,7 @@ def main():
     static_cache = StaticCache()
     logger = Logger()
     logger.setup(event_bus)  # 注册 logger
+    set_global_logger(logger)  # 设置全局日志实例
     
     print("[Main] Core services initialized")
     

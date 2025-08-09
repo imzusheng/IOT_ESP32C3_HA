@@ -210,6 +210,12 @@ class SystemFSM:
             self._on_safe_mode_enter()
         elif state == SystemState.ERROR:
             self._on_error_enter()
+        elif state == SystemState.RUNNING:
+            # 尝试连接MQTT
+            if self.mqtt_controller:
+                self.mqtt_controller.connect()
+            else:
+                print("[FSM] MQTT controller not available, skipping connection.")
     
     def _on_state_exit(self, state):
         """状态退出处理"""
@@ -273,6 +279,15 @@ class SystemFSM:
         """更新状态机"""
         self.state_duration = time.ticks_diff(time.ticks_ms(), self.state_start_time)
         
+        # 驱动依赖模块的循环
+        if self.wifi_manager:
+            self.wifi_manager.update()
+        if self.mqtt_controller:
+            self.mqtt_controller.loop()
+        if self.led_controller:
+            # LED控制器是自驱动的，无需调用update
+            pass
+
         # 执行当前状态处理器
         handler = self.state_handlers.get(self.current_state)
         if handler:

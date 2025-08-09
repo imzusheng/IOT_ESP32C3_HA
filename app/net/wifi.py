@@ -92,7 +92,7 @@ class WifiManager:
         found_networks.sort(key=lambda x: x['rssi'], reverse=True)
         best_ssid = found_networks[0]['ssid']
         
-        # 从原始配置中查找密码
+        # 从原始配置中查找密码并返回整个网络配置
         for net_config in self.config.get('networks', []):
             if net_config['ssid'] == best_ssid:
                 return net_config

@@ -7,7 +7,7 @@ MicroPython 高性能构建和部署脚本 (v5.1 - 重构增强版)
 项目架构:
 - app/  : 源代码目录 (开发代码，编译后直接上传到设备根目录)
 - dist/ : 编译输出文件 (上传到设备根目录 /)
-- tests/: 单元测试文件
+- app/tests/: 单元测试文件 (位于 app 目录内)
 - docs/ : 项目文档
 
 作者: ESP32-C3 开发团队 (由AI重构和增强)
@@ -49,7 +49,7 @@ except ImportError:
 SRC_DIR = "app"                    # 源代码目录 (开发和运行代码)
 DIST_DIR = "dist"                  # 编译输出目录
 DOCS_DIR = "docs"                  # 文档目录
-TESTS_DIR = "tests"                # 测试目录
+TESTS_DIR = "app/tests"            # 测试目录 (位于 app 目录内)
 
 # --- 工具可执行文件 ---
 MPY_CROSS_EXECUTABLE = "mpy-cross"  # MicroPython 编译器
@@ -58,7 +58,7 @@ RSHELL_EXECUTABLE = "rshell"       # rshell 备用连接工具
 
 # --- 编译排除文件 ---
 NO_COMPILE_FILES = ['boot.py', 'main.py']  # 不进行交叉编译的文件列表
-DEFAULT_EXCLUDE_DIRS = ['__pycache__']   # 默认排除的目录 (tests 和 docs 会被模式排除)
+DEFAULT_EXCLUDE_DIRS = ['__pycache__']   # 默认排除的目录 (tests, app/tests 和 docs 会被模式排除)
 
 # --- 缓存文件 ---
 PORT_CACHE_FILE = ".port_cache"            # 端口缓存文件
@@ -82,7 +82,8 @@ EXCLUDE_PATTERNS = [
     ".idea",          # IDE 目录
     ".git",           # Git 目录
     "docs",           # 文档目录
-    "tests"           # 测试目录 (除非 --test 标志启用)
+    "tests",          # 测试目录 (根目录下的测试文件夹)
+    "app/tests"       # 应用测试目录 (app/tests 文件夹，除非 --test 标志启用)
 ]
 
 # --- ESP32 设备 VID/PID 模式 ---
@@ -285,6 +286,8 @@ def compile_project(verbose=False, include_tests=False):
     if include_tests:
         if 'tests' in current_exclude_patterns:
             current_exclude_patterns.remove('tests')
+        if 'app/tests' in current_exclude_patterns:
+            current_exclude_patterns.remove('app/tests')
 
     for root, dirs, files in os.walk(SRC_DIR, topdown=True):
         # 过滤目录
@@ -574,7 +577,7 @@ def main():
   python build.py --monitor      # 监控设备输出
   python build.py --diagnose     # 诊断设备连接状态
   python build.py --upload --port COM3 # 指定端口上传
-  python build.py --test         # 编译时包含 tests/ 目录
+  python build.py --test         # 编译时包含 tests/ 和 app/tests/ 目录
   python build.py --clean-cache  # 清理本地缓存
         """
     )
@@ -588,7 +591,7 @@ def main():
     parser.add_argument("--diagnose", action="store_true", help="诊断设备状态")
 
     # 构建和上传选项
-    parser.add_argument("--test", action="store_true", help="编译时包含测试文件")
+    parser.add_argument("--test", action="store_true", help="编译时包含测试文件 (app/tests/)")
     parser.add_argument("--clean", action="store_true", help="上传前清空设备")
     parser.add_argument("--full-upload", action="store_true", help="强制全量上传，忽略缓存")
     
