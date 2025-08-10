@@ -148,7 +148,6 @@ class SystemFSM:
         events_to_subscribe = [
             EVENT.SYSTEM_BOOT,
             EVENT.SYSTEM_INIT,
-            EVENT.SYSTEM_READY,
             EVENT.SYSTEM_ERROR,
             EVENT.SYSTEM_WARNING,
             EVENT.MEMORY_CRITICAL,
@@ -202,9 +201,6 @@ class SystemFSM:
         # 更新LED状态
         if self.led_controller:
             self._update_led_for_state(state)
-        
-        # 发布状态变更事件
-        self.event_bus.publish(EVENT.SYSTEM_READY, f"State entered: {state}")
         
         # 状态特定的进入处理
         if state == SystemState.SAFE_MODE:

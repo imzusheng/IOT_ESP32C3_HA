@@ -23,7 +23,6 @@ class EVENT:
     # 系统状态事件
     SYSTEM_BOOT = "system.boot"
     SYSTEM_INIT = "system.init"
-    SYSTEM_READY = "system.ready"
     SYSTEM_ERROR = "system.error"
     SYSTEM_HEARTBEAT = "system.heartbeat"
     SYSTEM_WARNING = "system.warning"

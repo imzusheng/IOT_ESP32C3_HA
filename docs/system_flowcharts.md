@@ -102,7 +102,6 @@ graph TB
     subgraph "系统生命周期事件"
         BOOT[🟢 SYSTEM_BOOT<br/>系统启动]
         INIT[🔧 SYSTEM_INIT<br/>系统初始化]
-        READY[✅ SYSTEM_READY<br/>系统就绪]
         ERROR[❌ SYSTEM_ERROR<br/>系统错误]
         WARNING[⚠️ SYSTEM_WARNING<br/>系统警告]
         SHUTDOWN[🔴 SYSTEM_SHUTDOWN<br/>系统关机]
@@ -199,7 +198,6 @@ graph TB
 |---------|---------|------|
 | **系统事件** | SYSTEM_BOOT | 系统启动 |
 |  | SYSTEM_INIT | 系统初始化 |
-|  | SYSTEM_READY | 系统就绪 |
 |  | SYSTEM_ERROR | 系统错误 |
 |  | SYSTEM_WARNING | 系统警告 |
 |  | SYSTEM_SHUTDOWN | 系统关机 |
@@ -404,7 +402,6 @@ sequenceDiagram
     FSM->>FSM: 进入BOOT状态(1秒)
     FSM->>EventBus: 发布SYSTEM_INIT事件
     FSM->>FSM: 进入INIT状态(2秒)
-    FSM->>EventBus: 发布SYSTEM_READY事件
     FSM->>FSM: 进入NETWORKING状态
     
     Note over FSM,WiFi: 网络连接

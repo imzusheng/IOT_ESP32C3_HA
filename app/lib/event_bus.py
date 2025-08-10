@@ -49,7 +49,6 @@ class EventBus:
             'log.warn': 2,
             'system.warning': 2,
             'log.info': 3,               # 中优先级
-            'system.ready': 3,
             'wifi.connected': 3,
             'mqtt.connected': 3,
             'log.debug': 4,              # 低优先级
