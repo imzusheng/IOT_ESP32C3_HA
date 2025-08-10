@@ -215,24 +215,11 @@ class SystemFSM:
                 info("MQTT控制器不可用，跳过连接", module="FSM")
         elif state == SystemState.NETWORKING:
             # 如果进入 NETWORKING 时 WiFi 已经处于已连接状态（例如事件先于状态切换触发），
-            # 为避免卡在 NETWORKING 状态，这里补发 WIFI_CONNECTED 事件以驱动状态转换。
+            # 这里不再补发 WIFI_CONNECTED 事件，避免与 WiFi 模块重复；直接切换到 RUNNING。
             try:
                 if self.wifi_manager and hasattr(self.wifi_manager, 'is_connected') and self.wifi_manager.is_connected():
-                    ip = None
-                    ssid = None
-                    try:
-                        # 尝试从 wlan 和配置中获取基本信息
-                        if hasattr(self.wifi_manager, 'wlan') and self.wifi_manager.wlan:
-                            cfg = self.wifi_manager.wlan.ifconfig()
-                            if cfg and len(cfg) > 0:
-                                ip = cfg[0]
-                        if getattr(self.wifi_manager, 'target_network', None):
-                            ssid = self.wifi_manager.target_network.get('ssid')
-                    except Exception:
-                        pass
                     info("进入NETWORKING状态时WiFi已连接，快速切换到RUNNING状态", module="FSM")
-                    # 通过事件驱动转换，保持架构一致性
-                    self.event_bus.publish(EVENT.WIFI_CONNECTED, ip=ip, ssid=ssid, module="FSM")
+                    self.transition_to(SystemState.RUNNING, reason="WiFi already connected")
             except Exception as e:
                 error("NETWORKING快速路径检查失败: {}", e, module="FSM")
     
