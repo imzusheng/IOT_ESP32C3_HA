@@ -104,7 +104,7 @@ class EventBus:
         """
         if event_name in self.bus and callback in self.bus[event_name]:
             self.bus[event_name].remove(callback)
-                self._log("已取消事件 '{}' 的订阅者: {}", callback, event_name)
+            self._log("已取消事件 '{}' 的订阅者: {}", callback, event_name)
             if not self.bus[event_name]:
                 del self.bus[event_name]
                 self._log("事件 '{}' 已移除，因为没有订阅者。", event_name)
