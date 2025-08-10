@@ -32,6 +32,37 @@ class MainController:
         self.object_pool = ObjectPoolManager()
         self.static_cache = StaticCache()
         
+        # 启动指标与恢复信息（稳定性优先，低侵入）
+        try:
+            boot_count = self.static_cache.get('boot_count', 0) + 1
+            self.static_cache.set('boot_count', boot_count)
+            # 记录上次启动时间（设备上电/复位后第一个毫秒计数）
+            self.static_cache.set('last_boot_ms', time.ticks_ms())
+            # 记录复位原因（若可用）
+            reset_cause = None
+            try:
+                if hasattr(machine, 'reset_cause'):
+                    reset_cause = machine.reset_cause()
+            except Exception:
+                reset_cause = None
+            if reset_cause is not None:
+                self.static_cache.set('last_reset_cause', reset_cause)
+            # 记录固件/配置版本信息（若配置中存在）
+            fw = {}
+            v = self.config.get('version')
+            if v is not None:
+                fw['version'] = v
+            b = self.config.get('build')
+            if b is not None:
+                fw['build'] = b
+            if fw:
+                self.static_cache.set('firmware', fw)
+            # 立即持久化，避免掉电丢失
+            self.static_cache.save(force=True)
+        except Exception:
+            # 静默处理缓存写入错误，避免影响启动
+            pass
+        
         # 初始化日志系统（使用配置）
         log_config = config.get('logging', {})
         log_level_str = log_config.get('log_level', 'INFO')
@@ -101,21 +132,12 @@ class MainController:
     # =================== NTP 时间同步事件处理 ===================
     def _on_ntp_sync_started(self, event_name, ntp_server=None):
         """处理 NTP 同步开始事件"""
-        self.logger.info(f"Starting NTP time synchronization: {ntp_server or 'default'}", module="Main")
+        self.logger.info("Starting NTP time synchronization: {}", ntp_server or 'default', module="Main")
     
     def _on_ntp_sync_success(self, event_name, ntp_server=None, attempts=None, timestamp=None):
         """处理 NTP 同步成功事件"""
-        msg = f"NTP time sync successful! Server: {ntp_server or 'unknown'}, attempts: {attempts or 'unknown'}"
-        self.logger.info(msg, module="Main")
-        
-        # 获取并显示当前时间
-        try:
-            import time
-            current_time = time.localtime()
-            time_str = f"{current_time[0]}-{current_time[1]:02d}-{current_time[2]:02d} {current_time[3]:02d}:{current_time[4]:02d}:{current_time[5]:02d}"
-            self.logger.info(f"System time updated: {time_str}", module="Main")
-        except Exception as e:
-            self.logger.error(f"Failed to get current time: {e}", module="Main")
+        self.logger.info("NTP time sync successful! Server: {}, attempts: {}", 
+                        ntp_server or 'unknown', attempts or 'unknown', module="Main")
     
     def _on_ntp_sync_failed(self, event_name, ntp_server=None, attempts=None, error=None):
         """处理 NTP 同步失败事件"""
@@ -127,19 +149,15 @@ class MainController:
         msg = f"NTP sync failed after {attempts} attempts. Error: {error_msg}"
         self.logger.warning(msg, module="Main")
         
-        self.logger.info("System time updated, other modules can start time-dependent functions", module="Main")
+        # 移除重复的时间更新日志
     
     # =================== WiFi 连接事件处理 ===================
     def _on_wifi_connecting(self, event_name):
         """处理 WiFi 连接开始事件"""
-        self.logger.info("Starting WiFi connection", module="Main")
+        # WiFi连接开始日志已在WifiManager中记录，避免重复
     
     def _on_wifi_connected(self, event_name, ip=None, ssid=None):
         """处理 WiFi 连接成功事件"""
-        ssid_info = f" (SSID: {ssid})" if ssid else ""
-        msg = f"WiFi connected successfully! IP address: {ip}{ssid_info}"
-        self.logger.info(msg, module="Main")
-        
         self.logger.info("Network ready, can start network services", module="Main")
     
     def _on_wifi_disconnected(self, event_name, reason=None, ssid=None):
@@ -170,14 +188,12 @@ class MainController:
                 time_tuple = time.localtime(timestamp)
                 time_str = f"{time_tuple[0]:04d}-{time_tuple[1]:02d}-{time_tuple[2]:02d} " \
                           f"{time_tuple[3]:02d}:{time_tuple[4]:02d}:{time_tuple[5]:02d}"
-                msg = f"System time updated to: {time_str} (timestamp: {timestamp}), other modules can start time-dependent functions"
-                self.logger.info(msg, module="Main")
+                self.logger.info("System time updated to: {} (timestamp: {}), other modules can start time-dependent functions", 
+                               time_str, timestamp, module="Main")
             except Exception as e:
-                self.logger.warning(f"Failed to parse timestamp: {e}, timestamp: {timestamp}", module="Main")
-                self.logger.info(f"System time updated (timestamp: {timestamp})", module="Main")
+                self.logger.warning("Failed to parse timestamp: {}, timestamp: {}", e, timestamp, module="Main")
         else:
             self.logger.info("System time updated, other modules can start time-dependent functions", module="Main")
-            self.logger.info("System time update completed", module="Main")
     
     # =================== 系统状态事件处理 ===================
     def _on_system_error(self, event_name, error_msg=None):
@@ -219,11 +235,22 @@ class MainController:
     
     def setup_object_pools(self):
         """配置对象池"""
-        self.object_pool.add_pool("mqtt_messages", lambda: {}, 10)
-        self.object_pool.add_pool("sensor_data", lambda: {}, 5)
-        self.object_pool.add_pool("log_messages", lambda: "", 20)
-        self.object_pool.add_pool("system_events", lambda: {}, 15)
-        self.logger.info("Object pools configured", module="Main")
+        # 为 MQTT 消息复用的字典池（重用频率最高）
+        self.object_pool.add_pool("mqtt_messages", lambda: {"topic": "", "payload": "", "retain": False, "qos": 0}, 8)
+        # 为传感器数据复用的字典池
+        self.object_pool.add_pool("sensor_data", lambda: {"sensor_id": "", "value": None, "timestamp": 0}, 6)
+        # 为状态机维护系统状态事件池
+        self.object_pool.add_pool("system_events", lambda: {"event": "", "state": "", "duration": 0}, 5)
+        # 为日志系统预留少量对象（可选，以防日志字符串过多）
+        self.object_pool.add_pool("log_context", lambda: {"level": "", "module": "", "timestamp": 0}, 12)
+        self.logger.info("Object pools configured - {} pools total", len(self.object_pool._pools), module="Main")
+        
+        # 可选：输出内存统计（调试信息）
+        if self.config.get('logging', {}).get('log_level', 'INFO') == 'DEBUG':
+            import gc
+            mem_free = gc.mem_free()
+            mem_alloc = gc.mem_alloc()
+            self.logger.debug("Memory stats after pool setup - Free: {}B, Allocated: {}B", mem_free, mem_alloc, module="Main")
     
     def start_system(self):
         """启动系统"""

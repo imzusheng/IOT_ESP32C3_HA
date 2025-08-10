@@ -75,8 +75,9 @@ class StaticCache:
                 self._dirty = False
                 self._last_write_time = time.ticks_ms()
                 # Cache saved silently
-            except OSError as e:
+            except OSError:
                 # Error saving cache silently
+                pass
 
     def loop(self):
         """

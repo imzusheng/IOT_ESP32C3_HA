@@ -57,8 +57,11 @@ class MqttController:
         try:
             topic_str = topic.decode('utf-8')
             msg_str = msg.decode('utf-8')
-            self.logger.info(f"Message received: topic='{topic_str}', msg='{msg_str}'", module="MQTT")
+            self.logger.info("Message received: topic='{}', msg='{}'", topic_str, msg_str, module="MQTT")
+            
+            # 按照事件契约发布 (topic, msg)，避免改变订阅方签名
             self.event_bus.publish(EVENT.MQTT_MESSAGE, topic_str, msg_str)
+            
         except Exception as e:
             self.event_bus.publish(EVENT.LOG_ERROR, "Error processing MQTT message: {}", e, module="MQTT")
 
@@ -67,11 +70,11 @@ class MqttController:
         if self.is_connected or not self.client:
             return
 
-        self.logger.info(f"Connecting to broker at {self.config['broker']}...", module="MQTT")
+        self.logger.info("Connecting to broker at {}...", self.config['broker'], module="MQTT")
         try:
             self.client.connect()
             self.is_connected = True
-            self.logger.info("Connected successfully.", module="MQTT")
+            self.logger.info("MQTT connected successfully", module="MQTT")
             self.event_bus.publish(EVENT.MQTT_CONNECTED)
             for topic in self.config.get('subscribe_topics', []):
                 self.subscribe(topic)
@@ -92,8 +95,7 @@ class MqttController:
                 self.logger.error(f"Error during disconnect: {e}", module="MQTT")
                 self.event_bus.publish(EVENT.LOG_WARN, "MQTT disconnect error: {}", e, module="MQTT")
         self.is_connected = False
-        self.logger.info("Disconnected.", module="MQTT")
-        self.event_bus.publish(EVENT.LOG_INFO, "MQTT disconnected", module="MQTT")
+        self.logger.info("MQTT disconnected", module="MQTT")
 
     def publish(self, topic, msg, retain=False, qos=0):
         """发布消息。"""
@@ -102,7 +104,25 @@ class MqttController:
             return
 
         try:
-            self.client.publish(topic, msg, retain, qos)
+            # 在发布前，尝试使用对象池预先构造消息上下文（用于调试/日志），在 object_pool 不可用时安全退化
+            pub_obj = self.object_pool.acquire("mqtt_messages") if getattr(self, "object_pool", None) else None
+            if pub_obj:
+                pub_obj["topic"] = topic
+                pub_obj["payload"] = msg
+                pub_obj["retain"] = retain
+                pub_obj["qos"] = qos
+                # 执行实际的MQTT发布
+                self.client.publish(topic, msg, retain, qos)
+                # 可选：记录发布信息用于调试
+                if getattr(self, "logger", None) and getattr(self.logger, "_level", 99) <= 1:  # DEBUG级别
+                    self.logger.debug(f"Published to topic '{topic}', retain={retain}, qos={qos}", module="MQTT")
+                # 释放对象
+                if getattr(self, "object_pool", None):
+                    self.object_pool.release(pub_obj)
+            else:
+                # 对象池不可用或耗尽时直接发布
+                self.client.publish(topic, msg, retain, qos)
+                
         except Exception as e:
             self.logger.error(f"Publish error: {e}", module="MQTT")
             self.event_bus.publish(EVENT.LOG_ERROR, "MQTT publish error: {}", e, module="MQTT")
@@ -116,7 +136,7 @@ class MqttController:
             return
         
         try:
-            self.logger.info(f"Subscribing topic: {topic}", module="MQTT")
+            self.logger.info("Subscribing topic: {}", topic, module="MQTT")
             self.client.subscribe(topic, qos)
         except Exception as e:
             self.logger.error(f"Subscribe error: {e}", module="MQTT")

@@ -197,7 +197,7 @@ class SystemFSM:
     
     def _on_state_enter(self, state):
         """状态进入处理"""
-        info("Entering state: {}", state, module="FSM")
+        # 状态进入日志已在transition_to中记录，避免重复
         
         # 更新LED状态
         if self.led_controller:
@@ -242,7 +242,7 @@ class SystemFSM:
     
     def _on_state_exit(self, state):
         """状态退出处理"""
-        info("Exiting state: {}", state, module="FSM")
+        # 状态退出日志已在transition_to中记录，避免重复
         
         # 状态特定的退出处理
         if state == SystemState.SAFE_MODE:

@@ -76,7 +76,7 @@ class Logger:
         }
         
         # 创建 ulogging 实例
-        self._logger = ulogging.getLogger("ESP32C3")
+        self._logger = ulogging.getLogger("")
         
         # 设置日志级别
         ulogging_level = self._ulogging_level_map.get(level, ulogging.INFO)
@@ -101,28 +101,28 @@ class Logger:
         self._auto_module_detection = self._config.get('auto_module_detection', True)
         
     def _setup_logger_format(self):
-        """配置 ulogging 的输出格式"""
-        # 检查是否支持 Formatter（简化版 ulogging 可能不支持）
-        if hasattr(ulogging, 'Formatter'):
-            # 创建格式化器 - 改进格式包含更多信息
-            formatter = ulogging.Formatter(
-                fmt='%(message)s',  # 消息格式由我们自己处理
-                datefmt='%H:%M:%S'
-            )
-            
-            # 获取根处理器并设置格式
-            for handler in self._logger.handlers:
-                if hasattr(handler, 'setFormatter'):
-                    handler.setFormatter(formatter)
-                    
-            # 如果没有处理器，添加一个流处理器
-            if not self._logger.handlers:
-                if hasattr(ulogging, 'StreamHandler'):
-                    handler = ulogging.StreamHandler()
-                    handler.setFormatter(formatter)
-                    self._logger.addHandler(handler)
-        else:
-            # 简化版 ulogging，直接使用基本配置
+        """配置自定义的日志输出格式，避免双重前缀"""
+        # 清除所有现有的处理器
+        self._logger.handlers = []
+        
+        # 创建自定义处理器
+        class CustomHandler:
+            def __init__(self, logger_instance):
+                self.logger_instance = logger_instance
+                
+            def write(self, msg):
+                # 直接输出消息，不添加任何前缀
+                print(msg, end='')
+                
+            def flush(self):
+                pass  # 不需要实现
+        
+        # 添加自定义处理器
+        custom_handler = CustomHandler(self)
+        self._logger.handlers = [custom_handler]
+        
+        # 设置基本配置
+        if hasattr(ulogging, 'basicConfig'):
             ulogging.basicConfig(level=ulogging.INFO)
 
 
@@ -165,22 +165,41 @@ class Logger:
             pass  # 如果 ulogging 不可用，忽略
 
     def _get_formatted_timestamp(self):
-        """获取格式化的时间戳"""
+        """获取格式化的时间戳，兼容 MicroPython 优先使用 RTC 本地时间"""
         try:
             import utime as time
-            timestamp = time.ticks_ms()
-            # 转换为秒和毫秒
-            seconds = timestamp // 1000
-            milliseconds = timestamp % 1000
-            # 格式化时间
-            time_str = time.strftime('%H:%M:%S', time.localtime(seconds))
-            
+            # 判断是否有可靠的 RTC 时间（例如通过 NTP 同步）
+            t = time.localtime()
+            year = t[0]
+            has_rtc = year >= 2020
+            milliseconds = time.ticks_ms() % 1000
+
+            if has_rtc:
+                # 使用 RTC 的本地时间
+                time_str = "{:02d}:{:02d}:{:02d}".format(t[3], t[4], t[5])
+            else:
+                # 使用开机累计时间（不依赖 RTC）
+                total_seconds = (time.ticks_ms() // 1000) % (24 * 3600)
+                hours = total_seconds // 3600
+                minutes = (total_seconds % 3600) // 60
+                secs = total_seconds % 60
+                time_str = "{:02d}:{:02d}:{:02d}".format(hours, minutes, secs)
+
             if self._show_milliseconds:
-                return f"{time_str}.{milliseconds:03d}"
+                return "{}.{:03d}".format(time_str, milliseconds)
             else:
                 return time_str
         except:
-            return time.strftime('%H:%M:%S')
+            # 最后的备用方案：回退到开机累计时间
+            try:
+                import utime as time
+                total_seconds = (time.ticks_ms() // 1000) % (24 * 3600)
+                hours = total_seconds // 3600
+                minutes = (total_seconds % 3600) // 60
+                secs = total_seconds % 60
+                return "{:02d}:{:02d}:{:02d}".format(hours, minutes, secs)
+            except:
+                return "00:00:00"
     
     def _get_level_name(self, event_name):
         """获取日志级别名称"""
@@ -205,7 +224,7 @@ class Logger:
     def _handle_log(self, event_name, msg=None, *args, **kwargs):
         """
         处理接收到的日志事件。
-        使用 ulogging 进行实际的日志记录。
+        直接输出日志，避免双重前缀。
         支持模块来源标注和防抖机制。
         """
         # 从旧格式兼容：如果 msg 是第一个位置参数
@@ -271,17 +290,8 @@ class Logger:
         
         full_msg = f"{prefix} {formatted_msg}"
 
-        # 根据事件类型使用对应的 ulogging 方法
-        if event_name == EVENT.LOG_DEBUG:
-            self._logger.debug(full_msg)
-        elif event_name == EVENT.LOG_INFO:
-            self._logger.info(full_msg)
-        elif event_name == EVENT.LOG_WARN:
-            self._logger.warning(full_msg)
-        elif event_name == EVENT.LOG_ERROR:
-            self._logger.error(full_msg)
-        else:
-            self._logger.info(full_msg)
+        # 直接输出日志，避免通过 ulogging 添加额外前缀
+        print(full_msg)
 
     def _invoke_handler_compat(self, handler, event_name, msg, args, module):
         """

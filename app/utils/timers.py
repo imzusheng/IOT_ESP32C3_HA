@@ -315,9 +315,9 @@ def profile_time(name="Unnamed"):
             if len(profiler.measurements) % 10 == 0:
                 stats = profiler.get_stats()
                 logger = get_global_logger()
-                logger.info(f"{name}: avg={stats['average']:.1f}ms, ", module="Profiler")
-                      f"min={stats['min']:.1f}ms, max={stats['max']:.1f}ms, "
-                      f"count={stats['count']}")
+                logger.info(f"{name}: avg={stats['average']:.1f}ms, "
+                          f"min={stats['min']:.1f}ms, max={stats['max']:.1f}ms, "
+                          f"count={stats['count']}", module="Profiler")
             
             return result
         

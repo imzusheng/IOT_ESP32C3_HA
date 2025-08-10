@@ -38,6 +38,17 @@ class WifiManager:
         self.config = config
         self.logger = get_global_logger()
         
+        # StaticCache 集成：记录上次连接成功的网络，优化重连策略（低侵入）
+        self.static_cache = None
+        try:
+            from lib.static_cache import StaticCache
+            # 如果系统中有全局的 static_cache，尝试获取引用（避免多实例）
+            # 暂时创建独立实例，后续可优化为依赖注入方式
+            self.static_cache = StaticCache("wifi_cache.json")
+        except Exception:
+            # 静默处理 StaticCache 不可用的情况
+            pass
+        
         self.wlan = network.WLAN(network.STA_IF)
         self.status = self.STATUS_DISCONNECTED
         self.last_attempt_time = 0
@@ -99,8 +110,25 @@ class WifiManager:
         
         if not found_networks:
             return None
-            
-        # 按RSSI排序
+        
+        # 优先选择上次成功连接的网络（如果在扫描结果中且信号足够）
+        last_successful_ssid = None
+        if self.static_cache:
+            try:
+                last_successful_ssid = self.static_cache.get('last_successful_ssid')
+                if last_successful_ssid:
+                    for net in found_networks:
+                        if net['ssid'] == last_successful_ssid and net['rssi'] > -70:  # 信号强度阈值
+                            self.logger.info(f"Using cached successful network: {last_successful_ssid} (RSSI: {net['rssi']})", module="WiFi")
+                            # 查找完整的网络配置
+                            for net_config in self.config.get('networks', []):
+                                if net_config['ssid'] == last_successful_ssid:
+                                    return net_config
+            except Exception:
+                # 静默处理缓存读取错误
+                pass
+        
+        # 如果缓存网络不可用，按RSSI排序
         found_networks.sort(key=lambda x: x['rssi'], reverse=True)
         best_ssid = found_networks[0]['ssid']
         self.logger.info(f"Found best network: {best_ssid} (RSSI: {found_networks[0]['rssi']})", module="WiFi")
@@ -116,8 +144,11 @@ class WifiManager:
         if not self.target_network:
             return
 
-        self.logger.info(f"Attempting to connect to '{self.target_network['ssid']}'...", module="WiFi")
-        self.event_bus.publish(EVENT.LOG_INFO, "Attempting to connect to WiFi network: {}", self.target_network['ssid'], module="WiFi")
+        # 合并连接尝试日志，使用结构化格式
+        self.logger.info("Connecting to WiFi - ssid={}, rssi={}", 
+                       self.target_network['ssid'], 
+                       getattr(self.target_network, 'rssi', 'unknown'), 
+                       module="WiFi")
         self.status = self.STATUS_CONNECTING
         self.connection_start_time = time.ticks_ms()
         self.wlan.connect(self.target_network['ssid'], self.target_network['password'])
@@ -156,8 +187,8 @@ class WifiManager:
                     if time.ticks_diff(now, self._last_connect_event) > 5000:  # 5秒防重复
                         self._last_connect_event = now
                         
-                        self.logger.info(f"WiFi connected! IP: {ip_address}, SSID: {ssid}", module="WiFi")
-                        self.event_bus.publish(EVENT.LOG_INFO, "WiFi connected successfully! IP: {}, SSID: {}", ip_address, ssid, module="WiFi")
+                        # 合并WiFi连接成功日志，使用结构化格式
+                        self.logger.info("WiFi connected - ip={}, ssid={}", ip_address, ssid, module="WiFi")
                         self.event_bus.publish(EVENT.WIFI_CONNECTED, ip=ip_address, ssid=ssid, module="WiFi")
                         
                         # 联网成功后尝试进行 NTP 时间同步
@@ -189,6 +220,18 @@ class WifiManager:
                 self._ntp_synced = False
                 self._ntp_attempts = 0
                 self._last_connect_event = 0
+                # 连接稳定时，更新 StaticCache 记录成功网络（防抖写入）
+                if self.static_cache and self.target_network:
+                    try:
+                        current_ssid = self.target_network.get('ssid')
+                        if current_ssid:
+                            # 记录成功连接的网络，用于下次优先选择
+                            self.static_cache.set('last_successful_ssid', current_ssid)
+                            # 记录连接成功的时间戳
+                            self.static_cache.set('last_connection_time', time.ticks_ms())
+                    except Exception:
+                        # 静默处理缓存写入错误
+                        pass
 
         elif self.status in (self.STATUS_DISCONNECTED, self.STATUS_ERROR):
             # 检查是否到了重试时间
@@ -224,7 +267,7 @@ class WifiManager:
             pass
         
         # 发布开始事件（只发布一次）
-        self.logger.info(f"Starting NTP sync with server: {ntp_server}", module="WiFi")
+        self.logger.info("NTP sync started - server={}", ntp_server, module="WiFi")
         self.event_bus.publish(EVENT.NTP_SYNC_STARTED, ntp_server=ntp_server, module="WiFi")
         
         for i in range(max_attempts):
@@ -236,7 +279,9 @@ class WifiManager:
                 self._ntp_synced = True
                 timestamp = time.time()  # 获取当前时间戳
                 
-                self.logger.info(f"NTP sync successful after {self._ntp_attempts} attempts, timestamp: {timestamp}", module="WiFi")
+                # 合并NTP同步成功日志，使用结构化格式
+                self.logger.info("NTP sync successful - server={}, attempts={}, timestamp={}", 
+                               ntp_server, self._ntp_attempts, timestamp, module="WiFi")
                 
                 # 发布成功事件
                 self.event_bus.publish(EVENT.NTP_SYNC_SUCCESS, ntp_server=ntp_server, attempts=self._ntp_attempts, timestamp=timestamp, module="WiFi")

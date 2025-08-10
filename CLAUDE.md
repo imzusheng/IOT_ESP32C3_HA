@@ -21,8 +21,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 #### 1. 事件总线 (EventBus) - `app/lib/event_bus.py`
 - **功能**: 模块间通信的核心枢纽，支持发布-订阅模式
-- **特性**: 同步事件处理、错误隔离、内存优化
+- **特性**: 异步非阻塞事件处理、错误隔离、内存优化、事件优先级、调度队列溢出防护
 - **接口**: `subscribe(event_name, callback)`, `publish(event_name, *args, **kwargs)`
+- **实现**: 基于 `micropython.schedule` 的异步事件调度，支持事件频率限制和错误恢复
 
 #### 2. 对象池管理器 (ObjectPoolManager) - `app/lib/object_pool.py`
 - **功能**: 高效的对象复用和内存管理
@@ -140,12 +141,16 @@ python build.py --test
 python build.py --clean-cache
 ```
 
-### 构建脚本功能
+### 构建脚本功能 (build.py v5.1 重构增强版)
 - **编译**: 使用 mpy-cross 编译 Python 文件为 .mpy 格式（排除 boot.py 和 main.py）
 - **上传**: 使用 mpremote 自动检测 ESP32 设备并上传文件到设备根目录 `/`
 - **设备检测**: 自动识别 ESP32-C3 设备端口（支持多种USB转串口芯片）
 - **文件验证**: 上传完成后自动验证设备上的文件列表
 - **缓存管理**: 智能文件上传缓存，避免重复上传未修改文件
+- **安全模式**: 特殊的安全模式检测和恢复机制
+- **多设备支持**: 自动检测和选择多个ESP32设备
+- **错误恢复**: 完善的重试和错误处理机制
+- **增量上传**: 基于MD5哈希的智能文件变更检测
 
 ### 项目结构
 ```
@@ -233,8 +238,9 @@ IOT_ESP32C3/
 
 ### 测试框架
 - **测试工具**: pytest + unittest.mock
-- **测试覆盖**: 事件总线、对象池等核心组件
-- **测试文件**: `app/tests/test_event_bus.py`, `app/tests/test_object_pool.py`
+- **测试覆盖**: 事件总线、对象池、日志系统等核心组件
+- **测试文件**: `app/tests/test_event_bus.py`, `app/tests/test_logger.py`
+- **测试环境**: 测试代码也在 ESP32-C3 MicroPython 上运行，不需要本地测试
 
 ### 运行测试
 ```bash
@@ -261,8 +267,16 @@ pytest app/tests/ --cov=app
 ### 核心事件类型
 - **系统事件**: SYSTEM_BOOT, SYSTEM_INIT, SYSTEM_READY, SYSTEM_ERROR
 - **网络事件**: WIFI_CONNECTED, WIFI_DISCONNECTED, MQTT_CONNECTED, MQTT_DISCONNECTED
+- **时间事件**: NTP_SYNC_STARTED, NTP_SYNC_SUCCESS, TIME_UPDATED
 - **传感器事件**: SENSOR_DATA
 - **日志事件**: LOG_INFO, LOG_WARN, LOG_ERROR, LOG_DEBUG
+
+### 事件优先级系统
+EventBus实现了事件优先级机制，确保关键事件优先处理：
+- **最高优先级 (0)**: system.error, system.critical, memory.critical
+- **高优先级 (1)**: log.error
+- **中优先级 (2-3)**: log.warn, system.warning, log.info, wifi.connected, mqtt.connected
+- **低优先级 (4)**: log.debug, system.heartbeat
 
 ### 状态机系统
 - **状态**: BOOT → INIT → NETWORKING → RUNNING → WARNING → ERROR → SAFE_MODE → RECOVERY → SHUTDOWN
@@ -271,11 +285,14 @@ pytest app/tests/ --cov=app
 
 ## Memory Management
 
-### 内存优化策略
-- **对象池**: 减少频繁的对象创建销毁
-- **静态缓存**: 避免频繁的Flash写入
-- **智能垃圾回收**: 根据内存使用动态调整
-- **轻量级数据结构**: 优化内存占用
+### 内存优化策略 (针对ESP32-C3 264KB内存限制)
+- **对象池**: 减少频繁的对象创建销毁，降低GC压力
+- **静态缓存**: 避免频繁的Flash写入，使用防抖机制
+- **智能垃圾回收**: 根据内存使用动态调整，紧急垃圾回收流程
+- **轻量级数据结构**: 优化内存占用，使用全局变量减少实例化开销
+- **事件频率限制**: 防止调度队列溢出，限制高频率事件
+- **内存监控**: 实时监控内存使用，触发内存预警和紧急处理
+- **单例模式**: 核心组件使用单例模式，减少重复实例化
 
 ### 对象池系统
 ```python
@@ -347,10 +364,15 @@ fsm = SystemFSM(event_bus, object_pool, static_cache, config, wifi, mqtt)
 
 ## Important Notes
 
-- **内存限制**: ESP32C3只有264KB内存，必须时刻注意内存使用
+- **内存限制**: ESP32C3只有264KB内存，必须时刻注意内存使用，所有组件都针对此限制进行了优化
 - **文件位置**: 只允许编辑 `./app` 下一级目录的文件，`app/lib/lock/` 目录下的外部库文件不可编辑
-- **测试代码**: 不要添加测试代码和文件
-- **文档**: 不要擅自添加说明文档
+- **测试代码**: 不要添加测试代码和文件，所有测试都在 `app/tests/` 目录下
+- **文档**: 不要擅自添加说明文档，项目文档位于 `docs/` 目录
 - **语言**: 始终使用中文进行代码注释和文档
 - **架构**: 项目已完成事件驱动架构重构，使用松耦合设计
 - **外部库**: `app/lib/lock/` 目录包含外部下载的库文件，这些文件不应被修改
+- **构建系统**: 使用 `build.py` 进行编译和部署，支持智能增量上传
+- **事件驱动**: 所有模块间通信都通过 EventBus 进行，避免直接耦合
+- **依赖注入**: 使用依赖注入模式，在 `main.py` 中统一管理组件生命周期
+- **状态管理**: 使用 SystemFSM 管理系统状态，支持自动错误恢复
+- **内存优化**: 使用对象池、静态缓存等技术优化内存使用
