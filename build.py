@@ -61,7 +61,6 @@ NO_COMPILE_FILES = ['boot.py', 'main.py']  # 不进行交叉编译的文件列�
 DEFAULT_EXCLUDE_DIRS = ['__pycache__']   # 默认排除的目录 (tests, app/tests 和 docs 会被模式排除)
 
 # --- 缓存文件 ---
-PORT_CACHE_FILE = ".port_cache"            # 端口缓存文件
 UPLOAD_CACHE_FILE = ".upload_cache.json"   # 上传缓存文件
 
 # --- 排除模式 (用于编译和上传) ---
@@ -71,7 +70,6 @@ EXCLUDE_PATTERNS = [
     "*.pyo",          # Python 优化文件
     ".DS_Store",      # macOS 系统文件
     "Thumbs.db",      # Windows 缩略图文件
-    PORT_CACHE_FILE,  # 脚本生成的端口缓存
     UPLOAD_CACHE_FILE, # 脚本生成的上传缓存
     "*.md",           # Markdown 文档文件
     "*.txt",          # 文本文件
@@ -181,27 +179,11 @@ def should_exclude(path, exclude_patterns):
 # ==================== 设备检测 ====================
 
 def detect_esp32_port():
-    """自动检测ESP32设备端口，支持缓存和多设备选择"""
+    """自动检测ESP32设备端口，每次都重新扫描"""
     if not SERIAL_AVAILABLE:
         print_message("pyserial 未安装，无法自动检测端口。请手动指定端口。", "ERROR")
         print_message("安装命令: pip install pyserial", "INFO")
         return None
-
-    # 检查端口缓存
-    if os.path.isfile(PORT_CACHE_FILE):
-        try:
-            with open(PORT_CACHE_FILE, "r") as f:
-                cached_port = f.read().strip()
-            # 验证缓存的端口是否仍然有效
-            with serial.Serial(cached_port, timeout=1):
-                print_message(f"使用缓存的端口: {cached_port}", "INFO")
-                return cached_port
-        except (serial.SerialException, FileNotFoundError, IOError):
-            print_message(f"缓存的端口不可用，重新扫描...", "WARNING")
-            try:
-                os.remove(PORT_CACHE_FILE)
-            except OSError:
-                pass
 
     # 扫描所有可用串口
     print_message("扫描ESP32设备...", "INFO")
@@ -238,13 +220,6 @@ def detect_esp32_port():
             except (ValueError, KeyboardInterrupt):
                 print_message("操作取消。", "ERROR")
                 return None
-
-    # 缓存选中的端口
-    try:
-        with open(PORT_CACHE_FILE, "w") as f:
-            f.write(selected_port)
-    except IOError as e:
-        print_message(f"无法保存端口缓存: {e}", "WARNING")
 
     return selected_port
 
@@ -649,13 +624,12 @@ def main():
     # 清理缓存
     if args.clean_cache:
         print_message("清理缓存文件...", "INFO")
-        for cache_file in [PORT_CACHE_FILE, UPLOAD_CACHE_FILE]:
-            if os.path.isfile(cache_file):
-                try:
-                    os.remove(cache_file)
-                    print_message(f"已删除: {cache_file}", "SUCCESS")
-                except OSError as e:
-                    print_message(f"删除失败: {cache_file} - {e}", "ERROR")
+        if os.path.isfile(UPLOAD_CACHE_FILE):
+            try:
+                os.remove(UPLOAD_CACHE_FILE)
+                print_message(f"已删除: {UPLOAD_CACHE_FILE}", "SUCCESS")
+            except OSError as e:
+                print_message(f"删除失败: {UPLOAD_CACHE_FILE} - {e}", "ERROR")
         return
 
     # 检查工具
