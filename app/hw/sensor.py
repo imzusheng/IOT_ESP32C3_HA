@@ -33,8 +33,62 @@ class SensorManager:
         self.last_read_time = {}
         self.read_intervals = {}
         
+        # 数据变化检测和频率限制
+        self.last_published_data = {}  # 存储上次发布的数据
+        self.last_publish_time = {}   # 存储上次发布时间
+        self.min_publish_interval = 2000  # 最小发布间隔2秒
+        self.data_change_threshold = 0.1  # 数据变化阈值10%
+        
         # 初始化内部传感器
         self._init_internal_sensors()
+    
+    def _has_data_changed_significantly(self, sensor_id, new_data):
+        """检查数据是否发生显著变化"""
+        if sensor_id not in self.last_published_data:
+            return True  # 首次发布
+        
+        old_data = self.last_published_data[sensor_id]
+        
+        # 处理不同类型的数据
+        if isinstance(new_data, (int, float)) and isinstance(old_data, (int, float)):
+            # 数值类型数据，检查相对变化
+            if old_data == 0:
+                return new_data != 0  # 避免除零
+            relative_change = abs(new_data - old_data) / abs(old_data)
+            return relative_change > self.data_change_threshold
+        elif isinstance(new_data, dict) and isinstance(old_data, dict):
+            # 字典类型数据，检查关键字段的变化
+            for key in new_data:
+                if key in old_data:
+                    if isinstance(new_data[key], (int, float)) and isinstance(old_data[key], (int, float)):
+                        if old_data[key] == 0:
+                            if new_data[key] != 0:
+                                return True
+                        else:
+                            relative_change = abs(new_data[key] - old_data[key]) / abs(old_data[key])
+                            if relative_change > self.data_change_threshold:
+                                return True
+                else:
+                    return True  # 新字段
+            return False
+        else:
+            # 其他类型，直接比较
+            return new_data != old_data
+    
+    def _should_publish_sensor_data(self, sensor_id, data):
+        """检查是否应该发布传感器数据"""
+        now = time.ticks_ms()
+        
+        # 检查发布频率限制
+        if sensor_id in self.last_publish_time:
+            if time.ticks_diff(now, self.last_publish_time[sensor_id]) < self.min_publish_interval:
+                return False
+        
+        # 检查数据变化
+        if not self._has_data_changed_significantly(sensor_id, data):
+            return False
+        
+        return True
     
     def _init_internal_sensors(self):
         """初始化ESP32-C3内部传感器"""
@@ -102,7 +156,15 @@ class SensorManager:
             
             # 发布传感器数据事件（保持向后兼容的签名：sensor_id, value）
             if value is not None:
-                self.event_bus.publish(EVENT.SENSOR_DATA, sensor_id, value)
+                # 检查是否应该发布（数据变化检测和频率限制）
+                if self._should_publish_sensor_data(sensor_id, value):
+                    self.event_bus.publish(EVENT.SENSOR_DATA, sensor_id, value)
+                    # 更新发布记录
+                    self.last_published_data[sensor_id] = value
+                    self.last_publish_time[sensor_id] = time.ticks_ms()
+                else:
+                    # 数据无显著变化或发布频率过高，跳过发布
+                    self.logger.debug("传感器{}数据无显著变化，跳过发布", sensor_id, module="Sensor")
             
             return value
         except Exception as e:
@@ -301,7 +363,15 @@ class ExternalSensorManager:
             
             if data is not None:
                 # 保持事件签名一致
-                self.event_bus.publish(EVENT.SENSOR_DATA, sensor_id, data)
+                # 检查是否应该发布（数据变化检测和频率限制）
+                if self._should_publish_sensor_data(sensor_id, data):
+                    self.event_bus.publish(EVENT.SENSOR_DATA, sensor_id, data)
+                    # 更新发布记录
+                    self.last_published_data[sensor_id] = data
+                    self.last_publish_time[sensor_id] = time.ticks_ms()
+                else:
+                    # 数据无显著变化或发布频率过高，跳过发布
+                    self.logger.debug("外部传感器{}数据无显著变化，跳过发布", sensor_id, module="Sensor")
             
             return data
         except Exception as e:

@@ -31,7 +31,7 @@ class MainController:
         self.event_bus = EventBus()
         self.object_pool = ObjectPoolManager()
         self.static_cache = StaticCache()
-        
+          
         # 启动指标与恢复信息（稳定性优先，低侵入）
         try:
             boot_count = self.static_cache.get('boot_count', 0) + 1
@@ -112,16 +112,7 @@ class MainController:
         self.event_bus.subscribe(EVENT.NTP_SYNC_SUCCESS, self._on_ntp_sync_success)
         self.event_bus.subscribe(EVENT.NTP_SYNC_FAILED, self._on_ntp_sync_failed)
         
-        # WiFi 连接事件
-        self.event_bus.subscribe(EVENT.WIFI_CONNECTING, self._on_wifi_connecting)
-        self.event_bus.subscribe(EVENT.WIFI_CONNECTED, self._on_wifi_connected)
-        self.event_bus.subscribe(EVENT.WIFI_DISCONNECTED, self._on_wifi_disconnected)
-        
-        # MQTT 连接事件
-        self.event_bus.subscribe(EVENT.MQTT_CONNECTED, self._on_mqtt_connected)
-        self.event_bus.subscribe(EVENT.MQTT_DISCONNECTED, self._on_mqtt_disconnected)
-        
-        # 系统状态事件
+        # 系统状态事件（仅用于监控和日志记录）
         self.event_bus.subscribe(EVENT.SYSTEM_ERROR, self._on_system_error)
         self.event_bus.subscribe(EVENT.SYSTEM_WARNING, self._on_system_warning)
         self.event_bus.subscribe(EVENT.MEMORY_CRITICAL, self._on_memory_critical)
@@ -151,34 +142,8 @@ class MainController:
         # 移除重复的时间更新日志
     
     # =================== WiFi 连接事件处理 ===================
-    def _on_wifi_connecting(self, event_name):
-        """处理 WiFi 连接开始事件"""
-        # WiFi连接开始日志已在WifiManager中记录，避免重复
-    
-    def _on_wifi_connected(self, event_name, ip=None, ssid=None):
-        """处理 WiFi 连接成功事件"""
-        self.logger.info("网络就绪，可以启动网络服务", module="Main")
-    
-    def _on_wifi_disconnected(self, event_name, reason=None, ssid=None):
-        """处理 WiFi 断开事件"""
-        ssid_info = f" (SSID: {ssid})" if ssid else ""
-        msg = f"WiFi已断开: {reason or '未知原因'}{ssid_info}"
-        self.logger.warning(msg, module="Main")
-    
-    # =================== MQTT 连接事件处理 ===================
-    def _on_mqtt_connected(self, event_name, broker=None):
-        """处理 MQTT 连接成功事件"""
-        msg = f"MQTT连接成功！"
-        if broker:
-            msg += f" Broker: {broker}"
-        self.logger.info(msg, module="Main")
-    
-    def _on_mqtt_disconnected(self, event_name, reason=None, broker=None):
-        """处理 MQTT 断开事件"""
-        broker_info = f" (Broker: {broker})" if broker else ""
-        msg = f"MQTT已断开: {reason or '未知原因'}{broker_info}"
-        self.logger.warning(msg, module="Main")
-    
+        
+        
     def _on_time_updated(self, event_name, timestamp=None, **kwargs):
         """处理时间更新事件"""
         if timestamp:

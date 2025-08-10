@@ -42,19 +42,39 @@ class EventBus:
         self._max_schedule_errors = 10   # 最大调度错误次数
         self._last_schedule_error_reset = 0  # 上次调度错误重置时间
         self._event_rate_limiter = {}    # 事件频率限制器
-        self._event_priority = {         # 事件优先级映射
-            'system.error': 0,           # 最高优先级
+        self._event_priority = {         # 事件优先级映射（0=最高，4=最低）
+            # 优先级 0: 系统关键事件（立即处理）
+            'system.error': 0,
             'system.critical': 0,
             'memory.critical': 0,
-            'log.error': 1,              # 高优先级
-            'mqtt.disconnected': 1,      # MQTT断开事件高优先级（快速响应）
-            'log.warn': 2,
+            'recovery.failed': 0,
+            
+            # 优先级 1: 网络关键事件（快速响应）
+            'mqtt.disconnected': 1,
+            'wifi.disconnected': 1,
+            'log.error': 1,
+            
+            # 优先级 2: 系统警告事件（重要但非紧急）
             'system.warning': 2,
-            'log.info': 3,               # 中优先级
+            'log.warn': 2,
+            'ntp.sync.failed': 2,
+            
+            # 优先级 3: 状态变化事件（正常处理）
             'wifi.connected': 3,
             'mqtt.connected': 3,
-            'log.debug': 4,              # 低优先级
-            'system.heartbeat': 4
+            'mqtt.message': 3,
+            'sensor.data': 3,
+            'log.info': 3,
+            'time.updated': 3,
+            'ntp.sync.success': 3,
+            
+            # 优先级 4: 调试和监控事件（低优先级）
+            'log.debug': 4,
+            'system.heartbeat': 4,
+            'wifi.connecting': 4,
+            'ntp.sync.started': 4,
+            'sensor.data.summary': 4,
+            'network.status.summary': 4
         }
         self._initialized = True
         if self._verbose:
@@ -120,9 +140,13 @@ class EventBus:
             'log.error': 100,      # 错误日志最小间隔100ms
             'system.error': 1000,  # 系统错误事件最小间隔1秒
             'wifi.connecting': 2000,   # WiFi连接状态最小间隔2秒
+            'wifi.disconnected': 1000, # WiFi断开事件最小间隔1秒（防止事件风暴）
             'ntp.sync.started': 5000,  # NTP同步开始最小间隔5秒
             'mqtt.disconnected': 1000, # MQTT断开事件最小间隔1秒（防止事件风暴）
             'mqtt.connected': 2000,     # MQTT连接事件最小间隔2秒
+            'sensor.data': 1000,    # 传感器数据最小间隔1秒（防止事件风暴）
+            'system.heartbeat': 5000,  # 系统心跳最小间隔5秒
+            'time.updated': 2000,    # 时间更新最小间隔2秒
         }
         
         if event_name in rate_limited_events:
@@ -163,21 +187,37 @@ class EventBus:
             # 根据优先级排序订阅者（如果有优先级设置）
             subscribers = self.bus[event_name][:]
             
+            # 智能调度策略
+            priority = self._event_priority.get(event_name, 3)  # 默认中等优先级
+            
             # 如果调度错误过多，切换为同步调用模式
             if self._schedule_errors > self._max_schedule_errors:
+                # 高优先级事件仍然尝试异步调度，其他事件同步执行
                 for callback in subscribers:
                     try:
-                        self._execute_callback_sync(callback, event_name, args, kwargs)
+                        if priority <= 1:  # 关键事件仍然尝试异步
+                            self._execute_callback_async(callback, event_name, args, kwargs)
+                        else:
+                            self._execute_callback_sync(callback, event_name, args, kwargs)
                     except Exception as e:
                         self._handle_callback_error(event_name, callback, e)
             else:
-                # 对于高优先级事件，使用更积极的调度策略
-                priority = self._event_priority.get(event_name, 3)  # 默认中等优先级
+                # 正常模式下的智能调度
                 for callback in subscribers:
                     try:
-                        if priority <= 1:  # 高优先级事件立即执行
+                        if priority == 0:  # 系统关键事件：立即同步执行
                             self._execute_callback_sync(callback, event_name, args, kwargs)
-                        else:
+                        elif priority == 1:  # 网络关键事件：优先异步，失败时同步
+                            try:
+                                self._execute_callback_async(callback, event_name, args, kwargs)
+                            except Exception:
+                                self._execute_callback_sync(callback, event_name, args, kwargs)
+                        elif priority == 2:  # 警告事件：异步执行，失败时记录但不中断
+                            try:
+                                self._execute_callback_async(callback, event_name, args, kwargs)
+                            except Exception as e:
+                                self._handle_callback_error(event_name, callback, e)
+                        else:  # 普通和低优先级事件：异步执行
                             self._execute_callback_async(callback, event_name, args, kwargs)
                     except Exception as e:
                         self._handle_callback_error(event_name, callback, e)
