@@ -56,8 +56,6 @@ class MqttController:
             self.client.set_callback(self._mqtt_callback)
         except Exception as e:
             self.logger.error(f"创建MQTT客户端失败: {e}", module="MQTT")
-            # 统一使用logger记录即可，不再通过事件总线重复发布
-            # self.event_bus.publish(EVENT.LOG_ERROR, "MQTT客户端设置失败: {}", e, module="MQTT")
 
     def _mqtt_callback(self, topic, msg):
         """

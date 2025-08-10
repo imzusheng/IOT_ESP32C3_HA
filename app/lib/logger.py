@@ -373,34 +373,7 @@ class Logger:
             full_msg = f"严重错误: {full_msg}"
             
         self._logger.error(full_msg)
-        
-    # 事件发布辅助方法
-    def publish_log(self, event_name, msg, *args, module=None):
-        """通过事件总线发布日志事件"""
-        if self._event_bus:
-            # 兼容性发布：优先尝试带关键字参数的调用，不支持时逐步降级
-            try:
-                if module is not None:
-                    self._event_bus.publish(event_name, msg, *args, module=module)
-                else:
-                    self._event_bus.publish(event_name, msg, *args)
-            except TypeError:
-                try:
-                    self._event_bus.publish(event_name, msg, *args)
-                except TypeError:
-                    try:
-                        self._event_bus.publish(event_name, msg)
-                    except TypeError:
-                        # 最后降级为仅事件名
-                        self._event_bus.publish(event_name)
-        else:
-            # 如果没有事件总线，直接记录（使用兼容调用，以适配外部替换）
-            handler = self._handle_log
-            if handler is self._default_handle_log:
-                handler(event_name, msg, *args, module=module)
-            else:
-                self._invoke_handler_compat(handler, event_name, msg, args, module)
-
+  
 # 辅助函数，方便在代码中发布日志事件
 # 使用方法: log(event_bus, EVENT.LOG_INFO, "系统启动，配置: {}", config)
 def log(event_bus, event_name, msg, *args):

@@ -369,45 +369,6 @@ def test_log_level_filtering():
         log_test_result("日志级别过滤", False, f"级别过滤异常: {e}")
         return False
 
-def test_publish_log_method():
-    """测试 publish_log 方法"""
-    global publish_logs
-    publish_logs = []
-    
-    def publish_callback(event_name, msg, *args):
-        global publish_logs
-        publish_logs.append((event_name, msg, args))
-    
-    try:
-        # 测试有事件总线的情况
-        event_bus = EventBus(verbose=True)
-        logger = Logger(EVENT.LOG_INFO)
-        logger.setup(event_bus)
-        
-        # 替换事件总线的发布方法来捕获
-        original_publish = event_bus.publish
-        event_bus.publish = publish_callback
-        
-        # 使用 publish_log 方法
-        logger.publish_log(EVENT.LOG_INFO, "通过 publish_log 发布: {}", "参数")
-        
-        # 等待处理完成
-        time.sleep(0.1)
-        
-        # 验证是否通过事件总线发布
-        if len(publish_logs) > 0:
-            event_name, msg, args = publish_logs[0]
-            if event_name == EVENT.LOG_INFO and "通过 publish_log 发布" in msg:
-                log_test_result("publish_log 方法", True)
-                return True
-        
-        log_test_result("publish_log 方法", False, f"发布失败，捕获的日志: {publish_logs}")
-        return False
-        
-    except Exception as e:
-        log_test_result("publish_log 方法", False, f"publish_log 异常: {e}")
-        return False
-
 def test_global_logger_functions():
     """测试全局日志函数"""
     try:
@@ -572,7 +533,6 @@ def run_all_tests():
     test_event_driven_logging()
     test_log_message_formatting()
     test_log_level_filtering()
-    test_publish_log_method()
     test_global_logger_functions()
     test_log_helper_function()
     test_error_handling()
