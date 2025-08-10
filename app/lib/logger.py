@@ -175,6 +175,9 @@ class Logger:
             milliseconds = time.ticks_ms() % 1000
 
             if has_rtc:
+                # 添加UTC+8时区偏移
+                timestamp = time.mktime(t) + 8 * 3600  # 加8小时
+                t = time.localtime(timestamp)
                 # 使用 RTC 的本地时间
                 time_str = "{:02d}:{:02d}:{:02d}".format(t[3], t[4], t[5])
             else:
