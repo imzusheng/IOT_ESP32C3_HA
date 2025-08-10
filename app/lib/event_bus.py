@@ -68,6 +68,10 @@ class EventBus:
         self._timer = Timer(-1)
         self._timer.init(period=tick_ms, mode=Timer.PERIODIC, callback=self._process_queue)
 
+        # 队列监控
+        self._queue_warning_threshold = 0.6  # 60%警告阈值
+        self._queue_warning_sent = False
+
         self._initialized = True
         self._log("事件总线已初始化 (计时器队列模式)")
 
@@ -113,6 +117,9 @@ class EventBus:
                 self._queue[self._q_tail] = (event_name, args, kwargs)
                 self._q_tail = (self._q_tail + 1) % self._queue_size
                 self._q_len += 1
+                
+                # 检查队列占用率
+                self._check_queue_usage()
             else:
                 # 队列满，尝试丢弃低优先级事件
                 self._drop_low_priority_event(priority)
@@ -147,6 +154,22 @@ class EventBus:
         if event:
             event_name, args, kwargs = event
             self._dispatch_event(event_name, args, kwargs)
+
+    # ------------------ 队列监控 ------------------
+    def _check_queue_usage(self):
+        """检查队列使用率，在达到阈值时发出警告"""
+        usage_ratio = self._q_len / self._queue_size
+        
+        if usage_ratio >= self._queue_warning_threshold and not self._queue_warning_sent:
+            # 直接输出警告到控制台
+            print(f"[EventBus] 警告: 事件队列使用率达到{usage_ratio:.1%} ({self._q_len}/{self._queue_size})")
+            
+            # 同时记录到日志
+            self._log("事件队列使用率达到{:.1%} ({}/{})", usage_ratio, self._q_len, self._queue_size)
+            
+            self._queue_warning_sent = True
+        elif usage_ratio < self._queue_warning_threshold * 0.8:  # 降到48%以下才重置
+            self._queue_warning_sent = False
 
     # ------------------ 执行回调 ------------------
     def _dispatch_event(self, event_name, args, kwargs):
@@ -241,11 +264,15 @@ class EventBus:
         return event_name in self.bus and len(self.bus[event_name]) > 0
 
     def get_stats(self):
+        usage_ratio = self._q_len / self._queue_size if self._queue_size > 0 else 0
         return {
             'total_events': len(self.bus),
             'total_subscribers': sum(len(cbs) for cbs in self.bus.values()),
             'queue_length': self._q_len,
             'queue_size': self._queue_size,
+            'queue_usage_ratio': usage_ratio,
+            'queue_warning_threshold': self._queue_warning_threshold,
+            'queue_warning_sent': self._queue_warning_sent,
             'error_recursion_depth': self._error_recursion_depth
         }
 
