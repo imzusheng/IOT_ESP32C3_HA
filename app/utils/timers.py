@@ -76,7 +76,7 @@ class PeriodicTimer:
                 return True
             except Exception as e:
                 logger = get_global_logger()
-                logger.error(f"Callback execution failed: {e}", module="Timer")
+                logger.error(f"回调执行失败: {e}", module="Timer")
                 return False
         return False
     
@@ -173,7 +173,7 @@ class HardwareTimerManager:
         timer_id = self.get_available_timer()
         if timer_id is None:
             logger = get_global_logger()
-            logger.warning("No available hardware timers", module="Timer")
+            logger.warning("没有可用的硬件定时器", module="Timer")
             return None
         
         try:
@@ -186,7 +186,7 @@ class HardwareTimerManager:
             return timer
         except Exception as e:
             logger = get_global_logger()
-            logger.error(f"Failed to create hardware timer {timer_id}: {e}", module="Timer")
+            logger.error(f"创建硬件定时器{timer_id}失败: {e}", module="Timer")
             return None
     
     def release_timer(self, timer):
@@ -205,7 +205,7 @@ class HardwareTimerManager:
                     self.used_ids.remove(timer_id)
                 except Exception as e:
                     logger = get_global_logger()
-                    logger.error(f"Failed to release timer {timer_id}: {e}", module="Timer")
+                    logger.error(f"释放定时器{timer_id}失败: {e}", module="Timer")
     
     def cleanup(self):
         """清理所有定时器"""
@@ -230,7 +230,7 @@ class TimeProfiler:
     性能分析器
     用于测量代码执行时间
     """
-    def __init__(self, name="Unnamed"):
+    def __init__(self, name="未命名"):
         self.name = name
         self.start_time = None
         self.measurements = []
@@ -302,7 +302,7 @@ class TimeProfilerContext:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.profiler.stop()
 
-def profile_time(name="Unnamed"):
+def profile_time(name="未命名"):
     """性能分析装饰器"""
     def decorator(func):
         profiler = TimeProfiler(name)

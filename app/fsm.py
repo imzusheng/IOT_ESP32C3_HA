@@ -89,11 +89,11 @@ class SystemFSM:
             wdt_timeout = self.config.get('daemon', {}).get('wdt_timeout', 120000)
             try:
                 self.wdt = machine.WDT(timeout=wdt_timeout)
-                info("Watchdog enabled with timeout: {} ms", wdt_timeout, module="FSM")
+                info("看门狗已启用，超时时间: {} ms", wdt_timeout, module="FSM")
             except Exception as e:
-                error("Failed to enable watchdog: {}", e, module="FSM")
+                error("启用看门狗失败: {}", e, module="FSM")
 
-        info("System state machine initialized", module="FSM")
+        info("系统状态机已初始化", module="FSM")
     
     def _build_transition_table(self):
         """构建状态转换表"""
@@ -168,14 +168,14 @@ class SystemFSM:
         if event_name in self.transition_table.get(self.current_state, {}):
             new_state = self.transition_table[self.current_state][event_name]
             if new_state:
-                self.transition_to(new_state, f"Event: {event_name}")
+                self.transition_to(new_state, f"事件: {event_name}")
     
     def transition_to(self, new_state, reason=""):
         """转换到新状态"""
         if new_state == self.current_state:
             return False
         
-        info("State transition: {} -> {} ({})", self.current_state, new_state, reason, module="FSM")
+        info("状态转换: {} -> {} ({})", self.current_state, new_state, reason, module="FSM")
         
         # 退出当前状态
         self._on_state_exit(self.current_state)
@@ -212,7 +212,7 @@ class SystemFSM:
             if self.mqtt_controller:
                 self.mqtt_controller.connect()
             else:
-                info("MQTT controller not available, skipping connection", module="FSM")
+                info("MQTT控制器不可用，跳过连接", module="FSM")
         elif state == SystemState.NETWORKING:
             # 如果进入 NETWORKING 时 WiFi 已经处于已连接状态（例如事件先于状态切换触发），
             # 为避免卡在 NETWORKING 状态，这里补发 WIFI_CONNECTED 事件以驱动状态转换。
@@ -230,11 +230,11 @@ class SystemFSM:
                             ssid = self.wifi_manager.target_network.get('ssid')
                     except Exception:
                         pass
-                    info("WiFi already connected when entering NETWORKING, fast-forwarding to RUNNING", module="FSM")
+                    info("进入NETWORKING状态时WiFi已连接，快速切换到RUNNING状态", module="FSM")
                     # 通过事件驱动转换，保持架构一致性
                     self.event_bus.publish(EVENT.WIFI_CONNECTED, ip=ip, ssid=ssid, module="FSM")
             except Exception as e:
-                error("NETWORKING fast-path check failed: {}", e, module="FSM")
+                error("NETWORKING快速路径检查失败: {}", e, module="FSM")
     
     def _on_state_exit(self, state):
         """状态退出处理"""
@@ -246,7 +246,7 @@ class SystemFSM:
     
     def _on_safe_mode_enter(self):
         """安全模式进入处理"""
-        info("Entering safe mode - performing emergency cleanup", module="FSM")
+        info("进入安全模式 - 执行紧急清理", module="FSM")
         
         # 深度垃圾回收
         for _ in range(3):
@@ -259,17 +259,17 @@ class SystemFSM:
     
     def _on_safe_mode_exit(self):
         """安全模式退出处理"""
-        info("Exiting safe mode", module="FSM")
+        info("退出安全模式", module="FSM")
         self.error_count = 0  # 重置错误计数
     
     def _on_error_enter(self):
         """错误状态进入处理"""
         self.error_count += 1
-        info("Error count: {}/{}", self.error_count, self.max_errors, module="FSM")
+        info("错误计数: {}/{}", self.error_count, self.max_errors, module="FSM")
         
         if self.error_count >= self.max_errors:
-            info("Maximum error count reached, entering safe mode", module="FSM")
-            self.transition_to(SystemState.SAFE_MODE, "Max errors reached")
+            info("达到最大错误计数，进入安全模式", module="FSM")
+            self.transition_to(SystemState.SAFE_MODE, "达到最大错误数")
     
     def _update_led_for_state(self, state):
         """根据状态更新LED"""
@@ -292,7 +292,7 @@ class SystemFSM:
         try:
             self.led_controller.play(pattern)
         except Exception as e:
-            error("Failed to update LED for state {}: {}", state, e, module="FSM")
+            error("更新状态{}的LED失败: {}", state, e, module="FSM")
     
     def update(self):
         """更新状态机"""
@@ -313,7 +313,7 @@ class SystemFSM:
             try:
                 handler()
             except Exception as e:
-                error("Error in state handler for {}: {}", self.current_state, e, module="FSM")
+                error("状态{}的处理器出错: {}", self.current_state, e, module="FSM")
                 self.event_bus.publish(EVENT.SYSTEM_ERROR, str(e))
     
     # 状态处理器
@@ -332,8 +332,8 @@ class SystemFSM:
     def _handle_networking_state(self):
         """网络连接状态处理"""
         if not self.wifi_manager:
-            error("WiFi manager not available", module="FSM")
-            self.transition_to(SystemState.ERROR, "WiFi manager missing")
+            error("WiFi管理器不可用", module="FSM")
+            self.transition_to(SystemState.ERROR, "缺少WiFi管理器")
             return
         
         # 仅驱动WiFi管理器更新，实际的连接/断开事件由 WifiManager 统一发布
@@ -353,20 +353,20 @@ class SystemFSM:
                     ws = wifi_status
                 # 映射常见状态码
                 status_names = {
-                    0: "DISCONNECTED",
-                    1: "CONNECTING",
-                    2: "CONNECTED",
-                    3: "ERROR"
+                    0: "已断开",
+                    1: "连接中",
+                    2: "已连接",
+                    3: "错误"
                 }
                 current_status = status_names.get(ws, str(ws))
-                info("NETWORKING - WiFi status: {}", current_status, module="FSM")
+                info("NETWORKING - WiFi状态: {}", current_status, module="FSM")
                 # 如果有连接计时，显示连接/尝试时长
                 if hasattr(self.wifi_manager, 'connection_start_time'):
                     duration = time.ticks_diff(now, getattr(self.wifi_manager, 'connection_start_time')) // 1000
-                    info("NETWORKING - WiFi connecting for {}s", duration, module="FSM")
+                    info("NETWORKING - WiFi连接中 {}s", duration, module="FSM")
                 self._last_wifi_status_log = now
         except Exception as e:
-                error("NETWORKING - WiFi status log error: {}", e, module="FSM")
+                error("NETWORKING - WiFi状态日志错误: {}", e, module="FSM")
     
     def _handle_running_state(self):
         """运行状态处理"""
@@ -378,14 +378,14 @@ class SystemFSM:
         """警告状态处理"""
         # 尝试自动恢复
         if self.state_duration > 30000:  # 30秒后尝试恢复
-            info("Attempting recovery from warning state", module="FSM")
+            info("尝试从警告状态恢复", module="FSM")
             self.event_bus.publish(EVENT.RECOVERY_SUCCESS)
     
     def _handle_error_state(self):
         """错误状态处理"""
         # 尝试恢复
         if self.state_duration > 15000:  # 15秒后尝试恢复
-            info("Attempting recovery from error state", module="FSM")
+            info("尝试从错误状态恢复", module="FSM")
             self.event_bus.publish(EVENT.RECOVERY_SUCCESS)
     
     def _handle_safe_mode_state(self):
@@ -393,13 +393,13 @@ class SystemFSM:
         # 安全模式下的最小化操作
         if self.state_duration % 30000 == 0:  # 每30秒执行一次垃圾回收
             gc.collect()
-            info("Safe mode garbage collection", module="FSM")
+            info("安全模式垃圾回收", module="FSM")
     
     def _handle_recovery_state(self):
         """恢复状态处理"""
         # 恢复处理
         if self.state_duration > 10000:  # 10秒后恢复完成
-            info("Recovery completed", module="FSM")
+            info("恢复完成", module="FSM")
             self.event_bus.publish(EVENT.RECOVERY_SUCCESS)
     
     def _handle_shutdown_state(self):
@@ -417,8 +417,8 @@ class SystemFSM:
             
             memory_threshold = self.config.get('daemon', {}).get('memory_threshold', 80)
             if mem_percent > memory_threshold:
-                warning("High memory usage: {:.1f}%", mem_percent, module="FSM")
-                self.event_bus.publish(EVENT.SYSTEM_WARNING, f"High memory: {mem_percent:.1f}%")
+                warning("高内存使用率: {:.1f}%", mem_percent, module="FSM")
+                self.event_bus.publish(EVENT.SYSTEM_WARNING, f"高内存使用: {mem_percent:.1f}%")
             
             # 检查温度
             try:
@@ -427,13 +427,13 @@ class SystemFSM:
                 if temp:
                     temp_threshold = self.config.get('daemon', {}).get('temp_threshold', 65)
                     if temp > temp_threshold:
-                        warning("High temperature: {}°C", temp, module="FSM")
-                        self.event_bus.publish(EVENT.SYSTEM_WARNING, f"High temp: {temp}°C")
+                        warning("高温: {}°C", temp, module="FSM")
+                        self.event_bus.publish(EVENT.SYSTEM_WARNING, f"高温: {temp}°C")
             except Exception as e:
-                error("Temperature check failed: {}", e, module="FSM")
+                error("温度检查失败: {}", e, module="FSM")
             
         except Exception as e:
-            error("Health check failed: {}", e, module="FSM")
+            error("健康检查失败: {}", e, module="FSM")
     
     def get_current_state(self):
         """获取当前状态"""
@@ -450,12 +450,12 @@ class SystemFSM:
     
     def force_state(self, state):
         """强制设置状态"""
-        info("Forcing state to: {}", state, module="FSM")
-        return self.transition_to(state, "Forced by external request")
+        info("强制设置状态为: {}", state, module="FSM")
+        return self.transition_to(state, "外部强制请求")
     
     def run(self):
         """运行状态机主循环"""
-        info("Starting state machine main loop", module="FSM")
+        info("启动状态机主循环", module="FSM")
         try:
             while self.current_state != SystemState.SHUTDOWN:
                 # 喂狗
@@ -473,12 +473,12 @@ class SystemFSM:
                     self.static_cache.loop()
                     
         except KeyboardInterrupt:
-            info("State machine stopped by user", module="FSM")
+            info("状态机被用户停止", module="FSM")
         except Exception as e:
-            error("State machine error: {}", e, module="FSM")
+            error("状态机错误: {}", e, module="FSM")
             self.event_bus.publish(EVENT.SYSTEM_ERROR, str(e))
         finally:
-            info("State machine stopped", module="FSM")
+            info("状态机已停止", module="FSM")
 
 # 全局状态机实例
 _fsm_instance = None

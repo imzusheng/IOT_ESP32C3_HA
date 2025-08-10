@@ -142,7 +142,7 @@ class Logger:
         
         # 使用 ulogging 记录设置完成（如果可用）
         # try:
-        #     self._logger.info("Logger setup complete. Subscribed to log events.")
+        #     self._logger.info("Logger设置完成，已订阅日志事件")
         # except:
         #     pass  # 如果 ulogging 还未完全初始化，忽略错误
 
@@ -160,7 +160,7 @@ class Logger:
         
         # 记录级别变更（如果可用）
         try:
-            self._logger.info(f"Log level changed to: {new_level}")
+            self._logger.info(f"日志级别已更改为: {new_level}")
         except:
             pass  # 如果 ulogging 不可用，忽略
 
@@ -370,7 +370,7 @@ class Logger:
         if module:
             full_msg = f"[{module}] CRITICAL: {full_msg}"
         else:
-            full_msg = f"CRITICAL: {full_msg}"
+            full_msg = f"严重错误: {full_msg}"
             
         self._logger.error(full_msg)
         
@@ -402,7 +402,7 @@ class Logger:
                 self._invoke_handler_compat(handler, event_name, msg, args, module)
 
 # 辅助函数，方便在代码中发布日志事件
-# 使用方法: log(event_bus, EVENT.LOG_INFO, "System started with config: {}", config)
+# 使用方法: log(event_bus, EVENT.LOG_INFO, "系统启动，配置: {}", config)
 def log(event_bus, event_name, msg, *args):
     """
     一个发布日志事件的辅助函数。

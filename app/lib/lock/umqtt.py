@@ -151,7 +151,7 @@ class MQTTClient:
                     return
     
     def subscribe(self, topic, qos=0):
-        assert self.cb is not None, "Subscribe callback is not set"
+        assert self.cb is not None, "订阅回调未设置"
         pkt = bytearray(b"\x82\0\0\0")
         self.sock.write(pkt)
         self._send_str(topic)

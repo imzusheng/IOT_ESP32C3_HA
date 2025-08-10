@@ -21,7 +21,7 @@ except Exception:
 try:
     from lib.event_bus import EventBus
 except ImportError:
-    print("Error: Unable to import EventBus. Please ensure event_bus.py is in correct location.")
+    print("错误：无法导入EventBus。请确保event_bus.py在正确位置。")
     sys.exit(1)
 
 # 全局变量用于测试
@@ -35,9 +35,9 @@ def log_test_result(test_name, passed, message=""):
     test_count += 1
     if passed:
         passed_count += 1
-        status = "PASSED"
+        status = "通过"
     else:
-        status = "FAILED"
+        status = "失败"
     
     print(f"[Test] {test_name}: {status}")
     if message:
@@ -561,24 +561,24 @@ def reset_test_results():
 def print_test_summary():
     """打印测试结果摘要"""
     print("\n" + "=" * 50)
-    print("Test Results Summary")
+    print("测试结果摘要")
     print("=" * 50)
-    print(f"Total tests: {test_count}")
-    print(f"Passed: {passed_count}")
-    print(f"Failed: {test_count - passed_count}")
+    print(f"总测试数: {test_count}")
+    print(f"通过: {passed_count}")
+    print(f"失败: {test_count - passed_count}")
     if test_count > 0:
-        print(f"Success rate: {passed_count / test_count * 100:.1f}%")
+        print(f"成功率: {passed_count / test_count * 100:.1f}%")
     
     if passed_count == test_count:
-        print("\nAll tests passed! EventBus functionality is working correctly.")
+        print("\n所有测试通过！EventBus功能正常工作。")
     else:
-        print("\nSome tests failed. Please check the detailed test results above.")
+        print("\n部分测试失败。请查看上方的详细测试结果。")
 
 def run_all_tests():
     """运行所有测试"""
     reset_test_results()
     print("=" * 50)
-    print("Running all EventBus functionality tests")
+    print("运行所有EventBus功能测试")
     print("=" * 50)
     
     # 运行所有测试

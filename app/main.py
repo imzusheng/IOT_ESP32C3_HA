@@ -127,16 +127,16 @@ class MainController:
         self.event_bus.subscribe(EVENT.SYSTEM_WARNING, self._on_system_warning)
         self.event_bus.subscribe(EVENT.MEMORY_CRITICAL, self._on_memory_critical)
         
-        self.logger.info("System event subscriptions registered", module="Main")
+        self.logger.info("系统事件订阅已注册", module="Main")
     
     # =================== NTP 时间同步事件处理 ===================
     def _on_ntp_sync_started(self, event_name, ntp_server=None):
         """处理 NTP 同步开始事件"""
-        self.logger.info("Starting NTP time synchronization: {}", ntp_server or 'default', module="Main")
+        self.logger.info("开始NTP时间同步: {}", ntp_server or 'default', module="Main")
     
     def _on_ntp_sync_success(self, event_name, ntp_server=None, attempts=None, timestamp=None):
         """处理 NTP 同步成功事件"""
-        self.logger.info("NTP time sync successful! Server: {}, attempts: {}", 
+        self.logger.info("NTP时间同步成功！服务器: {}, 尝试次数: {}", 
                         ntp_server or 'unknown', attempts or 'unknown', module="Main")
     
     def _on_ntp_sync_failed(self, event_name, ntp_server=None, attempts=None, error=None):
@@ -144,9 +144,9 @@ class MainController:
         if isinstance(error, Exception):
             error_msg = str(error)
         else:
-            error_msg = error or "unknown error"
+            error_msg = error or "未知错误"
         
-        msg = f"NTP sync failed after {attempts} attempts. Error: {error_msg}"
+        msg = f"NTP同步失败，尝试次数: {attempts}。错误: {error_msg}"
         self.logger.warning(msg, module="Main")
         
         # 移除重复的时间更新日志
@@ -158,18 +158,18 @@ class MainController:
     
     def _on_wifi_connected(self, event_name, ip=None, ssid=None):
         """处理 WiFi 连接成功事件"""
-        self.logger.info("Network ready, can start network services", module="Main")
+        self.logger.info("网络就绪，可以启动网络服务", module="Main")
     
     def _on_wifi_disconnected(self, event_name, reason=None, ssid=None):
         """处理 WiFi 断开事件"""
         ssid_info = f" (SSID: {ssid})" if ssid else ""
-        msg = f"WiFi disconnected: {reason or 'unknown'}{ssid_info}"
+        msg = f"WiFi已断开: {reason or '未知原因'}{ssid_info}"
         self.logger.warning(msg, module="Main")
     
     # =================== MQTT 连接事件处理 ===================
     def _on_mqtt_connected(self, event_name, broker=None):
         """处理 MQTT 连接成功事件"""
-        msg = f"MQTT connected successfully!"
+        msg = f"MQTT连接成功！"
         if broker:
             msg += f" Broker: {broker}"
         self.logger.info(msg, module="Main")
@@ -177,7 +177,7 @@ class MainController:
     def _on_mqtt_disconnected(self, event_name, reason=None, broker=None):
         """处理 MQTT 断开事件"""
         broker_info = f" (Broker: {broker})" if broker else ""
-        msg = f"MQTT disconnected: {reason or 'unknown'}{broker_info}"
+        msg = f"MQTT已断开: {reason or '未知原因'}{broker_info}"
         self.logger.warning(msg, module="Main")
     
     def _on_time_updated(self, event_name, timestamp=None, **kwargs):
@@ -188,47 +188,47 @@ class MainController:
                 time_tuple = time.localtime(timestamp)
                 time_str = f"{time_tuple[0]:04d}-{time_tuple[1]:02d}-{time_tuple[2]:02d} " \
                           f"{time_tuple[3]:02d}:{time_tuple[4]:02d}:{time_tuple[5]:02d}"
-                self.logger.info("System time updated to: {} (timestamp: {}), other modules can start time-dependent functions", 
+                self.logger.info("系统时间更新为: {} (时间戳: {}), 其他模块可以启动时间相关功能", 
                                time_str, timestamp, module="Main")
             except Exception as e:
-                self.logger.warning("Failed to parse timestamp: {}, timestamp: {}", e, timestamp, module="Main")
+                self.logger.warning("解析时间戳失败: {}, timestamp: {}", e, timestamp, module="Main")
         else:
-            self.logger.info("System time updated, other modules can start time-dependent functions", module="Main")
+            self.logger.info("系统时间已更新，其他模块可以启动时间相关功能", module="Main")
     
     # =================== 系统状态事件处理 ===================
     def _on_system_error(self, event_name, error_msg=None):
         """处理系统错误事件"""
-        msg = f"System error: {error_msg or 'unknown'}"
+        msg = f"系统错误: {error_msg or '未知错误'}"
         self.logger.error(msg, module="Main")
     
     def _on_system_warning(self, event_name, warning_msg=None):
         """处理系统警告事件"""
-        msg = f"System warning: {warning_msg or 'unknown'}"
+        msg = f"系统警告: {warning_msg or '未知警告'}"
         self.logger.warning(msg, module="Main")
     
     def _on_memory_critical(self, event_name, mem_info=None):
         """处理内存临界事件"""
-        msg = f"Critical memory usage: {mem_info or 'unknown'}"
+        msg = f"内存使用严重: {mem_info or '未知'}"
         self.logger.error(msg, module="Main")
         
-        self.logger.info("Performing emergency garbage collection...", module="Main")
+        self.logger.info("执行紧急垃圾回收...", module="Main")
         for _ in range(3):
             gc.collect()
             time.sleep_ms(50)
     
     def on_emergency_shutdown(self, event_name, error_context=None):
         """处理紧急关机事件"""
-        self.logger.critical("Emergency shutdown triggered!", module="Main")
+        self.logger.critical("触发紧急关机！", module="Main")
         
         if error_context:
-            self.logger.critical(f"Shutdown reason: {error_context}", module="Main")
+            self.logger.critical(f"关机原因: {error_context}", module="Main")
         
         # 执行紧急清理
         self.emergency_cleanup()
 
     def emergency_cleanup(self):
         """紧急清理程序"""
-        self.logger.info("Performing emergency garbage collection...", module="Main")
+        self.logger.info("执行紧急垃圾回收...", module="Main")
         for _ in range(3):
             gc.collect()
             time.sleep_ms(50)
@@ -243,31 +243,31 @@ class MainController:
         self.object_pool.add_pool("system_events", lambda: {"event": "", "state": "", "duration": 0}, 5)
         # 为日志系统预留少量对象（可选，以防日志字符串过多）
         self.object_pool.add_pool("log_context", lambda: {"level": "", "module": "", "timestamp": 0}, 12)
-        self.logger.info("Object pools configured - {} pools total", len(self.object_pool._pools), module="Main")
+        self.logger.info("对象池已配置 - 共{}个对象池", len(self.object_pool._pools), module="Main")
         
         # 可选：输出内存统计（调试信息）
         if self.config.get('logging', {}).get('log_level', 'INFO') == 'DEBUG':
             import gc
             mem_free = gc.mem_free()
             mem_alloc = gc.mem_alloc()
-            self.logger.debug("Memory stats after pool setup - Free: {}B, Allocated: {}B", mem_free, mem_alloc, module="Main")
+            self.logger.debug("对象池设置后内存统计 - 空闲: {}B, 已分配: {}B", mem_free, mem_alloc, module="Main")
     
     def start_system(self):
         """启动系统"""
-        self.logger.info("Starting ESP32-C3 IoT device", module="Main")
+        self.logger.info("启动ESP32-C3 IoT设备", module="Main")
         
         # 配置对象池
         self.setup_object_pools()
         
         # 启动状态机主循环
         try:
-            self.logger.info("Starting system state machine", module="Main")
+            self.logger.info("启动系统状态机", module="Main")
             self.fsm.run()
         except KeyboardInterrupt:
-            self.logger.info("User interrupted, shutting down", module="Main")
+            self.logger.info("用户中断，正在关闭", module="Main")
             self.cleanup()
         except Exception as e:
-            self.logger.error(f"Fatal error: {e}", module="Main")
+            self.logger.error(f"致命错误: {e}", module="Main")
             self.cleanup()
             # 系统重启
             machine.reset()
@@ -275,7 +275,7 @@ class MainController:
     def cleanup(self):
         """清理资源"""
         try:
-            self.logger.info("Starting cleanup process", module="Main")
+            self.logger.info("开始清理过程", module="Main")
             
             # 停止状态机
             if hasattr(self, 'fsm') and self.fsm:
@@ -296,9 +296,9 @@ class MainController:
             if hasattr(self, 'static_cache') and self.static_cache:
                 self.static_cache.save(force=True)
             
-            self.logger.info("Cleanup completed", module="Main")
+            self.logger.info("清理完成", module="Main")
         except Exception as e:
-            self.logger.error(f"Cleanup failed: {e}", module="Main")
+            self.logger.error(f"清理失败: {e}", module="Main")
 
 def main():
     """主函数 - 系统入口点"""
@@ -309,8 +309,8 @@ def main():
     # 创建临时logger用于启动信息
     from lib.logger import Logger
     temp_logger = Logger()
-    temp_logger.info("=== ESP32-C3 IoT Device Starting ===", module="Main")
-    temp_logger.info("Configuration loaded", module="Main")
+    temp_logger.info("=== ESP32-C3 IoT设备启动中 ===", module="Main")
+    temp_logger.info("配置已加载", module="Main")
     
     # 创建主控制器
     main_controller = MainController(config)

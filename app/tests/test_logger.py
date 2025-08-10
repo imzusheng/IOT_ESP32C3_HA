@@ -22,7 +22,7 @@ try:
     from lib.event_bus import EventBus
     from event_const import EVENT
 except ImportError:
-    print("Error: Unable to import Logger or related modules. Please ensure files are in correct location.")
+    print("错误：无法导入Logger或相关模块。请确保文件在正确位置。")
     sys.exit(1)
 
 # 全局变量用于测试
@@ -37,9 +37,9 @@ def log_test_result(test_name, passed, message=""):
     test_count += 1
     if passed:
         passed_count += 1
-        status = "PASSED"
+        status = "通过"
     else:
-        status = "FAILED"
+        status = "失败"
     
     print(f"[Test] {test_name}: {status}")
     if message:
@@ -85,14 +85,14 @@ def test_logger_initialization():
         has_event_bus_ref = hasattr(logger1, '_event_bus')
         
         if has_logger_attr and has_level_map and has_event_bus_ref:
-            log_test_result("Logger initialization", True)
+            log_test_result("Logger初始化", True)
             return True
         else:
-            log_test_result("Logger initialization", False, "Missing required instance attributes")
+            log_test_result("Logger初始化", False, "缺少必需的实例属性")
             return False
             
     except Exception as e:
-        log_test_result("Logger initialization", False, f"Initialization exception: {e}")
+        log_test_result("Logger初始化", False, f"初始化异常: {e}")
         return False
 
 def test_event_bus_setup():
@@ -118,15 +118,15 @@ def test_event_bus_setup():
         time.sleep(0.1)
         
         if bus_reference_set and has_info_subscribers and has_warn_subscribers and has_error_subscribers:
-            log_test_result("Event bus integration", True)
+            log_test_result("事件总线集成", True)
             return True
         else:
-            log_test_result("Event bus integration", False, 
-                           f"Bus reference: {bus_reference_set}, Subscription status: DEBUG={has_debug_subscribers}, INFO={has_info_subscribers}, WARN={has_warn_subscribers}, ERROR={has_error_subscribers}")
+            log_test_result("事件总线集成", False, 
+                           f"总线引用: {bus_reference_set}, 订阅状态: DEBUG={has_debug_subscribers}, INFO={has_info_subscribers}, WARN={has_warn_subscribers}, ERROR={has_error_subscribers}")
             return False
             
     except Exception as e:
-        log_test_result("Event bus integration", False, f"Integration exception: {e}")
+        log_test_result("事件总线集成", False, f"集成异常: {e}")
         return False
 
 def test_log_level_setting():
@@ -142,14 +142,14 @@ def test_log_level_setting():
             expected_internal_level = logger._level_map[level]
             
             if logger._level != expected_internal_level:
-                log_test_result("Log level setting", False, f"Level {level} setting failed")
+                log_test_result("日志级别设置", False, f"级别 {level} 设置失败")
                 return False
         
-        log_test_result("Log level setting", True)
+        log_test_result("日志级别设置", True)
         return True
         
     except Exception as e:
-        log_test_result("Log level setting", False, f"Level setting exception: {e}")
+        log_test_result("日志级别设置", False, f"级别设置异常: {e}")
         return False
 
 def test_direct_logging_methods():
@@ -537,20 +537,20 @@ def reset_test_results():
 def print_test_summary():
     """打印测试结果摘要"""
     print("\n" + "=" * 50)
-    print("Logger Test Results Summary")
+    print("Logger测试结果摘要")
     print("=" * 50)
-    print(f"Total tests: {test_count}")
-    print(f"Passed: {passed_count}")
-    print(f"Failed: {test_count - passed_count}")
+    print(f"总测试数: {test_count}")
+    print(f"通过: {passed_count}")
+    print(f"失败: {test_count - passed_count}")
     if test_count > 0:
-        print(f"Success rate: {passed_count / test_count * 100:.1f}%")
+        print(f"成功率: {passed_count / test_count * 100:.1f}%")
     
     if passed_count == test_count:
-        print("\nAll tests passed! Logger functionality is working correctly.")
+        print("\n所有测试通过！Logger功能正常工作。")
     else:
-        print("\nSome tests failed. Please check the detailed test results above.")
+        print("\n部分测试失败。请查看上方的详细测试结果。")
         
-    print("\nDetailed test results:")
+    print("\n详细测试结果：")
     for test_name, passed, message in test_results:
         status = "✓" if passed else "✗"
         print(f"  {status} {test_name}")
@@ -561,7 +561,7 @@ def run_all_tests():
     """运行所有测试"""
     reset_test_results()
     print("=" * 50)
-    print("Running all Logger functionality tests")
+    print("运行所有Logger功能测试")
     print("=" * 50)
     
     # 运行所有测试

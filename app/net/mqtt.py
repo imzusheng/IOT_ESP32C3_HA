@@ -55,8 +55,8 @@ class MqttController:
             )
             self.client.set_callback(self._mqtt_callback)
         except Exception as e:
-            self.logger.error(f"Error creating MQTT client: {e}", module="MQTT")
-            self.event_bus.publish(EVENT.LOG_ERROR, "MQTT client setup failed: {}", e, module="MQTT")
+            self.logger.error(f"创建MQTT客户端失败: {e}", module="MQTT")
+            self.event_bus.publish(EVENT.LOG_ERROR, "MQTT客户端设置失败: {}", e, module="MQTT")
 
     def _mqtt_callback(self, topic, msg):
         """
@@ -66,13 +66,13 @@ class MqttController:
         try:
             topic_str = topic.decode('utf-8')
             msg_str = msg.decode('utf-8')
-            self.logger.info("Message received: topic='{}', msg='{}'", topic_str, msg_str, module="MQTT")
+            self.logger.info("收到消息: 主题='{}', 消息='{}'", topic_str, msg_str, module="MQTT")
             
             # 按照事件契约发布 (topic, msg)，避免改变订阅方签名
             self.event_bus.publish(EVENT.MQTT_MESSAGE, topic_str, msg_str)
             
         except Exception as e:
-            self.event_bus.publish(EVENT.LOG_ERROR, "Error processing MQTT message: {}", e, module="MQTT")
+            self.event_bus.publish(EVENT.LOG_ERROR, "处理MQTT消息失败: {}", e, module="MQTT")
 
     def _should_throttle_disconnect_event(self):
         """检查是否应该限制断开事件的发布频率"""
@@ -108,12 +108,12 @@ class MqttController:
                     # 还在退避期内，跳过连接尝试
                     return
 
-        self.logger.info("Connecting to broker at {}...", self.config['broker'], module="MQTT")
+        self.logger.info("连接到代理服务器{}...", self.config['broker'], module="MQTT")
         try:
             self.client.connect()
             self.is_connected = True
             self.connection_failures = 0  # 重置失败计数
-            self.logger.info("MQTT connected successfully", module="MQTT")
+            self.logger.info("MQTT连接成功", module="MQTT")
             self.event_bus.publish(EVENT.MQTT_CONNECTED)
             for topic in self.config.get('subscribe_topics', []):
                 self.subscribe(topic)
@@ -123,8 +123,8 @@ class MqttController:
             self.connection_failures += 1
             self.last_failure_time = time.ticks_ms()
             
-            self.logger.error(f"Error connecting: {e}", module="MQTT")
-            self.event_bus.publish(EVENT.LOG_ERROR, "MQTT connect failed: {}", e, module="MQTT")
+            self.logger.error(f"连接失败: {e}", module="MQTT")
+            self.event_bus.publish(EVENT.LOG_ERROR, "MQTT连接失败: {}", e, module="MQTT")
             self.is_connected = False
             
             # 频率限制断开事件的发布，避免事件风暴
@@ -133,7 +133,7 @@ class MqttController:
                 self.last_disconnect_event_time = time.ticks_ms()
             else:
                 # 静默处理，避免过多事件
-                self.logger.debug("MQTT disconnect event throttled", module="MQTT")
+                self.logger.debug("MQTT断开连接事件被限流", module="MQTT")
 
     def disconnect(self):
         """断开与MQTT Broker的连接。"""
@@ -141,15 +141,15 @@ class MqttController:
             try:
                 self.client.disconnect()
             except Exception as e:
-                self.logger.error(f"Error during disconnect: {e}", module="MQTT")
-                self.event_bus.publish(EVENT.LOG_WARN, "MQTT disconnect error: {}", e, module="MQTT")
+                self.logger.error(f"断开连接失败: {e}", module="MQTT")
+                self.event_bus.publish(EVENT.LOG_WARN, "MQTT断开连接失败: {}", e, module="MQTT")
         self.is_connected = False
-        self.logger.info("MQTT disconnected", module="MQTT")
+        self.logger.info("MQTT已断开连接", module="MQTT")
 
     def publish(self, topic, msg, retain=False, qos=0):
         """发布消息。"""
         if not self.is_connected or not self.client:
-            self.event_bus.publish(EVENT.LOG_WARN, "Cannot publish, MQTT not connected.", module="MQTT")
+            self.event_bus.publish(EVENT.LOG_WARN, "无法发布，MQTT未连接。", module="MQTT")
             return
 
         try:
@@ -164,7 +164,7 @@ class MqttController:
                 self.client.publish(topic, msg, retain, qos)
                 # 可选：记录发布信息用于调试
                 if getattr(self, "logger", None) and getattr(self.logger, "_level", 99) <= 1:  # DEBUG级别
-                    self.logger.debug(f"Published to topic '{topic}', retain={retain}, qos={qos}", module="MQTT")
+                    self.logger.debug(f"已发布到主题 '{topic}', retain={retain}, qos={qos}", module="MQTT")
                 # 释放对象
                 if getattr(self, "object_pool", None):
                     self.object_pool.release(pub_obj)
@@ -173,30 +173,30 @@ class MqttController:
                 self.client.publish(topic, msg, retain, qos)
                 
         except Exception as e:
-            self.logger.error(f"Publish error: {e}", module="MQTT")
-            self.event_bus.publish(EVENT.LOG_ERROR, "MQTT publish error: {}", e, module="MQTT")
+            self.logger.error(f"发布失败: {e}", module="MQTT")
+            self.event_bus.publish(EVENT.LOG_ERROR, "MQTT发布失败: {}", e, module="MQTT")
             self.is_connected = False
             # 频率限制断开事件的发布
             if not self._should_throttle_disconnect_event():
-                self.event_bus.publish(EVENT.MQTT_DISCONNECTED, "PUBLISH_ERROR")
+                self.event_bus.publish(EVENT.MQTT_DISCONNECTED, "发布错误")
                 self.last_disconnect_event_time = time.ticks_ms()
 
     def subscribe(self, topic, qos=0):
         """订阅主题。"""
         if not self.is_connected or not self.client:
-            self.event_bus.publish(EVENT.LOG_WARN, "Cannot subscribe, MQTT not connected.", module="MQTT")
+            self.event_bus.publish(EVENT.LOG_WARN, "无法订阅，MQTT未连接。", module="MQTT")
             return
         
         try:
-            self.logger.info("Subscribing topic: {}", topic, module="MQTT")
+            self.logger.info("订阅主题: {}", topic, module="MQTT")
             self.client.subscribe(topic, qos)
         except Exception as e:
-            self.logger.error(f"Subscribe error: {e}", module="MQTT")
-            self.event_bus.publish(EVENT.LOG_ERROR, "MQTT subscribe error: {}", e, module="MQTT")
+            self.logger.error(f"订阅失败: {e}", module="MQTT")
+            self.event_bus.publish(EVENT.LOG_ERROR, "MQTT订阅失败: {}", e, module="MQTT")
             self.is_connected = False
             # 频率限制断开事件的发布
             if not self._should_throttle_disconnect_event():
-                self.event_bus.publish(EVENT.MQTT_DISCONNECTED, "SUBSCRIBE_ERROR")
+                self.event_bus.publish(EVENT.MQTT_DISCONNECTED, "订阅错误")
                 self.last_disconnect_event_time = time.ticks_ms()
 
     def loop(self):
@@ -219,12 +219,12 @@ class MqttController:
                     self.last_ping_time = time.ticks_ms()
 
             except Exception as e:
-                self.logger.error(f"Loop error: {e}. Connection lost.", module="MQTT")
-                self.event_bus.publish(EVENT.LOG_WARN, "MQTT loop error: {}", e, module="MQTT")
+                self.logger.error(f"循环错误: {e}. 连接丢失。", module="MQTT")
+                self.event_bus.publish(EVENT.LOG_WARN, "MQTT循环错误: {}", e, module="MQTT")
                 self.is_connected = False
                 # 频率限制断开事件的发布
                 if not self._should_throttle_disconnect_event():
-                    self.event_bus.publish(EVENT.MQTT_DISCONNECTED, "LOOP_ERROR")
+                    self.event_bus.publish(EVENT.MQTT_DISCONNECTED, "循环错误")
                     self.last_disconnect_event_time = time.ticks_ms()
         else:
             # 如果未连接，则不执行任何操作。FSM将决定何时重连。

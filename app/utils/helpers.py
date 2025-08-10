@@ -48,7 +48,7 @@ def check_memory():
         }
     except Exception as e:
         logger = get_global_logger()
-        logger.error(f"Memory check failed: {e}", module="Utils")
+        logger.error(f"内存检查失败: {e}", module="Utils")
         return {
             'free': 0,
             'allocated': 0,
@@ -81,7 +81,7 @@ def get_temperature():
         return round(temperature, 1)
     except Exception as e:
         logger = get_global_logger()
-        logger.error(f"Temperature read failed: {e}", module="Utils")
+        logger.error(f"温度读取失败: {e}", module="Utils")
         return None
 
 def get_formatted_time():
@@ -104,7 +104,7 @@ def get_formatted_time():
         return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
     except Exception as e:
         logger = get_global_logger()
-        logger.error(f"Time formatting failed: {e}", module="Utils")
+        logger.error(f"时间格式化失败: {e}", module="Utils")
         return "00:00:00"
 
 def get_uptime():
@@ -135,12 +135,12 @@ def safe_reboot():
     """
     try:
         logger = get_global_logger()
-        logger.info("System rebooting...", module="Utils")
+        logger.info("系统重启中...", module="Utils")
         time.sleep_ms(100)  # 给日志输出一些时间
         machine.reset()
     except Exception as e:
         logger = get_global_logger()
-        logger.error(f"Safe reboot failed: {e}", module="Utils")
+        logger.error(f"安全重启失败: {e}", module="Utils")
         # 尝试直接重启
         machine.reset()
 
@@ -158,13 +158,13 @@ def get_device_info():
         }
     except Exception as e:
         logger = get_global_logger()
-        logger.error(f"Device info failed: {e}", module="Utils")
+        logger.error(f"设备信息获取失败: {e}", module="Utils")
         return {
-            'machine': 'unknown',
-            'platform': 'unknown',
-            'version': 'unknown',
+            'machine': '未知',
+            'platform': '未知平台',
+            'version': '未知版本',
             'frequency': 0,
-            'unique_id': 'unknown'
+            'unique_id': '未知ID'
         }
 
 def validate_ip_address(ip_str):

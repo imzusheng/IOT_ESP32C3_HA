@@ -93,6 +93,6 @@ def basicConfig(level=INFO, filename=None, stream=None, format=None):
     if stream:
         _stream = stream
     if filename is not None:
-        print("logging.basicConfig: filename arg is not supported")
+        print("logging.basicConfig: 不支持filename参数")
     if format is not None:
-        print("logging.basicConfig: format arg is not supported")
+        print("logging.basicConfig: 不支持format参数")

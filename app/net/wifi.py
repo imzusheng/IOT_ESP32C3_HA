@@ -62,7 +62,7 @@ class WifiManager:
         
         # 激活WLAN接口
         if not self.wlan.active():
-            self.logger.info("Activating WLAN interface...", module="WiFi")
+            self.logger.info("激活WLAN接口...", module="WiFi")
             self.wlan.active(True)
 
     def is_connected(self):
@@ -74,12 +74,12 @@ class WifiManager:
         if self.status == self.STATUS_CONNECTING or self.status == self.STATUS_CONNECTED:
             return
 
-        self.logger.info("Starting WiFi connection process...", module="WiFi")
+        self.logger.info("开始WiFi连接过程...", module="WiFi")
         self.event_bus.publish(EVENT.WIFI_CONNECTING, module="WiFi")
         
         best_network = self._find_best_network()
         if not best_network:
-            self.logger.warning("No configured WiFi networks found.", module="WiFi")
+            self.logger.warning("未找到配置的WiFi网络。", module="WiFi")
             self.status = self.STATUS_ERROR
             self.event_bus.publish(EVENT.WIFI_DISCONNECTED, reason="NO_NETWORKS_FOUND", module="WiFi")
             return
@@ -89,12 +89,12 @@ class WifiManager:
 
     def _find_best_network(self):
         """扫描并找到信号最好的已配置网络。"""
-        self.logger.info("Scanning for networks...", module="WiFi")
+        self.logger.info("扫描网络...", module="WiFi")
         try:
             scan_results = self.wlan.scan()
         except OSError as e:
-            self.logger.error(f"Error during WiFi scan: {e}", module="WiFi")
-            self.event_bus.publish(EVENT.LOG_ERROR, "Error during WiFi scan: {}", e, module="WiFi")
+            self.logger.error(f"WiFi扫描错误: {e}", module="WiFi")
+            self.event_bus.publish(EVENT.LOG_ERROR, "WiFi扫描失败: {}", e, module="WiFi")
             return None
             
         configured_ssids = {net['ssid'] for net in self.config.get('networks', [])}
@@ -119,7 +119,7 @@ class WifiManager:
                 if last_successful_ssid:
                     for net in found_networks:
                         if net['ssid'] == last_successful_ssid and net['rssi'] > -70:  # 信号强度阈值
-                            self.logger.info(f"Using cached successful network: {last_successful_ssid} (RSSI: {net['rssi']})", module="WiFi")
+                            self.logger.info(f"使用缓存的成功网络: {last_successful_ssid} (信号强度: {net['rssi']})", module="WiFi")
                             # 查找完整的网络配置
                             for net_config in self.config.get('networks', []):
                                 if net_config['ssid'] == last_successful_ssid:
@@ -131,7 +131,7 @@ class WifiManager:
         # 如果缓存网络不可用，按RSSI排序
         found_networks.sort(key=lambda x: x['rssi'], reverse=True)
         best_ssid = found_networks[0]['ssid']
-        self.logger.info(f"Found best network: {best_ssid} (RSSI: {found_networks[0]['rssi']})", module="WiFi")
+        self.logger.info(f"找到最佳网络: {best_ssid} (信号强度: {found_networks[0]['rssi']})", module="WiFi")
         
         # 从原始配置中查找密码并返回整个网络配置
         for net_config in self.config.get('networks', []):
@@ -145,7 +145,7 @@ class WifiManager:
             return
 
         # 合并连接尝试日志，使用结构化格式
-        self.logger.info("Connecting to WiFi - ssid={}, rssi={}", 
+        self.logger.info("连接WiFi - ssid={}, rssi={}", 
                        self.target_network['ssid'], 
                        getattr(self.target_network, 'rssi', 'unknown'), 
                        module="WiFi")
@@ -158,8 +158,8 @@ class WifiManager:
         if self.wlan.isconnected():
             self.wlan.disconnect()
         self.status = self.STATUS_DISCONNECTED
-        self.logger.info("WiFi disconnected.", module="WiFi")
-        self.event_bus.publish(EVENT.LOG_INFO, "WiFi manually disconnected", module="WiFi")
+        self.logger.info("WiFi已断开连接", module="WiFi")
+        self.event_bus.publish(EVENT.LOG_INFO, "WiFi手动断开连接", module="WiFi")
         # 断开连接后重置 NTP 状态，便于下次成功后再次同步
         self._ntp_synced = False
         self._ntp_attempts = 0
@@ -188,21 +188,21 @@ class WifiManager:
                         self._last_connect_event = now
                         
                         # 合并WiFi连接成功日志，使用结构化格式
-                        self.logger.info("WiFi connected - ip={}, ssid={}", ip_address, ssid, module="WiFi")
+                        self.logger.info("WiFi已连接 - ip={}, ssid={}", ip_address, ssid, module="WiFi")
                         self.event_bus.publish(EVENT.WIFI_CONNECTED, ip=ip_address, ssid=ssid, module="WiFi")
                         
                         # 联网成功后尝试进行 NTP 时间同步
                         self._try_ntp_sync()
                 else:
-                    self.logger.warning("WiFi connected but no valid IP address obtained, retrying...", module="WiFi")
+                    self.logger.warning("WiFi已连接但未获取有效IP地址，重试中...", module="WiFi")
                     self.wlan.disconnect()
                     # 重新开始连接过程，不改变状态
                     self.connection_start_time = time.ticks_ms()
                     
             # 检查是否连接超时
             elif time.ticks_diff(time.ticks_ms(), self.connection_start_time) > self.config.get('timeout', 15) * 1000:
-                self.logger.warning("WiFi connection timed out.", module="WiFi")
-                self.event_bus.publish(EVENT.LOG_WARN, "WiFi connection timeout for network: {}", self.target_network['ssid'], module="WiFi")
+                self.logger.warning("WiFi连接超时。", module="WiFi")
+                self.event_bus.publish(EVENT.LOG_WARN, "WiFi连接超时 - 网络: {}", self.target_network['ssid'], module="WiFi")
                 self.wlan.disconnect() # 确保停止尝试
                 self.status = self.STATUS_ERROR
                 self.event_bus.publish(EVENT.WIFI_DISCONNECTED, reason="TIMEOUT", ssid=self.target_network.get('ssid'), module="WiFi")
@@ -211,8 +211,8 @@ class WifiManager:
         elif self.status == self.STATUS_CONNECTED:
             # 持续检查连接是否丢失
             if not self.wlan.isconnected():
-                self.logger.warning("WiFi connection lost.", module="WiFi")
-                self.event_bus.publish(EVENT.LOG_WARN, "WiFi connection lost", module="WiFi")
+                self.logger.warning("WiFi连接丢失。", module="WiFi")
+                self.event_bus.publish(EVENT.LOG_WARN, "WiFi连接丢失", module="WiFi")
                 self.status = self.STATUS_DISCONNECTED
                 self.event_bus.publish(EVENT.WIFI_DISCONNECTED, reason="CONNECTION_LOST", module="WiFi")
                 self.last_attempt_time = time.ticks_ms()
@@ -251,7 +251,7 @@ class WifiManager:
         if ntptime is None:
             # 环境不支持 ntptime（可能是PC端），跳过但报告失败事件
             self.event_bus.publish(EVENT.NTP_SYNC_FAILED, reason="NTP_MODULE_NOT_AVAILABLE", module="WiFi")
-            self.event_bus.publish(EVENT.LOG_WARN, "NTP module not available, skipping time sync", module="WiFi")
+            self.event_bus.publish(EVENT.LOG_WARN, "NTP模块不可用，跳过时间同步", module="WiFi")
             return
         
         # 通过配置允许自定义 NTP 服务器，默认使用阿里云 NTP 池
@@ -267,7 +267,7 @@ class WifiManager:
             pass
         
         # 发布开始事件（只发布一次）
-        self.logger.info("NTP sync started - server={}", ntp_server, module="WiFi")
+        self.logger.info("NTP同步开始 - 服务器={}", ntp_server, module="WiFi")
         self.event_bus.publish(EVENT.NTP_SYNC_STARTED, ntp_server=ntp_server, module="WiFi")
         
         for i in range(max_attempts):
@@ -280,7 +280,7 @@ class WifiManager:
                 timestamp = time.time()  # 获取当前时间戳
                 
                 # 合并NTP同步成功日志，使用结构化格式
-                self.logger.info("NTP sync successful - server={}, attempts={}, timestamp={}", 
+                self.logger.info("NTP同步成功 - 服务器={}, 尝试次数={}, 时间戳={}", 
                                ntp_server, self._ntp_attempts, timestamp, module="WiFi")
                 
                 # 发布成功事件
@@ -291,8 +291,8 @@ class WifiManager:
                 break
             except Exception as e:
                 # 失败则等待后重试
-                self.logger.error(f"NTP sync failed, attempt {self._ntp_attempts}/{max_attempts}: {e}", module="WiFi")
-                self.event_bus.publish(EVENT.LOG_WARN, "NTP sync failed, attempt {}/{}: {}", self._ntp_attempts, max_attempts, str(e), module="WiFi")
+                self.logger.error(f"NTP同步失败，尝试 {self._ntp_attempts}/{max_attempts}: {e}", module="WiFi")
+                self.event_bus.publish(EVENT.LOG_WARN, "NTP同步失败，尝试 {}/{}: {}", self._ntp_attempts, max_attempts, str(e), module="WiFi")
                 
                 # 最后一次尝试失败才发布失败事件
                 if i == max_attempts - 1:

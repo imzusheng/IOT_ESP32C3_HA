@@ -62,7 +62,7 @@ class EventBus:
             try:
                 from lib.logger import get_global_logger
                 logger = get_global_logger()
-                logger.info("EventBus initialized", module="EventBus")
+                logger.info("事件总线已初始化", module="EventBus")
             except:
                 pass
 
@@ -84,7 +84,7 @@ class EventBus:
         :param callback: 事件触发时调用的函数
         """
         if not callable(callback):
-            self._log("Subscription failed: callback for '{}' is not callable.", event_name)
+            self._log("订阅失败: '{}' 的回调函数不可调用。", event_name)
             return
 
         if event_name not in self.bus:
@@ -92,9 +92,9 @@ class EventBus:
         
         if callback not in self.bus[event_name]:
             self.bus[event_name].append(callback)
-            self._log("New subscription for event '{}': {}", event_name, callback)
+            self._log("新增事件 '{}' 的订阅者: {}", event_name, callback)
         else:
-            self._log("Callback {} already subscribed to event '{}'", callback, event_name)
+            self._log("回调函数 {} 已订阅事件 '{}'", callback, event_name)
 
     def unsubscribe(self, event_name, callback):
         """
@@ -104,10 +104,10 @@ class EventBus:
         """
         if event_name in self.bus and callback in self.bus[event_name]:
             self.bus[event_name].remove(callback)
-            self._log("Unsubscribed {} from event '{}'", callback, event_name)
+                self._log("已取消事件 '{}' 的订阅者: {}", callback, event_name)
             if not self.bus[event_name]:
                 del self.bus[event_name]
-                self._log("Event '{}' removed as it has no subscribers.", event_name)
+                self._log("事件 '{}' 已移除，因为没有订阅者。", event_name)
 
     def _is_event_rate_limited(self, event_name):
         """检查事件是否被频率限制"""
@@ -159,7 +159,7 @@ class EventBus:
             return  # 静默丢弃被限制的事件
         
         if event_name in self.bus:
-            self._log("Publishing event '{}' to {} subscribers", event_name, len(self.bus[event_name]))
+            self._log("发布事件 '{}' 到 {} 个订阅者", event_name, len(self.bus[event_name]))
             # 根据优先级排序订阅者（如果有优先级设置）
             subscribers = self.bus[event_name][:]
             
@@ -182,7 +182,7 @@ class EventBus:
                     except Exception as e:
                         self._handle_callback_error(event_name, callback, e)
         else:
-            self._log("Published event '{}' but no subscribers.", event_name)
+            self._log("发布事件 '{}'，但无订阅者。", event_name)
 
     def _execute_callback_sync(self, callback, event_name, args, kwargs):
         """同步执行回调（当调度队列有问题时的降级方案）"""
@@ -211,7 +211,7 @@ class EventBus:
                 # 如果错误次数过多，重置计数器以允许恢复
                 self._schedule_errors = 0
             
-            error_msg = f"Schedule queue full for event '{event_name}', falling back to sync execution"
+            error_msg = f"事件 '{event_name}' 调度队列已满，降级为同步执行"
             if "queue full" in str(schedule_error).lower():
                 try:
                     from lib.logger import get_global_logger
@@ -223,7 +223,7 @@ class EventBus:
                     # 静默处理调度错误
                     pass
             else:
-                error_msg = f"Schedule error for event '{event_name}': {schedule_error}"
+                error_msg = f"事件 '{event_name}' 调度错误: {schedule_error}"
                 try:
                     from lib.logger import get_global_logger
                     logger = get_global_logger()
@@ -267,7 +267,7 @@ class EventBus:
 
     def _handle_callback_error(self, event_name, callback, error):
         """处理回调函数执行错误"""
-        error_msg = f"Error in callback for '{event_name}': {error}"
+        error_msg = f"事件 '{event_name}' 回调错误: {error}"
         
         # 静默处理回调错误，避免无限循环
         # 发生异常时，发布一个系统错误事件（但要避免无限循环）
