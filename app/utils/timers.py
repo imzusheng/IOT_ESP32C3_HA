@@ -15,9 +15,10 @@
 - 上下文管理器支持
 """
 
-import time
+import utime as time
 import machine
 import micropython
+from lib.logger import get_global_logger
 
 class DebounceTimer:
     """
@@ -74,7 +75,8 @@ class PeriodicTimer:
                 self.last_run = current_time
                 return True
             except Exception as e:
-                print(f"[Timer] Callback execution failed: {e}")
+                logger = get_global_logger()
+                logger.error(f"Callback execution failed: {e}", module="Timer")
                 return False
         return False
     
@@ -170,7 +172,8 @@ class HardwareTimerManager:
         """
         timer_id = self.get_available_timer()
         if timer_id is None:
-            print("[Timer] No available hardware timers")
+            logger = get_global_logger()
+            logger.warning("No available hardware timers", module="Timer")
             return None
         
         try:
@@ -182,7 +185,8 @@ class HardwareTimerManager:
             
             return timer
         except Exception as e:
-            print(f"[Timer] Failed to create hardware timer {timer_id}: {e}")
+            logger = get_global_logger()
+            logger.error(f"Failed to create hardware timer {timer_id}: {e}", module="Timer")
             return None
     
     def release_timer(self, timer):
@@ -200,7 +204,8 @@ class HardwareTimerManager:
                     del self.timers[timer_id]
                     self.used_ids.remove(timer_id)
                 except Exception as e:
-                    print(f"[Timer] Failed to release timer {timer_id}: {e}")
+                    logger = get_global_logger()
+                    logger.error(f"Failed to release timer {timer_id}: {e}", module="Timer")
     
     def cleanup(self):
         """清理所有定时器"""
@@ -309,7 +314,8 @@ def profile_time(name="Unnamed"):
             # 每10次测量输出一次统计信息
             if len(profiler.measurements) % 10 == 0:
                 stats = profiler.get_stats()
-                print(f"[Profiler] {name}: avg={stats['average']:.1f}ms, "
+                logger = get_global_logger()
+                logger.info(f"{name}: avg={stats['average']:.1f}ms, ", module="Profiler")
                       f"min={stats['min']:.1f}ms, max={stats['max']:.1f}ms, "
                       f"count={stats['count']}")
             
@@ -318,4 +324,4 @@ def profile_time(name="Unnamed"):
         return wrapper
     return decorator
 
-print("[Timers] Timer utilities module loaded")
+# Timer utilities module loaded

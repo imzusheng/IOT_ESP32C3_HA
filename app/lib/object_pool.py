@@ -27,8 +27,7 @@ class ObjectPool:
                 self._in_use[i] = True
                 return self._pool[i]
         # 如果池已耗尽，可以选择抛出异常或动态创建新对象
-        # 这里为了简单，我们返回 None
-        print(f"Warning: Object pool for {self._factory} is exhausted.")
+        # 这里为了简单，我们返回 None，静默处理
         return None
 
     def release(self, obj):
@@ -42,9 +41,11 @@ class ObjectPool:
                 if hasattr(obj, 'reset'):
                     obj.reset()
             else:
-                print(f"Warning: Trying to release an object that was not in use.")
+                # 静默处理重复释放
+                pass
         except ValueError:
-            print(f"Warning: Trying to release an object not belonging to this pool.")
+            # 静默处理不属于池的对象
+            pass
 
     def count_available(self):
         return self._in_use.count(False)
@@ -78,7 +79,8 @@ class ObjectPoolManager:
         if name not in self._pools:
             self._pools[name] = ObjectPool(object_factory, size)
         else:
-            print(f"Warning: Pool with name '{name}' already exists.")
+            # 静默处理重复创建的池
+            pass
 
     def acquire(self, pool_name):
         """
@@ -93,7 +95,7 @@ class ObjectPoolManager:
                 self._object_to_pool[id(obj)] = pool_name
             return obj
         else:
-            print(f"Error: Pool with name '{pool_name}' not found.")
+            # 静默处理不存在的池
             return None
 
     def release(self, obj):
@@ -111,9 +113,11 @@ class ObjectPoolManager:
             else:
                 # 如果池不存在，也应该从跟踪字典中移除
                 del self._object_to_pool[obj_id]
-                print(f"Error: Pool with name '{pool_name}' not found when trying to release.")
+                # 静默处理不存在的池
+                pass
         else:
-            print(f"Warning: Trying to release an object not acquired from any pool.")
+            # 静默处理未从池中获取的对象
+            pass
 
     def release_to_pool(self, pool_name, obj):
         """
@@ -128,7 +132,8 @@ class ObjectPoolManager:
                 del self._object_to_pool[obj_id]
             self._pools[pool_name].release(obj)
         else:
-            print(f"Error: Pool with name '{pool_name}' not found when trying to release.")
+            # 静默处理不存在的池
+            pass
 
 # 使用示例:
 #

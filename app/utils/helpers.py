@@ -15,9 +15,10 @@
 """
 
 import gc
-import time
+import utime as time
 import machine
 import sys
+from lib.logger import get_global_logger
 
 def check_memory():
     """
@@ -46,7 +47,8 @@ def check_memory():
             'total_kb': mem_total // 1024
         }
     except Exception as e:
-        print(f"[Utils] Memory check failed: {e}")
+        logger = get_global_logger()
+        logger.error(f"Memory check failed: {e}", module="Utils")
         return {
             'free': 0,
             'allocated': 0,
@@ -78,7 +80,8 @@ def get_temperature():
         
         return round(temperature, 1)
     except Exception as e:
-        print(f"[Utils] Temperature read failed: {e}")
+        logger = get_global_logger()
+        logger.error(f"Temperature read failed: {e}", module="Utils")
         return None
 
 def get_formatted_time():
@@ -100,7 +103,8 @@ def get_formatted_time():
         
         return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
     except Exception as e:
-        print(f"[Utils] Time formatting failed: {e}")
+        logger = get_global_logger()
+        logger.error(f"Time formatting failed: {e}", module="Utils")
         return "00:00:00"
 
 def get_uptime():
@@ -130,11 +134,13 @@ def safe_reboot():
     安全重启设备
     """
     try:
-        print("[Utils] System rebooting...")
+        logger = get_global_logger()
+        logger.info("System rebooting...", module="Utils")
         time.sleep_ms(100)  # 给日志输出一些时间
         machine.reset()
     except Exception as e:
-        print(f"[Utils] Safe reboot failed: {e}")
+        logger = get_global_logger()
+        logger.error(f"Safe reboot failed: {e}", module="Utils")
         # 尝试直接重启
         machine.reset()
 
@@ -151,7 +157,8 @@ def get_device_info():
             'unique_id': machine.unique_id().hex() if hasattr(machine, 'unique_id') else 'unknown'
         }
     except Exception as e:
-        print(f"[Utils] Device info failed: {e}")
+        logger = get_global_logger()
+        logger.error(f"Device info failed: {e}", module="Utils")
         return {
             'machine': 'unknown',
             'platform': 'unknown',
@@ -234,4 +241,4 @@ def get_cached_string(text):
     return _string_cache.get(text)
 
 # 模块初始化
-print("[Utils] Helper module loaded")
+# Helper module loaded

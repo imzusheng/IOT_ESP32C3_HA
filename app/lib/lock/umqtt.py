@@ -14,7 +14,7 @@ umqtt 模块的简化版本, 不可编辑
 """
 
 import socket
-import time
+import utime as time
 import ustruct
 import uerrno
 import struct

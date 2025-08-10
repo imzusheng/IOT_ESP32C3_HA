@@ -57,10 +57,10 @@ class StaticCache:
         try:
             with open(self._file_path, 'r') as f:
                 self._cache = ujson.load(f)
-                print(f"[Cache] Cache loaded from {self._file_path}")
+                # Cache loaded silently
         except (OSError, ValueError):
             # 文件不存在或内容无效
-            print(f"[Cache] Cache file not found or invalid, starting with empty cache.")
+            # Cache file not found or invalid, starting with empty cache
             self._cache = {}
 
     def save(self, force=False):
@@ -74,9 +74,9 @@ class StaticCache:
                     ujson.dump(self._cache, f)
                 self._dirty = False
                 self._last_write_time = time.ticks_ms()
-                print(f"[Cache] Cache saved to {self._file_path}")
+                # Cache saved silently
             except OSError as e:
-                print(f"[Cache] Error saving cache to {self._file_path}: {e}")
+                # Error saving cache silently
 
     def loop(self):
         """

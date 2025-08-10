@@ -13,8 +13,9 @@ ESP32-C3传感器管理器 (重构版本)
 - 统一的数据接口
 """
 
-import time
+import utime as time
 from lib.object_pool import ObjectPoolManager
+from lib.logger import get_global_logger
 from event_const import EVENT
 import gc
 
@@ -26,6 +27,7 @@ class SensorManager:
     def __init__(self, event_bus, object_pool):
         self.event_bus = event_bus
         self.object_pool = object_pool
+        self.logger = get_global_logger()
         self.sensors = {}
         self.sensor_data = {}
         self.last_read_time = {}
@@ -43,9 +45,9 @@ class SensorManager:
                 self._read_internal_temperature,
                 interval=5000  # 5秒间隔
             )
-            print("[Sensor] Internal temperature sensor initialized")
+            self.logger.info("Internal temperature sensor initialized", module="Sensor")
         except Exception as e:
-            print(f"[Sensor] Failed to initialize internal temperature sensor: {e}")
+            self.logger.error(f"Failed to initialize internal temperature sensor: {e}", module="Sensor")
     
     def add_sensor(self, sensor_id, read_func, interval=1000, enabled=True):
         """
@@ -104,7 +106,7 @@ class SensorManager:
             
             return value
         except Exception as e:
-            print(f"[Sensor] Failed to read sensor {sensor_id}: {e}")
+            self.logger.error(f"Failed to read sensor {sensor_id}: {e}", module="Sensor")
             return None
     
     def get_sensor_data(self, sensor_id):
@@ -146,7 +148,7 @@ class SensorManager:
             from utils.helpers import get_temperature
             return get_temperature()
         except Exception as e:
-            print(f"[Sensor] Internal temperature read error: {e}")
+            self.logger.error(f"Internal temperature read error: {e}", module="Sensor")
             return None
 
 class ExternalSensorManager:
@@ -167,10 +169,10 @@ class ExternalSensorManager:
         """初始化I2C总线"""
         try:
             self.i2c = self.machine.I2C(0, scl=self.machine.Pin(scl_pin), sda=self.machine.Pin(sda_pin), freq=freq)
-            print(f"[Sensor] I2C initialized: SCL={scl_pin}, SDA={sda_pin}")
+            self.logger.info(f"I2C initialized: SCL={scl_pin}, SDA={sda_pin}", module="Sensor")
             return True
         except Exception as e:
-            print(f"[Sensor] I2C initialization failed: {e}")
+            self.logger.error(f"I2C initialization failed: {e}", module="Sensor")
             return False
     
     def init_spi(self, sck_pin, mosi_pin, miso_pin, cs_pin, freq=1000000):
@@ -183,10 +185,10 @@ class ExternalSensorManager:
                                  freq=freq)
             self.cs_pin = self.machine.Pin(cs_pin, self.machine.Pin.OUT)
             self.cs_pin.value(1)  # CS默认高电平
-            print(f"[Sensor] SPI initialized: SCK={sck_pin}, MOSI={mosi_pin}, MISO={miso_pin}, CS={cs_pin}")
+            self.logger.info(f"SPI initialized: SCK={sck_pin}, MOSI={mosi_pin}, MISO={miso_pin}, CS={cs_pin}", module="Sensor")
             return True
         except Exception as e:
-            print(f"[Sensor] SPI initialization failed: {e}")
+            self.logger.error(f"SPI initialization failed: {e}", module="Sensor")
             return False
     
     def add_dht_sensor(self, sensor_id, pin, sensor_type='DHT11'):
@@ -210,13 +212,13 @@ class ExternalSensorManager:
                 'read_func': self._read_dht_sensor
             }
             
-            print(f"[Sensor] DHT{sensor_type} sensor added on pin {pin}")
+            self.logger.info(f"DHT{sensor_type} sensor added on pin {pin}", module="Sensor")
             return True
         except ImportError:
-            print("[Sensor] DHT library not available")
+            self.logger.warning("DHT library not available", module="Sensor")
             return False
         except Exception as e:
-            print(f"[Sensor] Failed to add DHT sensor: {e}")
+            self.logger.error(f"Failed to add DHT sensor: {e}", module="Sensor")
             return False
     
     def _read_dht_sensor(self, sensor):
@@ -231,7 +233,7 @@ class ExternalSensorManager:
                 'humidity': humidity
             }
         except Exception as e:
-            print(f"[Sensor] DHT read error: {e}")
+            self.logger.error(f"DHT read error: {e}", module="Sensor")
             return None
     
     def add_bmp280_sensor(self, sensor_id, i2c_addr=0x76):
@@ -240,7 +242,7 @@ class ExternalSensorManager:
         需要安装bmp280库
         """
         if not self.i2c:
-            print("[Sensor] I2C not initialized")
+            self.logger.warning("I2C not initialized", module="Sensor")
             return False
         
         try:
@@ -254,13 +256,13 @@ class ExternalSensorManager:
                 'read_func': self._read_bmp280_sensor
             }
             
-            print(f"[Sensor] BMP280 sensor added at address 0x{i2c_addr:02x}")
+            self.logger.info(f"BMP280 sensor added at address 0x{i2c_addr:02x}", module="Sensor")
             return True
         except ImportError:
-            print("[Sensor] BMP280 library not available")
+            self.logger.warning("BMP280 library not available", module="Sensor")
             return False
         except Exception as e:
-            print(f"[Sensor] Failed to add BMP280 sensor: {e}")
+            self.logger.error(f"Failed to add BMP280 sensor: {e}", module="Sensor")
             return False
     
     def _read_bmp280_sensor(self, sensor):
@@ -275,7 +277,7 @@ class ExternalSensorManager:
                 'altitude': self._calculate_altitude(pressure)
             }
         except Exception as e:
-            print(f"[Sensor] BMP280 read error: {e}")
+            self.logger.error(f"BMP280 read error: {e}", module="Sensor")
             return None
     
     def _calculate_altitude(self, pressure):
@@ -302,11 +304,11 @@ class ExternalSensorManager:
             
             return data
         except Exception as e:
-            print(f"[Sensor] Failed to read external sensor {sensor_id}: {e}")
+            self.logger.error(f"Failed to read external sensor {sensor_id}: {e}", module="Sensor")
             return None
     
     def get_external_sensors(self):
         """获取所有外部传感器列表"""
         return list(self.external_sensors.keys())
 
-print("[Sensor] Sensor module loaded")
+# Sensor module loaded

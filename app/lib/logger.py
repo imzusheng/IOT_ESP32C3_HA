@@ -18,14 +18,47 @@ class Logger:
     - 基于 ulogging 的高效日志记录
     - 事件驱动日志记录
     - 支持模块名称标注
-    - 多级别日志支持 (DEBUG, INFO, WARN, ERROR)
+    - 多级别日志支持 (DEBUG, INFO, WARN, ERROR, CRITICAL)
     - 内存优化设计
     - 时间戳格式化
     - 统一的接口
     - MQTT集成支持
     - 错误隔离处理
+    - 模块颜色强调支持
+    - 标准化日志格式
     """
-    def __init__(self, level=EVENT.LOG_INFO):
+    
+    # ANSI颜色代码
+    _COLORS = {
+        'FSM': '\033[1;36m',     # 青色加粗
+        'WiFi': '\033[1;32m',    # 绿色加粗
+        'MQTT': '\033[1;33m',    # 黄色加粗
+        'Main': '\033[1;35m',    # 紫色加粗
+        'Cache': '\033[1;34m',   # 蓝色加粗
+        'EventBus': '\033[1;31m', # 红色加粗
+        'Timer': '\033[1;33m',   # 黄色加粗
+        'Sensor': '\033[1;32m',  # 绿色加粗
+        'LED': '\033[1;35m',     # 紫色加粗
+        'Utils': '\033[1;37m',   # 白色加粗
+        'RESET': '\033[0m'       # 重置颜色
+    }
+    
+    # 模块名称映射
+    _MODULE_MAP = {
+        'fsm': 'FSM',
+        'wifi': 'WiFi',
+        'mqtt': 'MQTT',
+        'main': 'Main',
+        'cache': 'Cache',
+        'eventbus': 'EventBus',
+        'timer': 'Timer',
+        'sensor': 'Sensor',
+        'led': 'LED',
+        'utils': 'Utils',
+        'config': 'Config'
+    }
+    
+    def __init__(self, level=EVENT.LOG_INFO, config=None):
         # ulogging 级别映射
         self._ulogging_level_map = {
             EVENT.LOG_DEBUG: ulogging.DEBUG,
@@ -61,13 +94,19 @@ class Logger:
         # 若被替换则在直接日志方法中采用兼容调用，避免传递未知关键字参数
         self._default_handle_log = self._handle_log
         
+        # 配置参数
+        self._config = config or {}
+        self._enable_colors = self._config.get('enable_colors', True)
+        self._show_milliseconds = self._config.get('show_milliseconds', True)
+        self._auto_module_detection = self._config.get('auto_module_detection', True)
+        
     def _setup_logger_format(self):
         """配置 ulogging 的输出格式"""
         # 检查是否支持 Formatter（简化版 ulogging 可能不支持）
         if hasattr(ulogging, 'Formatter'):
-            # 创建格式化器
+            # 创建格式化器 - 改进格式包含更多信息
             formatter = ulogging.Formatter(
-                fmt='[%(asctime)s] [%(levelname)s] %(message)s',
+                fmt='%(message)s',  # 消息格式由我们自己处理
                 datefmt='%H:%M:%S'
             )
             
@@ -125,11 +164,49 @@ class Logger:
         except:
             pass  # 如果 ulogging 不可用，忽略
 
+    def _get_formatted_timestamp(self):
+        """获取格式化的时间戳"""
+        try:
+            import utime as time
+            timestamp = time.ticks_ms()
+            # 转换为秒和毫秒
+            seconds = timestamp // 1000
+            milliseconds = timestamp % 1000
+            # 格式化时间
+            time_str = time.strftime('%H:%M:%S', time.localtime(seconds))
+            
+            if self._show_milliseconds:
+                return f"{time_str}.{milliseconds:03d}"
+            else:
+                return time_str
+        except:
+            return time.strftime('%H:%M:%S')
+    
+    def _get_level_name(self, event_name):
+        """获取日志级别名称"""
+        level_map = {
+            EVENT.LOG_DEBUG: 'DEBUG',
+            EVENT.LOG_INFO: 'INFO',
+            EVENT.LOG_WARN: 'WARN',
+            EVENT.LOG_ERROR: 'ERROR'
+        }
+        return level_map.get(event_name, 'INFO')
+    
+    def _normalize_module_name(self, module_name):
+        """标准化模块名称"""
+        if not module_name:
+            return None
+        
+        # 转换为小写进行映射
+        normalized = module_name.lower()
+        return self._MODULE_MAP.get(normalized, module_name.upper())
+    
+        
     def _handle_log(self, event_name, msg=None, *args, **kwargs):
         """
         处理接收到的日志事件。
         使用 ulogging 进行实际的日志记录。
-        支持模块来源标注。
+        支持模块来源标注和防抖机制。
         """
         # 从旧格式兼容：如果 msg 是第一个位置参数
         if msg is None and args:
@@ -142,9 +219,9 @@ class Logger:
 
         # 格式化消息
         try:
-            full_msg = msg.format(*args)
+            formatted_msg = msg.format(*args)
         except:
-            full_msg = msg
+            formatted_msg = msg
         
         # 添加模块来源标注
         module_name = kwargs.get('module', None)
@@ -173,10 +250,26 @@ class Logger:
                     module_name = 'LED'
                 elif source_event.startswith('sensor.'):
                     module_name = 'Sensor'
-
-        # 如果有模块名，添加前缀
+        
+        # 标准化模块名称
+        module_name = self._normalize_module_name(module_name)
+        
+        # 构建标准化的日志格式
+        timestamp = self._get_formatted_timestamp()
+        level_name = self._get_level_name(event_name)
+        
+        # 构建消息前缀
         if module_name:
-            full_msg = f"[{module_name}] {full_msg}"
+            if self._enable_colors:
+                color_code = self._COLORS.get(module_name, '')
+                reset_code = self._COLORS.get('RESET', '')
+                prefix = f"{timestamp} [{level_name}] {color_code}[{module_name}]{reset_code}"
+            else:
+                prefix = f"{timestamp} [{level_name}] [{module_name}]"
+        else:
+            prefix = f"{timestamp} [{level_name}]"
+        
+        full_msg = f"{prefix} {formatted_msg}"
 
         # 根据事件类型使用对应的 ulogging 方法
         if event_name == EVENT.LOG_DEBUG:

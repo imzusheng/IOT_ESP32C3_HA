@@ -9,8 +9,9 @@
 """
 
 import machine
-import time
+import utime as time
 import micropython
+from lib.logger import get_global_logger
 
 # 尝试导入uasyncio，如果失败则禁用该功能
 try:
@@ -56,15 +57,18 @@ class LEDPatternController:
         if self._initialized:
             return
 
+        # 初始化logger
+        self.logger = get_global_logger()
+        
         if not led_pins:
-            print("[LED] Error: At least one LED pin must be provided on first instantiation.")
+            self.logger.error("At least one LED pin must be provided on first instantiation.", module="LED")
             return
 
         self.led_pins = led_pins
         self.leds = self._init_leds()
 
         if not self.leds:
-            print("[LED] Error: No valid LEDs were initialized.")
+            self.logger.error("No valid LEDs were initialized.", module="LED")
             return
 
         # 模式和状态变量
@@ -88,7 +92,7 @@ class LEDPatternController:
         self._start_controller()
 
         self._initialized = True
-        print(f"[LED] Controller initialized for pins: {self.led_pins}")
+        self.logger.info(f"Controller initialized for pins: {self.led_pins}", module="LED")
 
 
     def _init_leds(self) -> list:
@@ -98,7 +102,7 @@ class LEDPatternController:
             try:
                 leds.append(machine.Pin(pin, machine.Pin.OUT, value=0))
             except Exception as e:
-                print(f"[LED] Error: Failed to initialize LED on pin {pin}: {e}")
+                self.logger.error(f"Failed to initialize LED on pin {pin}: {e}", module="LED")
                 leds.append(None)
         return [led for led in leds if led is not None]
 
@@ -108,7 +112,7 @@ class LEDPatternController:
             return
         if UASYNCIO_AVAILABLE and self._start_uasyncio_task():
             return
-        print("[LED] Warning: Could not start a controller. Patterns will not run.")
+        self.logger.warning("Could not start a controller. Patterns will not run.", module="LED")
 
     def _start_hardware_timer(self) -> bool:
         """尝试启动一个硬件定时器。"""
@@ -128,7 +132,7 @@ class LEDPatternController:
             self.uasyncio_task = uasyncio.create_task(self._uasyncio_loop())
             return True
         except Exception as e:
-            print(f"[LED] Error: Failed to start uasyncio task: {e}")
+            self.logger.error(f"Failed to start uasyncio task: {e}", module="LED")
             return False
 
     async def _uasyncio_loop(self):
@@ -147,14 +151,14 @@ class LEDPatternController:
             except Exception as e:
                 # 如果调度失败（例如队列满），立即清除标志，等待下次尝试
                 self._is_update_scheduled = False
-                print(f"[LED] Schedule failed: {e}")
+                self.logger.error(f"Schedule failed: {e}", module="LED")
 
     def _scheduled_update(self, _):
         """被调度执行的更新函数，保证不在中断上下文中运行。"""
         try:
             self._update_patterns()
         except Exception as e:
-            print(f"[LED] Error in scheduled update: {e}")
+            self.logger.error(f"Error in scheduled update: {e}", module="LED")
         finally:
             # 清除调度中的标记，允许下一次调度
             self._is_update_scheduled = False
@@ -165,7 +169,7 @@ class LEDPatternController:
         通过停止和重启定时器来确保状态切换的原子性。
         """
         if pattern_id not in self.patterns:
-            print(f"[LED] Error: Unknown pattern_id '{pattern_id}'.")
+            self.logger.error(f"Unknown pattern_id '{pattern_id}'", module="LED")
             return
 
         # 修复: 停止控制器以避免并发问题
@@ -200,7 +204,7 @@ class LEDPatternController:
             if handler:
                 handler()
         except Exception as e:
-            print(f"[LED] Error in update_patterns: {e}")
+            self.logger.error(f"Error in update_patterns: {e}", module="LED")
 
     def _set_all_leds(self, value: int):
         """辅助函数，设置所有LED的状态。"""
@@ -232,7 +236,7 @@ class LEDPatternController:
             self.uasyncio_task.cancel()
             self.uasyncio_task = None
         self._set_all_leds(0)
-        print("[LED] Controller cleaned up.")
+        self.logger.info("Controller cleaned up.", module="LED")
 
 # 模块初始化
-print("[LED] LED pattern module loaded")
+# LED pattern module loaded

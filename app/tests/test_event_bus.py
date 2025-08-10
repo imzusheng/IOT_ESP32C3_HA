@@ -1,7 +1,7 @@
 # test_event_bus.py - EventBus 全功能测试
 # 专为 MicroPython 环境设计
 import sys
-import time
+import utime as time
 import gc
 
 # MicroPython-compatible path handling

@@ -171,11 +171,6 @@ CONFIG = {
         # 建议: 开发时 `True`，生产环境 `False`。
         "debug_mode": False,
 
-        # 描述: 控制日志输出的最低级别。
-        # 影响: 决定了日志的详细程度。`DEBUG`最详细，`CRITICAL`信息最少。生产环境设为`INFO`或`WARNING`可减少不必要的日志刷屏。
-        # 建议: "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"。
-        "log_level": "INFO",
-
         # 描述: 主循环(main loop)的延迟时间，单位为毫秒。
         # 影响: 这是主循环每次迭代的间隔，直接影响系统的响应速度和CPU使用率。值越小响应越快，但CPU占用越高，也越耗电。
         # 建议: 100-1000 毫秒。
@@ -192,6 +187,42 @@ CONFIG = {
         # 影响: 开启后，当系统检测到无法恢复的严重错误时，会主动重启，尝试恢复正常。这是提高系统可用性的重要手段。
         # 建议: 生产环境 `True`。
         "auto_restart_enabled": False
+    },
+    "logging": {
+        # 描述: 控制日志输出的最低级别。
+        # 影响: 决定了日志的详细程度。`DEBUG`最详细，`CRITICAL`信息最少。生产环境设为`INFO`或`WARNING`可减少不必要的日志刷屏。
+        # 建议: "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"。
+        "log_level": "INFO",
+
+        # 描述: 是否启用彩色日志输出。
+        # 影响: 开启后会在支持ANSI颜色的终端中显示彩色日志，便于快速识别不同模块的日志。
+        # 建议: 开发时 `True`，生产环境 `False`。
+        "enable_colors": True,
+
+        # 描述: 日志防抖时间，单位为毫秒。
+        # 影响: 防止相同消息在短时间内重复输出，减少日志噪音。
+        # 建议: 500-2000 毫秒。
+        "debounce_time": 1000,
+
+        # 描述: 是否显示详细的时间戳（包含毫秒）。
+        # 影响: 开启后会显示更精确的时间信息，便于调试时序问题。
+        # 建议: 开发时 `True`，生产环境 `False`。
+        "show_milliseconds": True,
+
+        # 描述: 最大日志缓存数量。
+        # 影响: 防止日志缓存占用过多内存，超过限制时会自动清理。
+        # 建议: 500-2000 条。
+        "max_cache_size": 1000,
+
+        # 描述: 是否启用模块名称自动识别。
+        # 影响: 开启后会自动从调用上下文识别模块名称，便于日志分类。
+        # 建议: `True`。
+        "auto_module_detection": True,
+
+        # 描述: 是否启用事件总线日志。
+        # 影响: 开启后会记录事件总线的内部状态，便于调试事件处理问题。
+        # 建议: 开发时 `True`，生产环境 `False`。
+        "enable_eventbus_logs": False
     },
     "device": {
         # 描述: 设备的名称或标识符。
@@ -244,4 +275,4 @@ def get_config(section: str = None, key: str = None, default=None):
 
 gc.collect()
 
-print("[Config] Configuration module loaded.")
+# Configuration module loaded silently

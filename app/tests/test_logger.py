@@ -1,7 +1,7 @@
 # test_logger.py - Logger 全功能测试
 # 专为 MicroPython 环境设计，测试基于 ulogging 的日志系统
 import sys
-import time
+import utime as time
 
 # MicroPython-compatible path handling
 try:
