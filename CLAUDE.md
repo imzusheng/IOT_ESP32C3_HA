@@ -21,9 +21,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 #### 1. 事件总线 (EventBus) - `app/lib/event_bus.py`
 - **功能**: 模块间通信的核心枢纽，支持发布-订阅模式
-- **特性**: 异步非阻塞事件处理、错误隔离、内存优化、事件优先级、调度队列溢出防护
+- **特性**: 异步非阻塞事件处理、错误隔离、内存优化、事件优先级、计时器队列驱动
 - **接口**: `subscribe(event_name, callback)`, `publish(event_name, *args, **kwargs)`
-- **实现**: 基于 `micropython.schedule` 的异步事件调度，支持事件频率限制和错误恢复
+- **实现**: 基于硬件计时器的循环队列系统，避免 micropython.schedule 的 queue full 问题，提升系统稳定性
 
 #### 2. 对象池管理器 (ObjectPoolManager) - `app/lib/object_pool.py`
 - **功能**: 高效的对象复用和内存管理
@@ -261,7 +261,7 @@ pytest app/tests/ --cov=app
 
 ### 事件流程
 ```
-事件发生 → EventBus发布 → 订阅者处理 → 状态更新 → LED指示 → 日志记录
+事件发生 → EventBus发布 → 计时器队列调度 → 订阅者处理 → 状态更新 → LED指示 → 日志记录
 ```
 
 ### 核心事件类型
@@ -290,7 +290,7 @@ EventBus实现了事件优先级机制，确保关键事件优先处理：
 - **静态缓存**: 避免频繁的Flash写入，使用防抖机制
 - **智能垃圾回收**: 根据内存使用动态调整，紧急垃圾回收流程
 - **轻量级数据结构**: 优化内存占用，使用全局变量减少实例化开销
-- **事件频率限制**: 防止调度队列溢出，限制高频率事件
+- **事件频率限制**: 防止计时器队列溢出，限制高频率事件
 - **内存监控**: 实时监控内存使用，触发内存预警和紧急处理
 - **单例模式**: 核心组件使用单例模式，减少重复实例化
 
