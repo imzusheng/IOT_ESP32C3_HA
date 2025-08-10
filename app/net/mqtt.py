@@ -56,7 +56,8 @@ class MqttController:
             self.client.set_callback(self._mqtt_callback)
         except Exception as e:
             self.logger.error(f"创建MQTT客户端失败: {e}", module="MQTT")
-            self.event_bus.publish(EVENT.LOG_ERROR, "MQTT客户端设置失败: {}", e, module="MQTT")
+            # 统一使用logger记录即可，不再通过事件总线重复发布
+            # self.event_bus.publish(EVENT.LOG_ERROR, "MQTT客户端设置失败: {}", e, module="MQTT")
 
     def _mqtt_callback(self, topic, msg):
         """
@@ -72,7 +73,7 @@ class MqttController:
             self.event_bus.publish(EVENT.MQTT_MESSAGE, topic_str, msg_str)
             
         except Exception as e:
-            self.event_bus.publish(EVENT.LOG_ERROR, "处理MQTT消息失败: {}", e, module="MQTT")
+            self.logger.error("处理MQTT消息失败: {}", e, module="MQTT")
 
     def _should_throttle_disconnect_event(self):
         """检查是否应该限制断开事件的发布频率"""
@@ -124,7 +125,6 @@ class MqttController:
             self.last_failure_time = time.ticks_ms()
             
             self.logger.error(f"连接失败: {e}", module="MQTT")
-            self.event_bus.publish(EVENT.LOG_ERROR, "MQTT连接失败: {}", e, module="MQTT")
             self.is_connected = False
             
             # 频率限制断开事件的发布，避免事件风暴
@@ -142,14 +142,13 @@ class MqttController:
                 self.client.disconnect()
             except Exception as e:
                 self.logger.error(f"断开连接失败: {e}", module="MQTT")
-                self.event_bus.publish(EVENT.LOG_WARN, "MQTT断开连接失败: {}", e, module="MQTT")
         self.is_connected = False
         self.logger.info("MQTT已断开连接", module="MQTT")
 
     def publish(self, topic, msg, retain=False, qos=0):
         """发布消息。"""
         if not self.is_connected or not self.client:
-            self.event_bus.publish(EVENT.LOG_WARN, "无法发布，MQTT未连接。", module="MQTT")
+            self.logger.warning("无法发布，MQTT未连接。", module="MQTT")
             return
 
         try:
@@ -174,7 +173,6 @@ class MqttController:
                 
         except Exception as e:
             self.logger.error(f"发布失败: {e}", module="MQTT")
-            self.event_bus.publish(EVENT.LOG_ERROR, "MQTT发布失败: {}", e, module="MQTT")
             self.is_connected = False
             # 频率限制断开事件的发布
             if not self._should_throttle_disconnect_event():
@@ -184,7 +182,7 @@ class MqttController:
     def subscribe(self, topic, qos=0):
         """订阅主题。"""
         if not self.is_connected or not self.client:
-            self.event_bus.publish(EVENT.LOG_WARN, "无法订阅，MQTT未连接。", module="MQTT")
+            self.logger.warning("无法订阅，MQTT未连接。", module="MQTT")
             return
         
         try:
@@ -192,7 +190,6 @@ class MqttController:
             self.client.subscribe(topic, qos)
         except Exception as e:
             self.logger.error(f"订阅失败: {e}", module="MQTT")
-            self.event_bus.publish(EVENT.LOG_ERROR, "MQTT订阅失败: {}", e, module="MQTT")
             self.is_connected = False
             # 频率限制断开事件的发布
             if not self._should_throttle_disconnect_event():
@@ -220,7 +217,6 @@ class MqttController:
 
             except Exception as e:
                 self.logger.error(f"循环错误: {e}. 连接丢失。", module="MQTT")
-                self.event_bus.publish(EVENT.LOG_WARN, "MQTT循环错误: {}", e, module="MQTT")
                 self.is_connected = False
                 # 频率限制断开事件的发布
                 if not self._should_throttle_disconnect_event():
