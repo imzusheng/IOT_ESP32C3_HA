@@ -111,7 +111,6 @@ class MainController:
         self.event_bus.subscribe(EVENT.NTP_SYNC_STARTED, self._on_ntp_sync_started)
         self.event_bus.subscribe(EVENT.NTP_SYNC_SUCCESS, self._on_ntp_sync_success)
         self.event_bus.subscribe(EVENT.NTP_SYNC_FAILED, self._on_ntp_sync_failed)
-        self.event_bus.subscribe(EVENT.TIME_UPDATED, self._on_time_updated)
         
         # WiFi 连接事件
         self.event_bus.subscribe(EVENT.WIFI_CONNECTING, self._on_wifi_connecting)
