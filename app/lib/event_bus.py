@@ -40,12 +40,14 @@ class EventBus:
         self._MAX_ERROR_RECURSION = 3    # 最大错误递归深度
         self._schedule_errors = 0        # 调度错误计数
         self._max_schedule_errors = 10   # 最大调度错误次数
+        self._last_schedule_error_reset = 0  # 上次调度错误重置时间
         self._event_rate_limiter = {}    # 事件频率限制器
         self._event_priority = {         # 事件优先级映射
             'system.error': 0,           # 最高优先级
             'system.critical': 0,
             'memory.critical': 0,
             'log.error': 1,              # 高优先级
+            'mqtt.disconnected': 1,      # MQTT断开事件高优先级（快速响应）
             'log.warn': 2,
             'system.warning': 2,
             'log.info': 3,               # 中优先级
@@ -119,6 +121,8 @@ class EventBus:
             'system.error': 1000,  # 系统错误事件最小间隔1秒
             'wifi.connecting': 2000,   # WiFi连接状态最小间隔2秒
             'ntp.sync.started': 5000,  # NTP同步开始最小间隔5秒
+            'mqtt.disconnected': 1000, # MQTT断开事件最小间隔1秒（防止事件风暴）
+            'mqtt.connected': 2000,     # MQTT连接事件最小间隔2秒
         }
         
         if event_name in rate_limited_events:
@@ -132,6 +136,14 @@ class EventBus:
         
         return False
 
+    def _reset_schedule_errors_if_needed(self):
+        """定期重置调度错误计数，允许系统恢复"""
+        now = time.ticks_ms()
+        # 如果距离上次重置超过5分钟，重置错误计数
+        if self._schedule_errors > 0 and time.ticks_diff(now, self._last_schedule_error_reset) > 300000:
+            self._schedule_errors = 0
+            self._last_schedule_error_reset = now
+    
     def publish(self, event_name, *args, **kwargs):
         """
         异步发布一个事件。回调将被调度执行，而不是立即执行。
@@ -139,6 +151,9 @@ class EventBus:
         :param args: 传递给回调的位置参数
         :param kwargs: 传递给回调的关键字参数
         """
+        # 定期重置调度错误计数
+        self._reset_schedule_errors_if_needed()
+        
         # 事件频率限制
         if self._is_event_rate_limited(event_name):
             return  # 静默丢弃被限制的事件
@@ -190,12 +205,20 @@ class EventBus:
         except Exception as schedule_error:
             # 调度失败（如队列满），记录错误并降级为同步执行
             self._schedule_errors += 1
+            
+            # 检查是否需要重置调度错误计数
+            if self._schedule_errors > self._max_schedule_errors * 2:
+                # 如果错误次数过多，重置计数器以允许恢复
+                self._schedule_errors = 0
+            
             error_msg = f"Schedule queue full for event '{event_name}', falling back to sync execution"
             if "queue full" in str(schedule_error).lower():
                 try:
                     from lib.logger import get_global_logger
                     logger = get_global_logger()
-                    logger.warning(error_msg, module="EventBus")
+                    # 降低日志级别，避免过多警告日志
+                    if self._schedule_errors <= 3:  # 只记录前3次
+                        logger.warning(error_msg, module="EventBus")
                 except:
                     # 静默处理调度错误
                     pass
@@ -210,7 +233,11 @@ class EventBus:
                     pass
             
             # 降级为同步执行（为实机可靠性保留）
-            self._execute_callback_sync(callback, event_name, args, kwargs)
+            try:
+                self._execute_callback_sync(callback, event_name, args, kwargs)
+            except Exception as sync_error:
+                # 如果同步执行也失败，彻底静默处理
+                pass
 
     def _invoke_callback_compat(self, callback, event_name, args, kwargs):
         """兼容性调用回调函数（针对订阅者签名差异的适配，非桌面兼容）"""
@@ -241,6 +268,7 @@ class EventBus:
     def _handle_callback_error(self, event_name, callback, error):
         """处理回调函数执行错误"""
         error_msg = f"Error in callback for '{event_name}': {error}"
+        
         # 静默处理回调错误，避免无限循环
         # 发生异常时，发布一个系统错误事件（但要避免无限循环）
         if event_name != "system.error":  # 避免无限循环
@@ -260,7 +288,8 @@ class EventBus:
                 # 增加递归深度计数器
                 self._error_recursion_depth += 1
                 try:
-                    self.publish("system.error", error_context=error_context)
+                    # 延迟发布系统错误事件，避免在错误处理过程中又触发新事件
+                    self._publish_system_error_later(error_context)
                 except Exception as publish_error:
                     # 如果 publish 方法本身失败，记录错误但继续执行
                     # 静默处理发布错误
@@ -270,13 +299,27 @@ class EventBus:
                     self._error_recursion_depth -= 1
             else:
                 # 静默处理递归深度错误
-                  pass
+                pass
         else:
             # 处理 system.error 事件本身的错误
             if self._error_recursion_depth == 0:
                 # 静默处理系统错误处理器错误
                 # 重置递归深度，防止系统完全卡死
                 self._error_recursion_depth = 0
+    
+    def _publish_system_error_later(self, error_context):
+        """延迟发布系统错误事件，避免递归调用"""
+        try:
+            # 使用同步方式发布系统错误事件，避免调度队列问题
+            self._execute_callback_sync(
+                lambda *args, **kwargs: None,  # 空回调
+                "system.error", 
+                (), 
+                {"error_context": error_context}
+            )
+        except Exception:
+            # 如果延迟发布也失败，彻底静默处理
+            pass
 
     # --- 内省与调试工具 ---
     def list_events(self):
@@ -298,7 +341,8 @@ class EventBus:
             'total_events': len(self.bus),
             'total_subscribers': sum(len(callbacks) for callbacks in self.bus.values()),
             'schedule_errors': self._schedule_errors,
-            'error_recursion_depth': self._error_recursion_depth
+            'error_recursion_depth': self._error_recursion_depth,
+            'last_schedule_error_reset': self._last_schedule_error_reset
         }
         
     def _get_callback_name(self, callback):

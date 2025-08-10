@@ -141,10 +141,10 @@ class Logger:
         event_bus.subscribe(EVENT.LOG_ERROR, self._handle_log)
         
         # 使用 ulogging 记录设置完成（如果可用）
-        try:
-            self._logger.info("Logger setup complete. Subscribed to log events.")
-        except:
-            pass  # 如果 ulogging 还未完全初始化，忽略错误
+        # try:
+        #     self._logger.info("Logger setup complete. Subscribed to log events.")
+        # except:
+        #     pass  # 如果 ulogging 还未完全初始化，忽略错误
 
     def set_level(self, new_level):
         """
