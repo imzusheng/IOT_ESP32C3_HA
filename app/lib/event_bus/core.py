@@ -2,6 +2,23 @@
 """
 简化的事件总线核心模块
 提供基础的发布订阅功能，支持高低优先级事件处理
+高优先级使用硬件定时器，低优先级使用软件轮询避免占用硬件定时器
+
+使用方式
+
+# 创建事件总线
+event_bus = EventBus()
+
+# 主循环
+while True:
+    # 处理低优先级事件（软件轮询）
+    event_bus.process_events()
+    
+    # 其他业务逻辑
+    # ...
+    
+    # 适当的延时
+    time.sleep_ms(10)
 """
 
 import gc
@@ -23,12 +40,12 @@ from ..logger import get_global_logger
 
 # 配置常量 - 提取硬编码值便于维护
 CONFIG = {
-    'QUEUE_SIZE': 64,           # 事件队列最大大小
-    'TICK_MS': 20,              # 队列处理间隔(ms)
-    'THROTTLE_MS': 500,        # 事件节流时间(ms)
-    'STATS_INTERVAL': 30,       # 统计信息输出间隔(秒)
+    'QUEUE_SIZE': 64,             # 事件队列最大大小
+    'HIGH_PRIORITY_TICK_MS': 20,  # 高优先级队列处理间隔(ms)
+    'THROTTLE_MS': 500,           # 事件节流时间(ms)
+    'STATS_INTERVAL': 30,         # 统计信息输出间隔(秒)
     'HIGH_PRIORITY_TIMER_ID': 0,  # 高优先级硬件定时器ID
-    'LOW_PRIORITY_TIMER_ID': 1,   # 低优先级软件定时器ID
+    # 注意：低优先级事件的处理频率取决于主循环中process_events()的调用频率
 }
 
 # 高优先级事件列表 - 使用硬件定时器处理
@@ -41,7 +58,7 @@ HIGH_PRIORITY_EVENTS = {
     EVENTS.NTP_STATE_CHANGE,
 }
 
-# 低优先级事件列表 - 使用软件异步定时器处理
+# 低优先级事件列表 - 使用软件轮询处理
 LOW_PRIORITY_EVENTS = {
     EVENTS.MQTT_MESSAGE,
     EVENTS.SENSOR_DATA,
@@ -50,7 +67,7 @@ LOW_PRIORITY_EVENTS = {
 class EventBus:
     """
     简化的事件总线实现
-    支持高低优先级事件处理，高优先级使用硬件定时器，低优先级使用软件异步定时器
+    支持高低优先级事件处理，高优先级使用硬件定时器，低优先级使用软件轮询
     """
     
     _instance = None  # 单例实例
@@ -71,7 +88,7 @@ class EventBus:
         self._high_priority_queue = []
         self._high_q_len = 0
         
-        # 低优先级队列（软件异步定时器处理）
+        # 低优先级队列（软件轮询处理）
         self._low_priority_queue = []
         self._low_q_len = 0
         
@@ -81,14 +98,16 @@ class EventBus:
         self._throttlers = self._init_throttlers()
         
         # 启动高优先级硬件定时器处理队列
-        self._high_timer = Timer(CONFIG['HIGH_PRIORITY_TIMER_ID'])
-        self._high_timer.init(period=CONFIG['TICK_MS'], mode=Timer.PERIODIC, 
-                             callback=self._process_high_priority_queue)
+        if Timer:
+            self._high_timer = Timer(CONFIG['HIGH_PRIORITY_TIMER_ID'])
+            self._high_timer.init(period=CONFIG['HIGH_PRIORITY_TICK_MS'], mode=Timer.PERIODIC, 
+                                 callback=self._process_high_priority_queue)
+        else:
+            self._high_timer = None
+            print("警告：无法创建硬件定时器，高优先级事件将使用软件轮询")
         
-        # 启动低优先级软件定时器处理队列
-        self._low_timer = Timer(CONFIG['LOW_PRIORITY_TIMER_ID'])
-        self._low_timer.init(period=CONFIG['TICK_MS'] * 2, mode=Timer.PERIODIC, 
-                            callback=self._process_low_priority_queue)
+        # 低优先级使用软件轮询，不占用硬件定时器
+        # 处理频率取决于主循环中process_events()的调用频率
         
         # 统计信息相关
         self._last_stats_time = time.time()
@@ -162,7 +181,7 @@ class EventBus:
         return True
 
     def _process_high_priority_queue(self, _):
-        """处理高优先级事件队列"""
+        """处理高优先级事件队列（硬件定时器回调）"""
         if self._high_q_len == 0:
             return
         
@@ -176,12 +195,12 @@ class EventBus:
         if self._high_q_len == 0:
             gc.collect()
     
-    def _process_low_priority_queue(self, _):
-        """处理低优先级事件队列"""
+    def _process_low_priority_queue_software(self):
+        """软件轮询处理低优先级事件队列（不占用硬件定时器）"""
         if self._low_q_len == 0:
             return
         
-        # 处理一个低优先级事件
+        # 每次调用处理一个低优先级事件
         event_name, args, kwargs = self._low_priority_queue.pop(0)
         self._low_q_len -= 1
         
@@ -230,8 +249,6 @@ class EventBus:
             self._last_stats_time = current_time
             self._print_stats(None)
 
-
-
     def _should_publish_event(self, event_name):
         """检查事件是否应该发布（未被节流）"""
         throttler = self._throttlers.get(event_name)
@@ -252,6 +269,19 @@ class EventBus:
             self._high_q_len += 1
         elif total_queue_len < self._queue_size * 0.8:  # 队列使用率低于80%时重置警告
             self._queue_full_warned = False
+
+    def process_events(self):
+        """
+        主循环中调用此方法来处理低优先级事件
+        处理频率完全取决于主循环的调用频率
+        建议在主循环中每10-50ms调用一次以获得合适的响应性
+        """
+        # 处理低优先级事件队列
+        self._process_low_priority_queue_software()
+        
+        # 如果没有硬件定时器，也在这里处理高优先级事件
+        if not self._high_timer:
+            self._process_high_priority_queue(None)
 
     def list_events(self):
         """列出所有已订阅的事件"""
@@ -277,4 +307,11 @@ class EventBus:
             'total_queue_length': total_queue_len,  # 总队列长度
             'queue_size': self._queue_size,  # 队列最大大小
             'queue_usage_ratio': usage_ratio,  # 队列使用率
+            'using_hardware_timer': self._high_timer is not None,  # 是否使用硬件定时器
         }
+
+    def cleanup(self):
+        """清理资源"""
+        if self._high_timer:
+            self._high_timer.deinit()
+            self._high_timer = None
