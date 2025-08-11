@@ -26,31 +26,36 @@ class EVENTS:
     # 硬件传感器数据事件
     SENSOR_DATA = "sensor.data"  # data: (sensor_id, value)
 
+# 高优先级事件列表 - 优先处理
+HIGH_PRIORITY_EVENTS = {
+    EVENTS.SYSTEM_ERROR,
+    EVENTS.SYSTEM_STATE_CHANGE,
+}
+
+# 低优先级事件列表 - 正常处理
+LOW_PRIORITY_EVENTS = {
+    EVENTS.MQTT_MESSAGE,
+    EVENTS.SENSOR_DATA,
+    EVENTS.WIFI_STATE_CHANGE,
+    EVENTS.MQTT_STATE_CHANGE,
+    EVENTS.NTP_STATE_CHANGE,
+}
+
 def get_all_events():
     """获取所有事件名称
     
     Returns:
-        list: 所有事件名称的列表-共7个核心事件
+        list: 所有事件名称的列表
     """
-    return [
-        EVENTS.WIFI_STATE_CHANGE,
-        EVENTS.MQTT_STATE_CHANGE,
-        EVENTS.MQTT_MESSAGE,
-        EVENTS.SYSTEM_STATE_CHANGE,
-        EVENTS.SYSTEM_ERROR,
-        EVENTS.NTP_STATE_CHANGE,
-        EVENTS.SENSOR_DATA
-    ]
+    return list(HIGH_PRIORITY_EVENTS | LOW_PRIORITY_EVENTS)
 
 
-# 向后兼容性支持
-# 采用简化的事件系统，通过事件回调参数传递具体状态信息
-# 项目中的所有文件已经从 'from event_const import EVENT' 迁移到 'from lib.event_bus import EVENTS'
-
-def validate_event_count():
-    """验证事件数量是否为7个核心事件
+def is_high_priority_event(event_name):
+    """检查是否为高优先级事件
     
+    Args:
+        event_name: 事件名称
     Returns:
-        bool: 如果事件数量为7个返回True，否则返回False
+        bool: 是高优先级事件返回True
     """
-    return len(get_all_events()) == 7
+    return event_name in HIGH_PRIORITY_EVENTS

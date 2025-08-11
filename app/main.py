@@ -121,11 +121,11 @@ class MainController:
         """处理 NTP 状态变化事件"""
         if state == 'started':
             ntp_server = kwargs.get('ntp_server', 'default')
-            self.logger.info("开始NTP时间同步: {}", ntp_server, module="Main")
+            self.logger.debug("NTP同步开始: {}", ntp_server, module="Main")
         elif state == 'success':
             ntp_server = kwargs.get('ntp_server', 'unknown')
             attempts = kwargs.get('attempts', 'unknown')
-            self.logger.info("NTP时间同步成功！服务器: {}, 尝试次数: {}", 
+            self.logger.debug("NTP同步完成: 服务器={}, 尝试次数={}", 
                             ntp_server, attempts, module="Main")
         elif state == 'failed':
             attempts = kwargs.get('attempts')
@@ -135,8 +135,7 @@ class MainController:
             else:
                 error_msg = error or "未知错误"
             
-            msg = f"NTP同步失败，尝试次数: {attempts}。错误: {error_msg}"
-            self.logger.warning(msg, module="Main")
+            self.logger.debug("NTP同步失败: 尝试次数={}, 错误={}", attempts, error_msg, module="Main")
     
     # =================== WiFi 连接事件处理 ===================
         

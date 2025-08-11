@@ -235,12 +235,13 @@ class SystemFSM:
         elif state == SystemState.ERROR:
             self._on_error_enter()
         elif state == SystemState.RUNNING:
-            # 尝试连接MQTT
-            if self.mqtt_controller:
-                self.mqtt_controller.connect()
-            else:
-                info("MQTT控制器不可用，跳过连接", module="FSM")
+            info("进入RUNNING状态，系统正常运行中", module="FSM")
+            info("NTP同步已完成，系统时间已同步", module="FSM")
+            info("将在1秒后异步启动MQTT连接", module="FSM")
+            # 不在状态进入时直接连接MQTT，避免阻塞
+            # MQTT连接将在update方法中异步处理
         elif state == SystemState.NETWORKING:
+            info("进入NETWORKING状态，开始WiFi连接", module="FSM")
             # 如果进入 NETWORKING 时 WiFi 已经处于已连接状态（例如事件先于状态切换触发），
             # 这里不再补发 WIFI_CONNECTED 事件，避免与 WiFi 模块重复；直接切换到 RUNNING。
             try:
@@ -321,6 +322,27 @@ class SystemFSM:
             # LED控制器是自驱动的，无需调用update
             pass
 
+        # 新增: 处理事件总线低优先级事件，确保WiFi及NTP等事件被及时消费
+        if self.event_bus:
+            try:
+                self.event_bus.process_events()
+            except Exception as e:
+                error("事件总线处理事件失败: {}", e, module="FSM")
+        
+        # 新增: 定期输出事件总线统计信息，确保空闲期间也有状态输出
+        if self.event_bus and self.state_duration % 30000 == 0:  # 每30秒
+            try:
+                stats = self.event_bus.get_stats()
+                info("事件总线状态: 事件数={}, 订阅者数={}, 队列使用={}/{} ({:.1f}%)", 
+                     stats['total_events'], 
+                     stats['total_subscribers'], 
+                     stats['total_queue_length'], 
+                     stats['queue_size'],
+                     stats['queue_usage_ratio'] * 100,
+                     module="FSM")
+            except Exception as e:
+                error("获取事件总线统计失败: {}", e, module="FSM")
+
         # 执行当前状态处理器
         handler = self.state_handlers.get(self.current_state)
         if handler:
@@ -384,6 +406,54 @@ class SystemFSM:
     
     def _handle_running_state(self):
         """运行状态处理"""
+        # 每30秒输出一次运行状态日志
+        if self.state_duration % 30000 == 0:
+            info("系统正常运行中 - 运行时间: {}秒", self.state_duration // 1000, module="FSM")
+            
+            # 新增: 输出详细的系统状态信息
+            try:
+                # 检查WiFi连接状态
+                if self.wifi_manager:
+                    wifi_status = "未知"
+                    try:
+                        if hasattr(self.wifi_manager, 'is_connected') and self.wifi_manager.is_connected():
+                            wifi_status = "已连接"
+                        else:
+                            wifi_status = "未连接"
+                    except Exception:
+                        wifi_status = "检查失败"
+                    info("RUNNING - WiFi状态: {}", wifi_status, module="FSM")
+                
+                # 检查MQTT连接状态
+                if self.mqtt_controller:
+                    mqtt_status = "未知"
+                    try:
+                        mqtt_status = "已连接" if self.mqtt_controller.is_connected else "未连接"
+                    except Exception:
+                        mqtt_status = "检查失败"
+                    info("RUNNING - MQTT状态: {}", mqtt_status, module="FSM")
+                
+                # 检查内存使用情况
+                import gc
+                mem_free = gc.mem_free()
+                mem_total = gc.mem_free() + gc.mem_alloc()
+                mem_percent = ((mem_total - mem_free) / mem_total * 100) if mem_total > 0 else 0
+                info("RUNNING - 内存使用: {:.1f}% (空闲: {}KB)", mem_percent, mem_free // 1024, module="FSM")
+                
+            except Exception as e:
+                error("RUNNING - 状态检查失败: {}", e, module="FSM")
+        
+        # 异步处理MQTT连接（避免阻塞）
+        if self.state_duration == 1000:  # 进入RUNNING状态1秒后尝试连接MQTT
+            if self.mqtt_controller and not hasattr(self, '_mqtt_connect_attempted'):
+                info("开始异步MQTT连接", module="FSM")
+                self._mqtt_connect_attempted = True
+                try:
+                    self.mqtt_controller.connect()
+                    info("MQTT连接请求已发送，等待异步结果", module="FSM")
+                except Exception as e:
+                    error("MQTT连接失败: {}", e, module="FSM")
+        
         # 检查系统健康状态
         if self.state_duration % 10000 == 0:  # 每10秒检查一次
             self._check_system_health()

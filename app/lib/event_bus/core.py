@@ -1,310 +1,372 @@
 # app/lib/event_bus/core.py
 """
-简化的事件总线核心模块
-提供基础的发布订阅功能，支持高低优先级事件处理
-高优先级使用硬件定时器，低优先级使用软件轮询避免占用硬件定时器
-
-使用方式
-
-# 创建事件总线
-event_bus = EventBus()
-
-# 主循环
-while True:
-    # 处理低优先级事件（软件轮询）
-    event_bus.process_events()
-    
-    # 其他业务逻辑
-    # ...
-    
-    # 适当的延时
-    time.sleep_ms(10)
+优化的事件总线核心模块 - 参考JavaScript任务队列设计
+- 移除节流机制，简化逻辑
+- 高优先级任务绝对优先，不可丢失
+- 队列满时进入警告/错误模式
+- 优化内存使用和性能
 """
 
 import gc
 import time
 
-# 尝试导入MicroPython的machine模块，如果失败则使用模拟模块
+# 尝试导入MicroPython的machine模块
 try:
     from machine import Timer
 except ImportError:
-    # 在测试环境中使用模拟的machine模块
     try:
         from ..mock_machine import Timer
     except ImportError:
-        print("警告：无法导入Timer模块，某些功能可能无法正常工作")
+        print("无法导入Timer模块")
         Timer = None
 
-from .events_const import EVENTS
+from .events_const import EVENTS, is_high_priority_event
 from ..logger import get_global_logger
 
-# 配置常量 - 提取硬编码值便于维护
+# 配置常量 - 针对嵌入式环境优化
 CONFIG = {
-    'QUEUE_SIZE': 64,             # 事件队列最大大小
-    'HIGH_PRIORITY_TICK_MS': 50,  # 高优先级队列处理间隔(ms)
-    'THROTTLE_MS': 500,           # 事件节流时间(ms)
-    'STATS_INTERVAL': 30,         # 统计信息输出间隔(秒)
-    'HIGH_PRIORITY_TIMER_ID': 0,  # 高优先级硬件定时器ID
-    # 注意：低优先级事件的处理频率取决于主循环中process_events()的调用频率
+    'MAX_QUEUE_SIZE': 64,          # 总队列大小，降低内存占用
+    'TIMER_TICK_MS': 25,           # 定时器间隔，平衡响应性和性能
+    'STATS_INTERVAL': 60,          # 统计间隔增大，减少日志输出
+    'TIMER_ID': 0,
+    'HIGH_PRIORITY_RATIO': 0.6,    # 高优先级队列占60%
+    'BATCH_PROCESS_COUNT': 5,      # 批处理数量
+    'GC_THRESHOLD': 100,           # 垃圾回收阈值
 }
 
-# 高优先级事件列表 - 使用硬件定时器处理
-HIGH_PRIORITY_EVENTS = {
-    EVENTS.SYSTEM_ERROR,  # 系统错误事件
-    EVENTS.SYSTEM_STATE_CHANGE,  # 系统状态变化事件（包括shutdown等）
+# 系统状态常量
+SYSTEM_STATUS = {
+    'NORMAL': 'normal',
+    'WARNING': 'warning', 
+    'CRITICAL': 'critical'
 }
 
-# 低优先级事件列表 - 使用软件轮询处理
-LOW_PRIORITY_EVENTS = {
-    EVENTS.MQTT_MESSAGE,
-    EVENTS.SENSOR_DATA,
-    EVENTS.WIFI_STATE_CHANGE,
-    EVENTS.MQTT_STATE_CHANGE,
-    EVENTS.NTP_STATE_CHANGE,
-}
+class EventQueue:
+    """优化的事件队列 - 减少内存分配"""
+    
+    def __init__(self, max_size):
+        # 预分配列表以减少动态分配
+        self.high_priority_queue = []
+        self.low_priority_queue = []
+        self.max_size = max_size
+        self.high_priority_limit = int(max_size * CONFIG['HIGH_PRIORITY_RATIO'])
+        self.low_priority_limit = max_size - self.high_priority_limit
+        
+        # 性能计数器
+        self._high_drops = 0
+        self._low_drops = 0
+    
+    def enqueue(self, event_item, is_high_priority=False):
+        """
+        入队事件 - 高优先级绝对优先
+        """
+        if is_high_priority:
+            if len(self.high_priority_queue) >= self.high_priority_limit:
+                self._high_drops += 1
+                return False  # 高优先级满了返回False，触发严重错误
+            self.high_priority_queue.append(event_item)
+            return True
+        else:
+            # 低优先级：如果队列满了，为高优先级腾出空间
+            total_size = len(self.high_priority_queue) + len(self.low_priority_queue)
+            if total_size >= self.max_size:
+                # 删除最旧的低优先级事件为高优先级腾出空间
+                if self.low_priority_queue:
+                    self.low_priority_queue.pop(0)
+                    self._low_drops += 1
+                else:
+                    # 连低优先级队列都空了，说明高优先级占满了
+                    self._low_drops += 1
+                    return False
+            
+            self.low_priority_queue.append(event_item)
+            return True
+    
+    def dequeue(self):
+        """出队 - 高优先级绝对优先"""
+        if self.high_priority_queue:
+            return self.high_priority_queue.pop(0)
+        elif self.low_priority_queue:
+            return self.low_priority_queue.pop(0)
+        return None
+    
+    def is_empty(self):
+        return len(self.high_priority_queue) == 0 and len(self.low_priority_queue) == 0
+    
+    def get_stats(self):
+        high_len = len(self.high_priority_queue)
+        low_len = len(self.low_priority_queue)
+        return {
+            'high_priority_length': high_len,
+            'low_priority_length': low_len,
+            'total_length': high_len + low_len,
+            'max_size': self.max_size,
+            'usage_ratio': (high_len + low_len) / self.max_size if self.max_size > 0 else 0,
+            'high_drops': self._high_drops,
+            'low_drops': self._low_drops,
+        }
+    
+    def clear(self):
+        """清空队列"""
+        self.high_priority_queue.clear()
+        self.low_priority_queue.clear()
+
 
 class EventBus:
-    """
-    简化的事件总线实现
-    支持高低优先级事件处理，高优先级使用硬件定时器，低优先级使用软件轮询
-    """
+    """优化的事件总线 - 解决内存和性能问题"""
     
-    _instance = None  # 单例实例
+    _instance = None
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(EventBus, cls).__new__(cls)
+            cls._instance = super().__new__(cls)
+            # 在这里进行初始化，避免_initialized冗余
+            cls._instance._init_once()
         return cls._instance
 
-    def __init__(self):
-        # 只要_instance不为None即判断为已经初始化
-        if hasattr(self, 'bus'):
+    def _init_once(self):
+        """单次初始化"""
+        self.subscribers = {}  # {event_name: [callback1, callback2, ...]}
+        self.event_queue = EventQueue(CONFIG['MAX_QUEUE_SIZE'])
+        
+        # 系统状态管理
+        self._system_status = SYSTEM_STATUS['NORMAL']
+        
+        # 性能计数器
+        self._processed_count = 0
+        self._error_count = 0
+        self._last_stats_time = time.time()
+        self._last_gc_time = time.time()
+        
+        # 启动定时器
+        self._timer = None
+        self._start_timer()
+
+    def _start_timer(self):
+        """启动定时器"""
+        if Timer:
+            try:
+                self._timer = Timer(CONFIG['TIMER_ID'])
+                self._timer.init(
+                    period=CONFIG['TIMER_TICK_MS'], 
+                    mode=Timer.PERIODIC, 
+                    callback=self._timer_callback
+                )
+            except Exception as e:
+                print(f"[EventBus] 定时器启动失败: {e}")
+                self._timer = None
+
+    def _timer_callback(self, timer):
+        """定时器回调 - 核心处理逻辑"""
+        try:
+            # 批量处理事件
+            processed = 0
+            while processed < CONFIG['BATCH_PROCESS_COUNT'] and not self.event_queue.is_empty():
+                event_item = self.event_queue.dequeue()
+                if event_item:
+                    self._execute_event(event_item)
+                    processed += 1
+                    self._processed_count += 1
+            
+            # 定期垃圾回收
+            if self._processed_count % CONFIG['GC_THRESHOLD'] == 0:
+                gc.collect()
+            
+            # 定期输出统计和状态检查
+            self._periodic_maintenance()
+            
+        except Exception as e:
+            self._error_count += 1
+            print(f"[EventBus] 定时器异常: {e}")
+
+    def _execute_event(self, event_item):
+        """执行事件"""
+        event_name, args, kwargs = event_item
+        
+        if event_name not in self.subscribers:
             return
         
-        self.bus = {}  # 事件订阅字典 {event_name: [callback1, callback2, ...]}
+        # 复制订阅者列表避免迭代时修改
+        callbacks = self.subscribers[event_name][:]
         
-        # 高优先级队列（硬件定时器处理）
-        self._high_priority_queue = []
-        self._high_q_len = 0
-        
-        # 低优先级队列（软件轮询处理）
-        self._low_priority_queue = []
-        self._low_q_len = 0
-        
-        self._queue_size = CONFIG['QUEUE_SIZE']  # 队列最大大小
-        
-        # 初始化节流器
-        self._throttlers = self._init_throttlers()
-        
-        # 启动高优先级硬件定时器处理队列
-        if Timer:
-            self._high_timer = Timer(CONFIG['HIGH_PRIORITY_TIMER_ID'])
-            self._high_timer.init(period=CONFIG['HIGH_PRIORITY_TICK_MS'], mode=Timer.PERIODIC, 
-                                 callback=self._process_high_priority_queue)
-        else:
-            self._high_timer = None
-            print("警告：无法创建硬件定时器，高优先级事件将使用软件轮询")
-        
-        # 低优先级使用软件轮询，不占用硬件定时器
-        # 处理频率取决于主循环中process_events()的调用频率
-        
-        # 统计信息相关
-        self._last_stats_time = time.time()
-        self._queue_full_warned = False  # 队列满警告标志
+        for callback in callbacks:
+            try:
+                callback(event_name, *args, **kwargs)
+            except Exception as e:
+                self._handle_callback_error(event_name, callback, e)
 
-    def _init_throttlers(self):
-        """初始化所有事件的节流器"""
-        from ..utils.helpers import Throttle
-        from .events_const import get_all_events
-        throttlers = {}
-        for event in get_all_events():
-            throttlers[event] = Throttle(CONFIG['THROTTLE_MS'])  # 使用配置的节流时间
-        return throttlers
+    def _handle_callback_error(self, event_name, callback, error):
+        """处理回调错误 - 避免递归"""
+        self._error_count += 1
+        try:
+            logger = get_global_logger()
+            logger.error("回调失败: {} - {}", event_name, str(error), module="EventBus")
+        except:
+            print(f"[EventBus] 回调失败: {event_name} - {error}")
+        
+        # 只在非系统错误事件时才发布系统错误
+        if event_name != EVENTS.SYSTEM_ERROR:
+            error_event = (
+                EVENTS.SYSTEM_ERROR,
+                ('callback_error',),
+                {
+                    'error': str(error),
+                    'event': event_name,
+                    'callback_name': getattr(callback, '__name__', 'unknown')
+                }
+            )
+            # 直接入队避免递归调用publish
+            self.event_queue.enqueue(error_event, is_high_priority=True)
 
-    def _print_stats(self, _):
-        """输出统计信息（不再占用定时器资源）"""
+    def _periodic_maintenance(self):
+        """定期维护任务"""
+        current_time = time.time()
+        
+        # 检查系统状态
+        self._check_system_status()
+        
+        # 定期输出统计
+        if current_time - self._last_stats_time >= CONFIG['STATS_INTERVAL']:
+            self._last_stats_time = current_time
+            self._print_stats()
+
+    def _check_system_status(self):
+        """检查并更新系统状态"""
+        queue_stats = self.event_queue.get_stats()
+        old_status = self._system_status
+        
+        # 检查是否进入严重错误模式
+        if queue_stats['high_drops'] > 0:
+            self._system_status = SYSTEM_STATUS['CRITICAL']
+            if old_status != SYSTEM_STATUS['CRITICAL']:
+                self._publish_direct_system_event('critical_error', {
+                    'reason': 'high_priority_queue_full',
+                    'high_drops': queue_stats['high_drops']
+                })
+        # 检查是否进入警告模式  
+        elif queue_stats['usage_ratio'] > 0.8:
+            self._system_status = SYSTEM_STATUS['WARNING']
+            if old_status == SYSTEM_STATUS['NORMAL']:
+                self._publish_direct_system_event('warning', {
+                    'reason': 'queue_usage_high',
+                    'usage_ratio': queue_stats['usage_ratio']
+                })
+        # 恢复正常模式
+        elif queue_stats['usage_ratio'] < 0.6:
+            if self._system_status != SYSTEM_STATUS['NORMAL']:
+                self._system_status = SYSTEM_STATUS['NORMAL']
+                self._publish_direct_system_event('recovered', {'from_status': old_status})
+
+    def _publish_direct_system_event(self, state, info):
+        """直接发布系统事件，避免队列满时的递归问题"""
+        event_item = (EVENTS.SYSTEM_STATE_CHANGE, (state,), info)
+        # 系统状态事件强制入队
+        if len(self.event_queue.high_priority_queue) < self.event_queue.high_priority_limit:
+            self.event_queue.high_priority_queue.append(event_item)
+
+    # 公共接口
+    
+    def subscribe(self, event_name, callback):
+        """订阅事件"""
+        if event_name not in self.subscribers:
+            self.subscribers[event_name] = []
+        if callback not in self.subscribers[event_name]:
+            self.subscribers[event_name].append(callback)
+
+    def unsubscribe(self, event_name, callback):
+        """取消订阅"""
+        if event_name in self.subscribers:
+            try:
+                self.subscribers[event_name].remove(callback)
+                if not self.subscribers[event_name]:
+                    del self.subscribers[event_name]
+            except ValueError:
+                pass  # callback不在列表中
+
+    def publish(self, event_name, *args, **kwargs):
+        """发布事件"""
+        # 检查是否有订阅者
+        if not self.has_subscribers(event_name):
+            return True
+        
+        # 严重错误模式下只处理系统事件
+        if (self._system_status == SYSTEM_STATUS['CRITICAL'] and 
+            not is_high_priority_event(event_name)):
+            return False
+        
+        # 入队事件
+        event_item = (event_name, args, kwargs)
+        is_high_priority = is_high_priority_event(event_name)
+        
+        success = self.event_queue.enqueue(event_item, is_high_priority)
+        
+        # 高优先级事件入队失败时立即进入严重错误模式
+        if not success and is_high_priority:
+            self._system_status = SYSTEM_STATUS['CRITICAL']
+        
+        return success
+
+    def has_subscribers(self, event_name):
+        """检查是否有订阅者"""
+        return event_name in self.subscribers and len(self.subscribers[event_name]) > 0
+
+    def get_stats(self):
+        """获取统计信息"""
+        queue_stats = self.event_queue.get_stats()
+        return {
+            'event_types': len(self.subscribers),
+            'total_subscribers': sum(len(cbs) for cbs in self.subscribers.values()),
+            'processed_count': self._processed_count,
+            'error_count': self._error_count,
+            'system_status': self._system_status,
+            'timer_active': self._timer is not None,
+            **queue_stats  # 包含队列统计
+        }
+
+    def _print_stats(self):
+        """输出统计信息"""
         try:
             stats = self.get_stats()
             logger = get_global_logger()
-            logger.info("事件总线统计: 事件数={}, 订阅者数={}, 高优先级队列={}, 低优先级队列={}, 总队列={}/{} ({}%)", 
-                       stats['total_events'], 
+            logger.info("EventBus: 事件={}, 订阅者={}, 队列={}/{} ({}%), 已处理={}, 错误={}, 状态={}", 
+                       stats['event_types'],
                        stats['total_subscribers'], 
-                       stats['high_priority_queue_length'],
-                       stats['low_priority_queue_length'],
-                       stats['total_queue_length'], 
-                       stats['queue_size'],
-                       int(stats['queue_usage_ratio'] * 100),
+                       stats['total_length'],
+                       stats['max_size'],
+                       int(stats['usage_ratio'] * 100),
+                       stats['processed_count'],
+                       stats['error_count'],
+                       stats['system_status'],
                        module="EventBus")
-        except Exception as e:
-            print(f"[EventBus] 统计: 事件数={stats['total_events']}, "
-                  f"订阅者数={stats['total_subscribers']}, "
-                  f"高优先级队列={stats['high_priority_queue_length']}, "
-                  f"低优先级队列={stats['low_priority_queue_length']}, "
-                  f"总队列={stats['total_queue_length']}/{stats['queue_size']} "
-                  f"({int(stats['queue_usage_ratio'] * 100)}%)")
-
-    def subscribe(self, event_name, callback):
-        """订阅事件"""
-        if event_name not in self.bus:
-            self.bus[event_name] = []
-        if callback not in self.bus[event_name]:
-            self.bus[event_name].append(callback)
-
-    def unsubscribe(self, event_name, callback):
-        """取消订阅事件"""
-        if event_name in self.bus and callback in self.bus[event_name]:
-            self.bus[event_name].remove(callback)
-            if not self.bus[event_name]:
-                del self.bus[event_name]
-
-    def publish(self, event_name, *args, **kwargs):
-        """发布事件到对应优先级队列"""
-        if not self._should_publish_event(event_name):
-            return False
-        
-        # 检查队列满警告
-        self._check_queue_full_warning()
-        
-        # 根据事件优先级分发到不同队列
-        if event_name in HIGH_PRIORITY_EVENTS:
-            if self._high_q_len >= self._queue_size // 2:  # 高优先级队列占一半
-                return False
-            self._high_priority_queue.append((event_name, args, kwargs))
-            self._high_q_len += 1
-        else:
-            if self._low_q_len >= self._queue_size // 2:  # 低优先级队列占一半
-                return False
-            self._low_priority_queue.append((event_name, args, kwargs))
-            self._low_q_len += 1
-        
-        return True
-
-    def _process_high_priority_queue(self, _):
-        """处理高优先级事件队列（硬件定时器回调）"""
-        if self._high_q_len == 0:
-            return
-        
-        # 处理一个高优先级事件
-        event_name, args, kwargs = self._high_priority_queue.pop(0)
-        self._high_q_len -= 1
-        
-        self._execute_callbacks(event_name, args, kwargs)
-        
-        # 队列为空时进行垃圾回收
-        if self._high_q_len == 0:
-            gc.collect()
-    
-    def _process_low_priority_queue_software(self):
-        """软件轮询处理低优先级事件队列（不占用硬件定时器）"""
-        if self._low_q_len == 0:
-            return
-        
-        # 每次调用处理一个低优先级事件
-        event_name, args, kwargs = self._low_priority_queue.pop(0)
-        self._low_q_len -= 1
-        
-        self._execute_callbacks(event_name, args, kwargs)
-        
-        # 队列为空时进行垃圾回收
-        if self._low_q_len == 0:
-            gc.collect()
-    
-    def _execute_callbacks(self, event_name, args, kwargs):
-        """执行事件回调"""
-        if event_name in self.bus:
-            for callback in self.bus[event_name]:
-                try:
-                    callback(event_name, *args, **kwargs)
-                except Exception as e:
-                    try:
-                        logger = get_global_logger()
-                        logger.error("事件回调执行失败: {} - {}", event_name, str(e), module="EventBus")
-                    except:
-                        print(f"[EventBus] 错误: 事件回调执行失败: {event_name} - {e}")
-                    
-                    # 发布系统错误事件到高优先级队列
-                    if self._high_q_len < self._queue_size // 2:
-                        self._high_priority_queue.append((
-                            EVENTS.SYSTEM_ERROR, 
-                            ('callback_error',), 
-                            {
-                                'error': str(e),
-                                'event': event_name,
-                                'callback': callback.__name__ if hasattr(callback, '__name__') else str(callback)
-                            }
-                        ))
-                        self._high_q_len += 1
-        
-        # 检查是否需要输出统计信息（基于时间差）
-        self._check_and_print_stats()
-    
-    def _check_and_print_stats(self):
-        """检查并输出统计信息"""
-        current_time = time.time()
-        if current_time - self._last_stats_time >= CONFIG['STATS_INTERVAL']:
-            self._last_stats_time = current_time
-            self._print_stats(None)
-
-    def _should_publish_event(self, event_name):
-        """检查事件是否应该发布（未被节流）"""
-        throttler = self._throttlers.get(event_name)
-        if throttler:
-            return throttler.should_trigger()
-        return True
-
-    def _check_queue_full_warning(self):
-        """检查队列是否满并发出警告"""
-        total_queue_len = self._high_q_len + self._low_q_len
-        if total_queue_len >= self._queue_size and not self._queue_full_warned:
-            self._queue_full_warned = True
-            # 发布系统状态变化事件 - 队列满警告
-            self._high_priority_queue.append((EVENTS.SYSTEM_STATE_CHANGE, ('queue_full_warning',), {'queue_usage': total_queue_len / self._queue_size}))
-            self._high_q_len += 1
-        elif total_queue_len < self._queue_size * 0.8:  # 队列使用率低于80%时重置警告
-            self._queue_full_warned = False
-
-    def process_events(self):
-        """
-        主循环中调用此方法来处理低优先级事件
-        处理频率完全取决于主循环的调用频率
-        建议在主循环中每10-50ms调用一次以获得合适的响应性
-        """
-        # 处理低优先级事件队列
-        self._process_low_priority_queue_software()
-        
-        # 如果没有硬件定时器，也在这里处理高优先级事件
-        if not self._high_timer:
-            self._process_high_priority_queue(None)
-
-    def list_events(self):
-        """列出所有已订阅的事件"""
-        return list(self.bus.keys())
-
-    def list_subscribers(self, event_name):
-        """列出指定事件的所有订阅者"""
-        return self.bus.get(event_name, [])
-
-    def has_subscribers(self, event_name):
-        """检查事件是否有订阅者"""
-        return event_name in self.bus and len(self.bus[event_name]) > 0
-
-    def get_stats(self):
-        """获取简化的统计信息"""
-        total_queue_len = self._high_q_len + self._low_q_len
-        usage_ratio = total_queue_len / self._queue_size if self._queue_size > 0 else 0
-        return {
-            'total_events': len(self.bus),  # 已订阅的事件数量
-            'total_subscribers': sum(len(cbs) for cbs in self.bus.values()),  # 总订阅者数量
-            'high_priority_queue_length': self._high_q_len,  # 高优先级队列长度
-            'low_priority_queue_length': self._low_q_len,  # 低优先级队列长度
-            'total_queue_length': total_queue_len,  # 总队列长度
-            'queue_size': self._queue_size,  # 队列最大大小
-            'queue_usage_ratio': usage_ratio,  # 队列使用率
-            'using_hardware_timer': self._high_timer is not None,  # 是否使用硬件定时器
-        }
+        except:
+            # 降级输出
+            stats = self.get_stats()
+            print(f"[EventBus] 队列:{stats['total_length']}/{stats['max_size']}, "
+                  f"处理:{stats['processed_count']}, 状态:{stats['system_status']}")
 
     def cleanup(self):
         """清理资源"""
-        if self._high_timer:
-            self._high_timer.deinit()
-            self._high_timer = None
+        if self._timer:
+            try:
+                self._timer.deinit()
+            except:
+                pass
+            finally:
+                self._timer = None
+        
+        self.event_queue.clear()
+        self.subscribers.clear()
+        
+        # 重置计数器
+        self._processed_count = 0
+        self._error_count = 0
+        self._system_status = SYSTEM_STATUS['NORMAL']
+
+    def get_system_status(self):
+        """获取当前系统状态"""
+        return self._system_status
+
+# 便捷函数
+def get_event_bus():
+    """获取事件总线实例"""
+    return EventBus()

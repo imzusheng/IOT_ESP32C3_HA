@@ -94,7 +94,7 @@ class MqttController:
         return int(delay)
     
     def connect(self):
-        """连接到MQTT Broker。"""
+        """连接到MQTT Broker（非阻塞）。"""
         if self.is_connected or not self.client:
             return
 
@@ -109,6 +109,7 @@ class MqttController:
 
         self.logger.info("连接到代理服务器{}...", self.config['broker'], module="MQTT")
         try:
+            # 使用非阻塞连接
             self.client.connect()
             self.is_connected = True
             self.connection_failures = 0  # 重置失败计数
@@ -121,8 +122,9 @@ class MqttController:
         except Exception as e:
             self.connection_failures += 1
             self.last_failure_time = time.ticks_ms()
-            
-            self.logger.error(f"连接失败: {e}", module="MQTT")
+            self.logger.error("连接失败: {}", e, module="MQTT")
+            # 发布连接失败事件
+            self.event_bus.publish(EVENTS.MQTT_STATE_CHANGE, state="disconnected", error=str(e))
             self.is_connected = False
             
             # 频率限制断开事件的发布，避免事件风暴
