@@ -12,6 +12,7 @@
 - 设备信息获取
 - 网络参数验证
 - 字符串缓存优化
+- 节流器功能
 """
 
 import gc
@@ -239,6 +240,70 @@ _string_cache = StringCache()
 def get_cached_string(text):
     """获取缓存的字符串实例"""
     return _string_cache.get(text)
+
+# 节流器类
+class Throttle:
+    """
+    节流器
+    确保在指定时间窗口内最多触发一次
+    
+    使用场景：
+    - WiFi重连频率控制
+    - MQTT发布频率控制
+    - 传感器采样频率控制
+    - 按钮点击防连击
+    """
+    def __init__(self, throttle_ms):
+        """
+        初始化节流器
+        
+        :param throttle_ms: 节流时间窗口（毫秒）
+        """
+        self.throttle_ms = throttle_ms
+        self.last_trigger = 0
+    
+    def should_trigger(self):
+        """
+        检查是否应该触发
+        
+        :return: True表示可以触发，False表示在节流期内
+        """
+        now = time.ticks_ms()
+        if time.ticks_diff(now, self.last_trigger) >= self.throttle_ms:
+            self.last_trigger = now
+            return True
+        return False
+    
+    def reset(self):
+        """重置节流器"""
+        self.last_trigger = 0
+    
+    def set_throttle_time(self, throttle_ms):
+        """
+        设置节流时间
+        
+        :param throttle_ms: 新的节流时间窗口（毫秒）
+        """
+        self.throttle_ms = throttle_ms
+    
+    def time_until_next_trigger(self):
+        """
+        获取距离下次可触发的时间
+        
+        :return: 距离下次可触发的毫秒数
+        """
+        now = time.ticks_ms()
+        elapsed = time.ticks_diff(now, self.last_trigger)
+        remaining = self.throttle_ms - elapsed
+        return max(0, remaining)
+    
+    def is_ready(self):
+        """
+        检查是否已经准备好触发
+        
+        :return: True表示已过节流期，可以触发
+        """
+        return self.time_until_next_trigger() == 0
 
 # 模块初始化
 # Helper module loaded

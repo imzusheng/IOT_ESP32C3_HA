@@ -8,24 +8,27 @@ from event_const import EVENT
 
 class Logger:
     """
-    基于 ulogging 的日志系统 (重构版本)
+    基于 ulogging 的独立日志系统 (重构版本)
     
     使用 MicroPython 的 ulogging 模块作为底层日志记录器，
-    同时保持与事件总线的集成。提供更高效的日志处理
+    独立工作，不再依赖外部事件系统。提供更高效的日志处理
     和更好的内存管理。
     
     特性:
     - 基于 ulogging 的高效日志记录
-    - 事件驱动日志记录
+    - 独立日志记录，无需事件总线
     - 支持模块名称标注
     - 多级别日志支持 (DEBUG, INFO, WARN, ERROR, CRITICAL)
     - 内存优化设计
     - 时间戳格式化
     - 统一的接口
-    - MQTT集成支持
     - 错误隔离处理
     - 模块颜色强调支持
     - 标准化日志格式
+    
+    使用方法:
+    1. 创建 Logger 实例：logger = Logger(level=EVENT.LOG_INFO)
+    2. 直接使用日志方法：logger.info("消息", module="模块名")
     """
     
     # ANSI颜色代码
@@ -88,8 +91,6 @@ class Logger:
         # 配置日志格式
         self._setup_logger_format()
         
-        # 事件总线引用
-        self._event_bus = None
         # 保留默认处理器引用用于后续判断回调是否被外部替换，
         # 若被替换则在直接日志方法中采用兼容调用，避免传递未知关键字参数
         self._default_handle_log = self._handle_log
@@ -126,25 +127,7 @@ class Logger:
             ulogging.basicConfig(level=ulogging.INFO)
 
 
-    def setup(self, event_bus):
-        """
-        在事件总线上注册日志处理器。
-        :param event_bus: EventBus 的实例
-        """
-        self._event_bus = event_bus
-        
-        # 订阅所有日志事件
-        if hasattr(EVENT, 'LOG_DEBUG'):
-            event_bus.subscribe(EVENT.LOG_DEBUG, self._handle_log)
-        event_bus.subscribe(EVENT.LOG_INFO, self._handle_log)
-        event_bus.subscribe(EVENT.LOG_WARN, self._handle_log)
-        event_bus.subscribe(EVENT.LOG_ERROR, self._handle_log)
-        
-        # 使用 ulogging 记录设置完成（如果可用）
-        # try:
-        #     self._logger.info("Logger设置完成，已订阅日志事件")
-        # except:
-        #     pass  # 如果 ulogging 还未完全初始化，忽略错误
+    # setup 方法已移除 - Logger 现在独立工作，不再依赖 EventBus
 
     def set_level(self, new_level):
         """
@@ -374,19 +357,10 @@ class Logger:
             
         self._logger.error(full_msg)
   
-# 辅助函数，方便在代码中发布日志事件
-# 使用方法: log(event_bus, EVENT.LOG_INFO, "系统启动，配置: {}", config)
-def log(event_bus, event_name, msg, *args):
-    """
-    一个发布日志事件的辅助函数。
-    :param event_bus: EventBus 实例
-    :param event_name: 日志事件名称 (e.g., EVENT.LOG_INFO)
-    :param msg: 日志消息，可以是格式化字符串
-    :param args: 格式化字符串的参数
-    """
-    event_bus.publish(event_name, msg, *args)
+# Logger 现在独立工作，不再依赖 EventBus
+# 所有日志记录都通过直接方法调用完成，无需事件总线
     
-# 全局日志实例 - 用于在没有事件总线的情况下直接记录
+# 全局日志实例 - 提供便捷的全局日志记录功能
 _global_logger = None
 
 def get_global_logger():

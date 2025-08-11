@@ -25,8 +25,8 @@ graph TD
     end
 
     subgraph System Services Layer
-        EventConst("app/event_const")
-        Bus("app/lib/event_bus")
+        EventConst("app/lib/event_bus/events_const")
+        Bus("app/lib/event_bus/core")
         Log("app/lib/logger")
         Cfg("app/config")
         ObjPool("app/lib/object_pool")
@@ -46,9 +46,10 @@ graph TD
     %% 初始化与控制流
     Main -- "读取配置" --> Cfg
     Main -- "创建 & 启动 FSM" --> FSM
-    Main -- "初始化基础服务（Log, EventConst, ObjPool, Cache）" --> Log
-    Main -- "初始化基础服务（ObjPool, Cache）" --> ObjPool
-    Main -- "初始化基础服务（ObjPool, Cache）" --> Cache
+    Main -- "初始化基础服务（EventBus, ObjPool, Cache, Logger）" --> Bus
+    Main -- "初始化基础服务（EventBus, ObjPool, Cache, Logger）" --> ObjPool
+    Main -- "初始化基础服务（EventBus, ObjPool, Cache, Logger）" --> Cache
+    Main -- "初始化基础服务（EventBus, ObjPool, Cache, Logger）" --> Log
 
     %% FSM 控制网络初始化
     FSM -- "Init(config)" --> Wifi
@@ -71,7 +72,7 @@ graph TD
     Bus -.->|"subscribes"| FSM
     Bus -.->|"subscribes"| Sensor
     Bus -.->|"subscribes"| Led
-    Bus -.->|"subscribes(EVENT.LOG)"| Log
+    %% 日志系统独立，不再通过事件总线
 ```
 
 ## 模块说明
@@ -114,34 +115,38 @@ graph TD
 
 ### 系统服务层
 
-#### app/event_const.py
-- **职责**：定义统一的事件名称常量。
+#### app/lib/event_bus/events_const.py
+- **职责**：定义统一的事件名称常量，替代原有的优先级系统。
 - **功能**：
+  - 提供项目中所有事件的集中定义
   - 避免事件名称字符串散落在代码中
-  - 提供事件名称的集中管理
+  - 订阅前必须从EVENTS常量中获取事件名称
 
-#### app/lib/event_bus.py
-- **职责**：事件总线，实现异步非阻塞的发布订阅模式（基于 micropython.schedule，桌面环境降级为同步调用）。
+#### app/lib/event_bus/core.py
+- **职责**：简化的事件总线，实现基础的发布订阅模式。
 - **接口**：
   - `subscribe(event_name, callback)`: 订阅事件
   - `publish(event_name, *args, **kwargs)`: 发布事件
   - `unsubscribe(event_name, callback)`: 取消订阅
+  - `list_events()`: 列出所有事件
+  - `list_subscribers(event_name)`: 列出事件订阅者
+  - `has_subscribers(event_name)`: 检查是否有订阅者
+  - `get_stats()`: 获取统计信息
 - **功能**：
-  - 提供模块间的松耦合通信
-  - 支持事件参数传递（位置参数、关键字参数）
-  - 错误隔离和恢复，带递归深度保护的 system.error 发布
-  - 详细的日志记录与内省（list_events/list_subscribers）
-- **回调签名约定**：优先 callback(event_name, *args, **kwargs)，自动兼容 callback(*args, **kwargs) 与 callback() 降级。
-- **事件载荷约定**：TIME_UPDATED 携带关键字参数 timestamp（秒级Unix时间戳）。
+  - 统一1000ms节流时长，避免强耦合
+  - 移除优先级系统，采用FIFO队列
+  - 强制回调签名为 callback(event_name, *args, **kwargs)
+  - 每30秒自动输出统计日志
+  - 基础错误处理，只记录错误和警告
 
 #### app/lib/logger.py
-- **职责**：日志系统，订阅事件总线事件并处理日志输出。
+- **职责**：独立的日志系统，不再通过事件总线管理。
 - **接口**：
-  - `setup(event_bus)`: 设置日志系统，订阅事件
+  - 各模块直接调用logger，不经过事件总线
 - **功能**：
-  - 订阅 `EVENT.LOG_*` 事件
-  - 处理日志输出
+  - 提供标准的日志输出
   - 支持不同级别的日志
+  - 移除与事件总线的耦合
 
 #### app/lib/object_pool.py
 - **职责**：对象池管理器，实现多个命名对象池。
@@ -291,10 +296,13 @@ graph TD
 IOT_ESP32C3/
 ├── app/                    # 设备运行代码（核心应用层）
 │   ├── lib/               # 通用库和工具模块
-│   │   ├── event_bus.py   # 事件总线
+│   │   ├── event_bus/     # 事件总线模块
+│   │   │   ├── __init__.py    # 模块导出
+│   │   │   ├── core.py        # 事件总线核心实现
+│   │   │   └── events_const.py # 事件常量定义
 │   │   ├── object_pool.py # 对象池管理器
 │   │   ├── static_cache.py # 静态缓存
-│   │   ├── logger.py      # 日志系统
+│   │   ├── logger.py      # 独立日志系统
 │   │   └── umqtt/         # MQTT客户端库
 │   ├── hw/                # 硬件相关模块
 │   │   ├── led.py         # LED控制器
@@ -307,7 +315,6 @@ IOT_ESP32C3/
 │   │   └── timers.py      # 定时器工具
 │   ├── boot.py           # 启动引导
 │   ├── config.py         # 配置管理
-│   ├── event_const.py    # 事件常量定义
 │   ├── fsm.py            # 系统状态机
 │   └── main.py           # 主程序入口
 ├── app/tests/             # 单元测试

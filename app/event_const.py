@@ -23,11 +23,10 @@ class EVENT:
     # 系统状态事件
     SYSTEM_BOOT = "system.boot"
     SYSTEM_INIT = "system.init"
-    SYSTEM_ERROR = "system.error"
+    SYSTEM_ERROR = "system.error"  # 统一的系统错误事件，通过参数区分错误类型
     SYSTEM_HEARTBEAT = "system.heartbeat"
     SYSTEM_WARNING = "system.warning"
     SYSTEM_SHUTDOWN = "system.shutdown"
-    MEMORY_CRITICAL = "memory.critical"
     RECOVERY_SUCCESS = "recovery.success"
     RECOVERY_FAILED = "recovery.failed"
 
@@ -35,8 +34,6 @@ class EVENT:
     NTP_SYNC_STARTED = "ntp.sync.started"
     NTP_SYNC_SUCCESS = "ntp.sync.success"
     NTP_SYNC_FAILED = "ntp.sync.failed"
-    TIME_UPDATED = "time.updated"
 
     # 硬件事件
-    BUTTON_PRESSED = "button.pressed"
     SENSOR_DATA = "sensor.data"  # data: (sensor_id, value)

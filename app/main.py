@@ -1,6 +1,6 @@
-"""
-main.py - 依赖注入容器和系统启动
+"""main.py - 依赖注入容器和系统启动
 按照 REFACTOR_PLAN.md 中的伪代码实现
+注意：Logger 现在是独立工作的，不再依赖 EventBus
 """
 
 import utime as time
@@ -67,18 +67,18 @@ class MainController:
         log_config = config.get('logging', {})
         log_level_str = log_config.get('log_level', 'INFO')
         
-        # 转换日志级别
+        # 转换日志级别 - Logger 现在是独立工作的，不再依赖 EventBus
         level_map = {
-            'DEBUG': EVENT.LOG_DEBUG,
-            'INFO': EVENT.LOG_INFO,
-            'WARNING': EVENT.LOG_WARN,
-            'ERROR': EVENT.LOG_ERROR,
-            'CRITICAL': EVENT.LOG_ERROR
+            'DEBUG': 10,  # logging.DEBUG
+            'INFO': 20,   # logging.INFO
+            'WARNING': 30, # logging.WARNING
+            'ERROR': 40,  # logging.ERROR
+            'CRITICAL': 50 # logging.CRITICAL
         }
-        log_level = level_map.get(log_level_str, EVENT.LOG_INFO)
+        log_level = level_map.get(log_level_str, 20)  # 默认 INFO 级别
         
         self.logger = Logger(level=log_level, config=log_config)
-        self.logger.setup(self.event_bus)
+        # Logger 现在是独立的，不需要 EventBus 设置
         set_global_logger(self.logger)
         
         # 初始化模块控制器
@@ -115,7 +115,6 @@ class MainController:
         # 系统状态事件（仅用于监控和日志记录）
         self.event_bus.subscribe(EVENT.SYSTEM_ERROR, self._on_system_error)
         self.event_bus.subscribe(EVENT.SYSTEM_WARNING, self._on_system_warning)
-        self.event_bus.subscribe(EVENT.MEMORY_CRITICAL, self._on_memory_critical)
         
         self.logger.info("系统事件订阅已注册", module="Main")
     
@@ -144,41 +143,41 @@ class MainController:
     # =================== WiFi 连接事件处理 ===================
         
         
-    def _on_time_updated(self, event_name, timestamp=None, **kwargs):
-        """处理时间更新事件"""
-        if timestamp:
-            try:
-                import time
-                time_tuple = time.localtime(timestamp)
-                time_str = f"{time_tuple[0]:04d}-{time_tuple[1]:02d}-{time_tuple[2]:02d} " \
-                          f"{time_tuple[3]:02d}:{time_tuple[4]:02d}:{time_tuple[5]:02d}"
-                self.logger.info("系统时间更新为: {} (时间戳: {}), 其他模块可以启动时间相关功能", 
-                               time_str, timestamp, module="Main")
-            except Exception as e:
-                self.logger.warning("解析时间戳失败: {}, timestamp: {}", e, timestamp, module="Main")
-        else:
-            self.logger.info("系统时间已更新，其他模块可以启动时间相关功能", module="Main")
+
     
     # =================== 系统状态事件处理 ===================
-    def _on_system_error(self, event_name, error_msg=None):
-        """处理系统错误事件"""
-        msg = f"系统错误: {error_msg or '未知错误'}"
-        self.logger.error(msg, module="Main")
+    def _on_system_error(self, event_name, error_type=None, error_context=None, **kwargs):
+        """处理统一的系统错误事件"""
+        if error_type == 'memory_critical':
+            # 处理内存临界错误
+            mem_info = error_context.get('mem_info') if error_context else None
+            msg = f"内存使用严重: {mem_info or '未知'}"
+            self.logger.error(msg, module="Main")
+            
+            self.logger.info("执行紧急垃圾回收...", module="Main")
+            for _ in range(3):
+                gc.collect()
+                time.sleep_ms(50)
+        elif error_type == 'callback_error':
+            # 处理事件回调错误
+            if error_context:
+                error_msg = error_context.get('error', '未知错误')
+                event = error_context.get('event', '未知事件')
+                callback = error_context.get('callback', '未知回调')
+                msg = f"事件回调执行失败: {event} -> {callback}, 错误: {error_msg}"
+            else:
+                msg = "事件回调执行失败: 未知错误"
+            self.logger.error(msg, module="Main")
+        else:
+            # 处理其他系统错误
+            error_msg = error_context.get('error_msg') if error_context else None
+            msg = f"系统错误 ({error_type or '未知类型'}): {error_msg or '未知错误'}"
+            self.logger.error(msg, module="Main")
     
     def _on_system_warning(self, event_name, warning_msg=None):
         """处理系统警告事件"""
         msg = f"系统警告: {warning_msg or '未知警告'}"
         self.logger.warning(msg, module="Main")
-    
-    def _on_memory_critical(self, event_name, mem_info=None):
-        """处理内存临界事件"""
-        msg = f"内存使用严重: {mem_info or '未知'}"
-        self.logger.error(msg, module="Main")
-        
-        self.logger.info("执行紧急垃圾回收...", module="Main")
-        for _ in range(3):
-            gc.collect()
-            time.sleep_ms(50)
     
     def on_emergency_shutdown(self, event_name, error_context=None):
         """处理紧急关机事件"""

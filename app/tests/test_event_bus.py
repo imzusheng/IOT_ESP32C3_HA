@@ -1,7 +1,10 @@
 # test_event_bus.py - EventBus 全功能测试
 # 专为 MicroPython 环境设计
 import sys
-import utime as time
+try:
+    import utime as time
+except ImportError:
+    import time
 import gc
 
 # MicroPython-compatible path handling
@@ -21,7 +24,7 @@ except Exception:
 try:
     from lib.event_bus import EventBus
 except ImportError:
-    print("错误：无法导入EventBus。请确保event_bus.py在正确位置。")
+    print("错误：无法导入EventBus。请确保event_bus包在正确位置。")
     sys.exit(1)
 
 # 全局变量用于测试
@@ -179,7 +182,7 @@ def test_basic_subscribe_publish():
     simple_callback_called = False
     
     # 创建事件总线实例
-    event_bus = EventBus(verbose=True)
+    event_bus = EventBus()
     
     # 订阅事件
     event_bus.subscribe("test.event", simple_callback)
@@ -205,20 +208,20 @@ def test_multiple_subscribers():
     callback2_called = False
     callback3_called = False
     
-    def callback1():
+    def callback1(event_name):
         global callback1_called
         callback1_called = True
     
-    def callback2():
+    def callback2(event_name):
         global callback2_called
         callback2_called = True
     
-    def callback3():
+    def callback3(event_name):
         global callback3_called
         callback3_called = True
     
     # 创建事件总线实例
-    event_bus = EventBus(verbose=True)
+    event_bus = EventBus()
     
     # 多个订阅者订阅同一事件
     event_bus.subscribe("multi.event", callback1)
@@ -245,12 +248,12 @@ def test_unsubscribe():
     global callback_called_after_unsubscribe
     callback_called_after_unsubscribe = False
     
-    def callback():
+    def callback(event_name):
         global callback_called_after_unsubscribe
         callback_called_after_unsubscribe = True
     
     # 创建事件总线实例
-    event_bus = EventBus(verbose=True)
+    event_bus = EventBus()
     
     # 订阅事件
     event_bus.subscribe("unsubscribe.event", callback)
@@ -278,7 +281,7 @@ def test_args_passing():
     callback_args_received = None
     
     # 创建事件总线实例
-    event_bus = EventBus(verbose=True)
+    event_bus = EventBus()
     
     # 订阅事件
     event_bus.subscribe("args.event", callback_with_args)
@@ -306,7 +309,7 @@ def test_kwargs_passing():
     callback_kwargs_received = None
     
     # 创建事件总线实例
-    event_bus = EventBus(verbose=True)
+    event_bus = EventBus()
     
     # 订阅事件
     event_bus.subscribe("kwargs.event", callback_with_kwargs)
@@ -333,7 +336,7 @@ def test_mixed_args_passing():
     callback_mixed_received = None
     
     # 创建事件总线实例
-    event_bus = EventBus(verbose=True)
+    event_bus = EventBus()
     
     # 订阅事件
     event_bus.subscribe("mixed.event", callback_with_mixed)
@@ -367,16 +370,16 @@ def test_mixed_args_passing():
 def test_introspection_tools():
     """测试内省与调试工具"""
     # 创建事件总线实例
-    event_bus = EventBus(verbose=True)
+    event_bus = EventBus()
     
     # 记录测试开始前的事件列表
     events_before_test = set(event_bus.list_events())
     
     # 定义几个测试回调
-    def test_callback1():
+    def test_callback1(event_name):
         pass
     
-    def test_callback2():
+    def test_callback2(event_name):
         pass
     
     # 订阅几个事件
@@ -430,7 +433,7 @@ def test_error_handling():
     system_error_received = None
     
     # 创建事件总线实例
-    event_bus = EventBus(verbose=True)
+    event_bus = EventBus()
     
     # 订阅系统错误事件
     event_bus.subscribe("system.error", system_error_callback)
@@ -453,7 +456,7 @@ def test_error_handling():
             # 如果是字典，检查标准字段
             source_ok = error_context.get("source") == "event_bus"
             event_ok = error_context.get("event") == "error.event"
-            error_type_ok = error_context.get("error_type") == "event_callback"
+            error_type_ok = error_context.get("error_type") == "callback_error"
             error_message_ok = "测试异常" in error_context.get("error_message", "")
             
             if source_ok and event_ok and error_type_ok and error_message_ok:
@@ -482,8 +485,8 @@ def test_error_handling():
 def test_singleton_pattern():
     """测试单例模式验证"""
     # 创建两个事件总线实例
-    event_bus1 = EventBus(verbose=True)
-    event_bus2 = EventBus(verbose=True)
+    event_bus1 = EventBus()
+    event_bus2 = EventBus()
     
     # 它们应该是同一个对象
     is_same_instance = event_bus1 is event_bus2
@@ -508,7 +511,7 @@ def test_singleton_pattern():
 def test_no_subscribers():
     """测试发布没有订阅者的事件"""
     # 创建事件总线实例
-    event_bus = EventBus(verbose=True)
+    event_bus = EventBus()
     
     # 发布一个没有订阅者的事件
     # 这不应该引发错误
@@ -523,9 +526,9 @@ def test_no_subscribers():
 def test_duplicate_subscription():
     """测试重复订阅同一事件"""
     # 创建事件总线实例
-    event_bus = EventBus(verbose=True)
+    event_bus = EventBus()
     
-    def test_callback():
+    def test_callback(event_name):
         global duplicate_callback_call_count
         duplicate_callback_call_count += 1
     

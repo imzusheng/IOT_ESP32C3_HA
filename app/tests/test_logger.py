@@ -1,7 +1,10 @@
 # test_logger.py - Logger 全功能测试
 # 专为 MicroPython 环境设计，测试基于 ulogging 的日志系统
 import sys
-import utime as time
+try:
+    import utime as time
+except ImportError:
+    import time
 
 # MicroPython-compatible path handling
 try:
@@ -17,13 +20,19 @@ except Exception:
         sys.path.insert(0, '..')
 
 # 导入 logger 模块和相关依赖
+# EventBus dependency removed - Logger now works independently
 try:
-    from lib.logger import Logger, log, get_global_logger, set_global_logger, debug, info, warning, error, critical
-    from lib.event_bus import EventBus
-    from event_const import EVENT
+    from lib.logger import Logger, get_global_logger, set_global_logger, debug, info, warning, error, critical
 except ImportError:
     print("错误：无法导入Logger或相关模块。请确保文件在正确位置。")
     sys.exit(1)
+
+# Define log levels locally since EVENT constants are no longer needed
+class LogLevel:
+    DEBUG = 'DEBUG'
+    INFO = 'INFO'
+    WARN = 'WARN'
+    ERROR = 'ERROR'
 
 # 全局变量用于测试
 test_results = []
@@ -76,15 +85,14 @@ def test_logger_initialization():
         logger1 = Logger()
         
         # 测试指定级别初始化
-        logger2 = Logger(EVENT.LOG_DEBUG)
-        logger3 = Logger(EVENT.LOG_ERROR)
+        logger2 = Logger(LogLevel.DEBUG)
+        logger3 = Logger(LogLevel.ERROR)
         
-        # 验证实例是否创建成功
+        # 验证实例是否创建成功 - Logger现在独立工作，不依赖EventBus
         has_logger_attr = hasattr(logger1, '_logger')
         has_level_map = hasattr(logger1, '_level_map')
-        has_event_bus_ref = hasattr(logger1, '_event_bus')
         
-        if has_logger_attr and has_level_map and has_event_bus_ref:
+        if has_logger_attr and has_level_map:
             log_test_result("Logger初始化", True)
             return True
         else:
@@ -95,47 +103,39 @@ def test_logger_initialization():
         log_test_result("Logger初始化", False, f"初始化异常: {e}")
         return False
 
-def test_event_bus_setup():
-    """测试 Logger 与事件总线的集成"""
+def test_logger_basic_functionality():
+    """测试 Logger 基本功能"""
     try:
-        # 创建事件总线和日志器
-        event_bus = EventBus(verbose=True)
-        logger = Logger(EVENT.LOG_INFO)
+        # 创建日志器
+        logger = Logger(LogLevel.INFO)
         
-        # 设置事件总线
-        logger.setup(event_bus)
+        # 验证基本属性
+        has_logger_attr = hasattr(logger, '_logger')
+        has_level_map = hasattr(logger, '_level_map')
         
-        # 验证事件总线引用是否设置
-        bus_reference_set = logger._event_bus is event_bus
+        # 测试级别设置
+        logger.set_level(LogLevel.DEBUG)
+        level_set_correctly = logger._level == logger._level_map[LogLevel.DEBUG]
         
-        # 验证是否订阅了日志事件
-        has_debug_subscribers = event_bus.has_subscribers(EVENT.LOG_DEBUG)
-        has_info_subscribers = event_bus.has_subscribers(EVENT.LOG_INFO)
-        has_warn_subscribers = event_bus.has_subscribers(EVENT.LOG_WARN)
-        has_error_subscribers = event_bus.has_subscribers(EVENT.LOG_ERROR)
-        
-        # 等待事件订阅完成
-        time.sleep(0.1)
-        
-        if bus_reference_set and has_info_subscribers and has_warn_subscribers and has_error_subscribers:
-            log_test_result("事件总线集成", True)
+        if has_logger_attr and has_level_map and level_set_correctly:
+            log_test_result("Logger基本功能", True)
             return True
         else:
-            log_test_result("事件总线集成", False, 
-                           f"总线引用: {bus_reference_set}, 订阅状态: DEBUG={has_debug_subscribers}, INFO={has_info_subscribers}, WARN={has_warn_subscribers}, ERROR={has_error_subscribers}")
+            log_test_result("Logger基本功能", False, 
+                           f"属性检查: logger={has_logger_attr}, level_map={has_level_map}, level_set={level_set_correctly}")
             return False
             
     except Exception as e:
-        log_test_result("事件总线集成", False, f"集成异常: {e}")
+        log_test_result("Logger基本功能", False, f"功能测试异常: {e}")
         return False
 
 def test_log_level_setting():
     """测试日志级别设置功能"""
     try:
-        logger = Logger(EVENT.LOG_INFO)
+        logger = Logger(LogLevel.INFO)
         
         # 测试设置不同级别
-        test_levels = [EVENT.LOG_DEBUG, EVENT.LOG_INFO, EVENT.LOG_WARN, EVENT.LOG_ERROR]
+        test_levels = [LogLevel.DEBUG, LogLevel.INFO, LogLevel.WARN, LogLevel.ERROR]
         
         for level in test_levels:
             logger.set_level(level)
@@ -167,7 +167,7 @@ def test_direct_logging_methods():
         captured_logs.append((event_name, formatted_msg))
     
     try:
-        logger = Logger(EVENT.LOG_DEBUG)  # 设置为最低级别以捕获所有日志
+        logger = Logger(LogLevel.DEBUG)  # 设置为最低级别以捕获所有日志
         
         # 手动设置捕获回调
         logger._handle_log = capture_callback
@@ -203,55 +203,49 @@ def test_direct_logging_methods():
         log_test_result("直接日志记录方法", False, f"直接记录异常: {e}")
         return False
 
-def test_event_driven_logging():
-    """测试通过事件总线的日志记录"""
-    global event_driven_logs
-    event_driven_logs = []
+def test_logger_output_capture():
+    """测试 Logger 输出捕获"""
+    global captured_output
+    captured_output = []
     
-    def event_log_callback(event_name, msg, *args):
-        global event_driven_logs
-        try:
-            formatted_msg = msg.format(*args)
-        except:
-            formatted_msg = msg
-        event_driven_logs.append((event_name, formatted_msg))
+    def capture_print(*args, **kwargs):
+        global captured_output
+        if args:
+            captured_output.append(str(args[0]))
     
     try:
-        # 创建事件总线和日志器
-        event_bus = EventBus(verbose=True)
+        # 创建日志器
         logger = Logger(EVENT.LOG_DEBUG)
         
-        # 替换处理方法以捕获日志
-        logger._handle_log = event_log_callback
+        # 临时替换 print 函数来捕获输出
+        import builtins
+        original_print = builtins.print
+        builtins.print = capture_print
         
-        # 设置事件总线
-        logger.setup(event_bus)
-        
-        # 通过事件总线发布日志事件
-        test_events = [
-            (EVENT.LOG_DEBUG, "事件调试: {}", "调试参数"),
-            (EVENT.LOG_INFO, "事件信息: {}", "信息参数"),
-            (EVENT.LOG_WARN, "事件警告: {}", "警告参数"),
-            (EVENT.LOG_ERROR, "事件错误: {}", "错误参数")
-        ]
-        
-        for event, msg, arg in test_events:
-            event_bus.publish(event, msg, arg)
-        
-        # 等待异步事件处理完成
-        time.sleep(0.2)
-        
-        # 验证是否收到了所有事件驱动的日志
-        if len(event_driven_logs) >= len(test_events):
-            log_test_result("事件驱动日志记录", True)
-            return True
-        else:
-            log_test_result("事件驱动日志记录", False, 
-                           f"期望 {len(test_events)} 条日志，实际收到 {len(event_driven_logs)} 条")
-            return False
+        try:
+            # 测试各种日志级别
+            logger.debug("调试消息: {}", "调试参数")
+            logger.info("信息消息: {}", "信息参数")
+            logger.warning("警告消息: {}", "警告参数")
+            logger.error("错误消息: {}", "错误参数")
+            
+            # 等待处理完成
+            time.sleep(0.1)
+            
+            # 验证是否捕获了输出
+            if len(captured_output) >= 4:
+                log_test_result("Logger输出捕获", True)
+                return True
+            else:
+                log_test_result("Logger输出捕获", False, 
+                               f"期望至少4条输出，实际捕获 {len(captured_output)} 条")
+                return False
+        finally:
+            # 恢复原始 print 函数
+            builtins.print = original_print
             
     except Exception as e:
-        log_test_result("事件驱动日志记录", False, f"事件驱动记录异常: {e}")
+        log_test_result("Logger输出捕获", False, f"输出捕获异常: {e}")
         return False
 
 def test_log_message_formatting():
@@ -268,7 +262,7 @@ def test_log_message_formatting():
         formatting_logs.append(formatted_msg)
     
     try:
-        logger = Logger(EVENT.LOG_INFO)
+        logger = Logger(LogLevel.INFO)
         logger._handle_log = formatting_callback
         
         # 测试不同类型的格式化
@@ -323,17 +317,17 @@ def test_log_level_filtering():
     
     try:
         # 创建INFO级别的日志器
-        logger = Logger(EVENT.LOG_INFO)
+        logger = Logger(LogLevel.INFO)
     
         # 通过替换底层 ulogging 的方法来捕获真正通过过滤的日志调用
         def dbg(msg):
-            filtered_logs.append(EVENT.LOG_DEBUG)
+            filtered_logs.append(LogLevel.DEBUG)
         def inf(msg):
-            filtered_logs.append(EVENT.LOG_INFO)
+            filtered_logs.append(LogLevel.INFO)
         def warn(msg):
-            filtered_logs.append(EVENT.LOG_WARN)
+            filtered_logs.append(LogLevel.WARN)
         def err(msg):
-            filtered_logs.append(EVENT.LOG_ERROR)
+            filtered_logs.append(LogLevel.ERROR)
     
         # 替换底层记录器的方法（不替换 _handle_log，保留其级别过滤逻辑）
         logger._logger.debug = dbg
@@ -351,10 +345,10 @@ def test_log_level_filtering():
         time.sleep(0.1)
     
         # 验证过滤结果：只有INFO、WARNING、ERROR应该通过
-        expected_events = [EVENT.LOG_INFO, EVENT.LOG_WARN, EVENT.LOG_ERROR]
+        expected_events = [LogLevel.INFO, LogLevel.WARN, LogLevel.ERROR]
     
         # 检查是否只包含期望的事件，且DEBUG被过滤
-        has_debug = EVENT.LOG_DEBUG in filtered_logs
+        has_debug = LogLevel.DEBUG in filtered_logs
         has_expected = all(event in filtered_logs for event in expected_events)
     
         if not has_debug and has_expected:
@@ -380,7 +374,7 @@ def test_global_logger_functions():
         is_same_instance = global_logger1 is global_logger2
         
         # 测试设置全局日志器
-        custom_logger = Logger(EVENT.LOG_DEBUG)
+        custom_logger = Logger(LogLevel.DEBUG)
         set_global_logger(custom_logger)
         
         global_logger3 = get_global_logger()
@@ -412,48 +406,59 @@ def test_global_logger_functions():
         log_test_result("全局日志函数", False, f"全局函数异常: {e}")
         return False
 
-def test_log_helper_function():
-    """测试 log 辅助函数"""
+def test_direct_logger_methods():
+    """测试直接调用 Logger 方法"""
     global helper_logs
     helper_logs = []
     
-    def helper_callback(event_name, msg, *args):
+    def capture_output(msg):
         global helper_logs
-        helper_logs.append((event_name, msg, args))
+        helper_logs.append(msg)
     
     try:
-        # 创建事件总线
-        event_bus = EventBus(verbose=True)
+        # 创建 Logger 实例
+        logger = Logger(LogLevel.INFO)
         
-        # 替换发布方法来捕获
-        event_bus.publish = helper_callback
+        # 重定向输出来捕获日志
+        import sys
+        original_print = print
         
-        # 使用 log 辅助函数
-        log(event_bus, EVENT.LOG_INFO, "辅助函数测试: {}", "参数值")
+        def mock_print(*args, **kwargs):
+            if args:
+                capture_output(str(args[0]))
         
-        # 等待处理完成
-        time.sleep(0.1)
+        # 临时替换 print 函数
+        import builtins
+        builtins.print = mock_print
         
-        # 验证是否正确调用
-        if len(helper_logs) > 0:
-            event_name, msg, args = helper_logs[0]
-            if (event_name == EVENT.LOG_INFO and 
-                "辅助函数测试" in msg and 
-                args == ("参数值",)):
-                log_test_result("log 辅助函数", True)
-                return True
-        
-        log_test_result("log 辅助函数", False, f"辅助函数调用失败，捕获: {helper_logs}")
-        return False
+        try:
+            # 直接调用 logger 方法
+            logger.info("直接调用测试: {}", "参数值")
+            
+            # 等待处理完成
+            time.sleep(0.1)
+            
+            # 验证是否正确输出
+            if len(helper_logs) > 0:
+                output = helper_logs[0]
+                if "直接调用测试: 参数值" in output:
+                    log_test_result("直接 Logger 方法调用", True)
+                    return True
+            
+            log_test_result("直接 Logger 方法调用", False, f"输出失败，捕获: {helper_logs}")
+            return False
+        finally:
+            # 恢复原始 print 函数
+            builtins.print = original_print
         
     except Exception as e:
-        log_test_result("log 辅助函数", False, f"辅助函数异常: {e}")
+        log_test_result("直接 Logger 方法调用", False, f"调用异常: {e}")
         return False
 
 def test_error_handling():
     """测试日志系统的错误处理"""
     try:
-        logger = Logger(EVENT.LOG_INFO)
+        logger = Logger(LogLevel.INFO)
         
         # 测试格式化错误的处理
         error_count = 0
@@ -527,14 +532,14 @@ def run_all_tests():
     
     # 运行所有测试
     test_logger_initialization()
-    test_event_bus_setup()
+    test_logger_basic_functionality()
     test_log_level_setting()
     test_direct_logging_methods()
-    test_event_driven_logging()
+    test_logger_output_capture()
     test_log_message_formatting()
     test_log_level_filtering()
     test_global_logger_functions()
-    test_log_helper_function()
+    test_direct_logger_methods()
     test_error_handling()
     
     # 打印测试摘要
