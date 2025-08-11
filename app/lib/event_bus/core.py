@@ -17,7 +17,7 @@ except ImportError:
     try:
         from ..mock_machine import Timer
     except ImportError:
-        print("无法导入Timer模块")
+        print("警告：无法导入Timer模块")
         Timer = None
 
 from .events_const import EVENTS, is_high_priority_event
@@ -313,15 +313,17 @@ class EventBus:
     def get_stats(self):
         """获取统计信息"""
         queue_stats = self.event_queue.get_stats()
-        return {
+        stats = {
             'event_types': len(self.subscribers),
             'total_subscribers': sum(len(cbs) for cbs in self.subscribers.values()),
             'processed_count': self._processed_count,
             'error_count': self._error_count,
             'system_status': self._system_status,
             'timer_active': self._timer is not None,
-            **queue_stats  # 包含队列统计
         }
+        # 合并队列统计信息
+        stats.update(queue_stats)
+        return stats
 
     def _print_stats(self):
         """输出统计信息"""
