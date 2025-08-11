@@ -14,7 +14,7 @@ from lib.event_bus import EventBus
 from lib.object_pool import ObjectPoolManager
 from lib.static_cache import StaticCache
 from lib.logger import Logger, set_global_logger
-from event_const import EVENT
+from lib.event_bus import EVENTS
 from fsm import SystemFSM
 from net.wifi import WifiManager
 from net.mqtt import MqttController
@@ -107,38 +107,36 @@ class MainController:
     def _subscribe_system_events(self):
         """订阅系统级事件，处理 NTP 同步、连接状态等"""
         
-        # NTP 时间同步事件
-        self.event_bus.subscribe(EVENT.NTP_SYNC_STARTED, self._on_ntp_sync_started)
-        self.event_bus.subscribe(EVENT.NTP_SYNC_SUCCESS, self._on_ntp_sync_success)
-        self.event_bus.subscribe(EVENT.NTP_SYNC_FAILED, self._on_ntp_sync_failed)
+        # NTP 时间同步状态变化事件
+        self.event_bus.subscribe(EVENTS.NTP_STATE_CHANGE, self._on_ntp_state_change)
         
         # 系统状态事件（仅用于监控和日志记录）
-        self.event_bus.subscribe(EVENT.SYSTEM_ERROR, self._on_system_error)
-        self.event_bus.subscribe(EVENT.SYSTEM_WARNING, self._on_system_warning)
+        self.event_bus.subscribe(EVENTS.SYSTEM_ERROR, self._on_system_error)
+        self.event_bus.subscribe(EVENTS.SYSTEM_STATE_CHANGE, self._on_system_state_change)
         
         self.logger.info("系统事件订阅已注册", module="Main")
     
     # =================== NTP 时间同步事件处理 ===================
-    def _on_ntp_sync_started(self, event_name, ntp_server=None):
-        """处理 NTP 同步开始事件"""
-        self.logger.info("开始NTP时间同步: {}", ntp_server or 'default', module="Main")
-    
-    def _on_ntp_sync_success(self, event_name, ntp_server=None, attempts=None, timestamp=None):
-        """处理 NTP 同步成功事件"""
-        self.logger.info("NTP时间同步成功！服务器: {}, 尝试次数: {}", 
-                        ntp_server or 'unknown', attempts or 'unknown', module="Main")
-    
-    def _on_ntp_sync_failed(self, event_name, ntp_server=None, attempts=None, error=None):
-        """处理 NTP 同步失败事件"""
-        if isinstance(error, Exception):
-            error_msg = str(error)
-        else:
-            error_msg = error or "未知错误"
-        
-        msg = f"NTP同步失败，尝试次数: {attempts}。错误: {error_msg}"
-        self.logger.warning(msg, module="Main")
-        
-        # 移除重复的时间更新日志
+    def _on_ntp_state_change(self, event_name, state, **kwargs):
+        """处理 NTP 状态变化事件"""
+        if state == 'started':
+            ntp_server = kwargs.get('ntp_server', 'default')
+            self.logger.info("开始NTP时间同步: {}", ntp_server, module="Main")
+        elif state == 'success':
+            ntp_server = kwargs.get('ntp_server', 'unknown')
+            attempts = kwargs.get('attempts', 'unknown')
+            self.logger.info("NTP时间同步成功！服务器: {}, 尝试次数: {}", 
+                            ntp_server, attempts, module="Main")
+        elif state == 'failed':
+            attempts = kwargs.get('attempts')
+            error = kwargs.get('error')
+            if isinstance(error, Exception):
+                error_msg = str(error)
+            else:
+                error_msg = error or "未知错误"
+            
+            msg = f"NTP同步失败，尝试次数: {attempts}。错误: {error_msg}"
+            self.logger.warning(msg, module="Main")
     
     # =================== WiFi 连接事件处理 ===================
         
@@ -174,10 +172,25 @@ class MainController:
             msg = f"系统错误 ({error_type or '未知类型'}): {error_msg or '未知错误'}"
             self.logger.error(msg, module="Main")
     
-    def _on_system_warning(self, event_name, warning_msg=None):
-        """处理系统警告事件"""
-        msg = f"系统警告: {warning_msg or '未知警告'}"
-        self.logger.warning(msg, module="Main")
+    def _on_system_state_change(self, event_name, state, **kwargs):
+        """处理系统状态变化事件"""
+        if state == 'warning':
+            warning_msg = kwargs.get('warning_msg', '未知警告')
+            msg = f"系统警告: {warning_msg}"
+            self.logger.warning(msg, module="Main")
+        elif state == 'queue_full_warning':
+            queue_usage = kwargs.get('queue_usage', 0)
+            msg = f"事件队列使用率过高: {int(queue_usage * 100)}%"
+            self.logger.warning(msg, module="Main")
+        elif state == 'shutdown':
+            error_context = kwargs.get('error_context')
+            self.logger.critical("触发系统关机！", module="Main")
+            if error_context:
+                self.logger.critical(f"关机原因: {error_context}", module="Main")
+            self.emergency_cleanup()
+        else:
+            # 处理其他系统状态变化
+            self.logger.info(f"系统状态变化: {state}", module="Main")
     
     def on_emergency_shutdown(self, event_name, error_context=None):
         """处理紧急关机事件"""

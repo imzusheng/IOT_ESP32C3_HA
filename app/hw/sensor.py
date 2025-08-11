@@ -16,7 +16,7 @@ ESP32-C3传感器管理器 (重构版本)
 import utime as time
 from lib.object_pool import ObjectPoolManager
 from lib.logger import get_global_logger
-from event_const import EVENT
+from lib.event_bus import EVENTS
 import gc
 
 class SensorManager:
@@ -158,7 +158,7 @@ class SensorManager:
             if value is not None:
                 # 检查是否应该发布（数据变化检测和频率限制）
                 if self._should_publish_sensor_data(sensor_id, value):
-                    self.event_bus.publish(EVENT.SENSOR_DATA, sensor_id, value)
+                    self.event_bus.publish(EVENTS.SENSOR_DATA, sensor_id, value)
                     # 更新发布记录
                     self.last_published_data[sensor_id] = value
                     self.last_publish_time[sensor_id] = time.ticks_ms()
@@ -365,7 +365,7 @@ class ExternalSensorManager:
                 # 保持事件签名一致
                 # 检查是否应该发布（数据变化检测和频率限制）
                 if self._should_publish_sensor_data(sensor_id, data):
-                    self.event_bus.publish(EVENT.SENSOR_DATA, sensor_id, data)
+                    self.event_bus.publish(EVENTS.SENSOR_DATA, sensor_id, data)
                     # 更新发布记录
                     self.last_published_data[sensor_id] = data
                     self.last_publish_time[sensor_id] = time.ticks_ms()

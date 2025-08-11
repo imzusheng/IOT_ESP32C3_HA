@@ -41,7 +41,7 @@ from ..logger import get_global_logger
 # 配置常量 - 提取硬编码值便于维护
 CONFIG = {
     'QUEUE_SIZE': 64,             # 事件队列最大大小
-    'HIGH_PRIORITY_TICK_MS': 20,  # 高优先级队列处理间隔(ms)
+    'HIGH_PRIORITY_TICK_MS': 50,  # 高优先级队列处理间隔(ms)
     'THROTTLE_MS': 500,           # 事件节流时间(ms)
     'STATS_INTERVAL': 30,         # 统计信息输出间隔(秒)
     'HIGH_PRIORITY_TIMER_ID': 0,  # 高优先级硬件定时器ID
@@ -50,18 +50,17 @@ CONFIG = {
 
 # 高优先级事件列表 - 使用硬件定时器处理
 HIGH_PRIORITY_EVENTS = {
-    EVENTS.SYSTEM_STATE_CHANGE,
-    EVENTS.SYSTEM_ERROR,  # 合并后的系统错误事件
-    EVENTS.QUEUE_FULL_WARNING,
-    EVENTS.WIFI_STATE_CHANGE,
-    EVENTS.MQTT_STATE_CHANGE,
-    EVENTS.NTP_STATE_CHANGE,
+    EVENTS.SYSTEM_ERROR,  # 系统错误事件
+    EVENTS.SYSTEM_STATE_CHANGE,  # 系统状态变化事件（包括shutdown等）
 }
 
 # 低优先级事件列表 - 使用软件轮询处理
 LOW_PRIORITY_EVENTS = {
     EVENTS.MQTT_MESSAGE,
     EVENTS.SENSOR_DATA,
+    EVENTS.WIFI_STATE_CHANGE,
+    EVENTS.MQTT_STATE_CHANGE,
+    EVENTS.NTP_STATE_CHANGE,
 }
 
 class EventBus:
@@ -227,14 +226,11 @@ class EventBus:
                     if self._high_q_len < self._queue_size // 2:
                         self._high_priority_queue.append((
                             EVENTS.SYSTEM_ERROR, 
-                            (), 
+                            ('callback_error',), 
                             {
-                                'error_type': 'callback_error',
-                                'error_context': {
-                                    'error': str(e),
-                                    'event': event_name,
-                                    'callback': callback.__name__ if hasattr(callback, '__name__') else str(callback)
-                                }
+                                'error': str(e),
+                                'event': event_name,
+                                'callback': callback.__name__ if hasattr(callback, '__name__') else str(callback)
                             }
                         ))
                         self._high_q_len += 1
@@ -261,11 +257,8 @@ class EventBus:
         total_queue_len = self._high_q_len + self._low_q_len
         if total_queue_len >= self._queue_size and not self._queue_full_warned:
             self._queue_full_warned = True
-            # 发布队列满警告事件
-            self._high_priority_queue.append((EVENTS.QUEUE_FULL_WARNING, ('WARN',), {}))
-            self._high_q_len += 1
-            # 设置系统状态为WARN
-            self._high_priority_queue.append((EVENTS.SYSTEM_STATE_CHANGE, ('WARN',), {}))
+            # 发布系统状态变化事件 - 队列满警告
+            self._high_priority_queue.append((EVENTS.SYSTEM_STATE_CHANGE, ('queue_full_warning',), {'queue_usage': total_queue_len / self._queue_size}))
             self._high_q_len += 1
         elif total_queue_len < self._queue_size * 0.8:  # 队列使用率低于80%时重置警告
             self._queue_full_warned = False

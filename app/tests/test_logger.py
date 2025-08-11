@@ -23,6 +23,7 @@ except Exception:
 # EventBus dependency removed - Logger now works independently
 try:
     from lib.logger import Logger, get_global_logger, set_global_logger, debug, info, warning, error, critical
+    from lib.event_bus import EVENTS
 except ImportError:
     print("错误：无法导入Logger或相关模块。请确保文件在正确位置。")
     sys.exit(1)
@@ -215,7 +216,7 @@ def test_logger_output_capture():
     
     try:
         # 创建日志器
-        logger = Logger(EVENT.LOG_DEBUG)
+        logger = Logger(EVENTS.LOG_DEBUG)
         
         # 临时替换 print 函数来捕获输出
         import builtins

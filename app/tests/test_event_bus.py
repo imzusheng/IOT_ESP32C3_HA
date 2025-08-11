@@ -23,6 +23,7 @@ except Exception:
 # Import EventBus module
 try:
     from lib.event_bus import EventBus
+    from lib.event_bus.events_const import EVENTS
 except ImportError:
     print("错误：无法导入EventBus。请确保event_bus包在正确位置。")
     sys.exit(1)
@@ -436,7 +437,7 @@ def test_error_handling():
     event_bus = EventBus()
     
     # 订阅系统错误事件
-    event_bus.subscribe("system.error", system_error_callback)
+    event_bus.subscribe(EVENTS.SYSTEM_ERROR, system_error_callback)
     
     # 订阅一个会抛出异常的事件
     event_bus.subscribe("error.event", error_callback)

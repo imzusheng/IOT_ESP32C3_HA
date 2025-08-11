@@ -4,7 +4,12 @@ try:
 except ImportError:
     from lib.lock import ulogging
 
-from event_const import EVENT
+# 日志级别常量定义
+class LOG_LEVELS:
+    DEBUG = 0
+    INFO = 1
+    WARN = 2
+    ERROR = 3
 
 class Logger:
     """
@@ -27,7 +32,7 @@ class Logger:
     - 标准化日志格式
     
     使用方法:
-    1. 创建 Logger 实例：logger = Logger(level=EVENT.LOG_INFO)
+    1. 创建 Logger 实例：logger = Logger(level=EVENTS.LOG_INFO)
     2. 直接使用日志方法：logger.info("消息", module="模块名")
     """
     
@@ -61,21 +66,21 @@ class Logger:
         'config': 'Config'
     }
     
-    def __init__(self, level=EVENT.LOG_INFO, config=None):
+    def __init__(self, level=LOG_LEVELS.INFO, config=None):
         # ulogging 级别映射
         self._ulogging_level_map = {
-            EVENT.LOG_DEBUG: ulogging.DEBUG,
-            EVENT.LOG_INFO: ulogging.INFO,
-            EVENT.LOG_WARN: ulogging.WARNING,
-            EVENT.LOG_ERROR: ulogging.ERROR,
+            LOG_LEVELS.DEBUG: ulogging.DEBUG,
+            LOG_LEVELS.INFO: ulogging.INFO,
+            LOG_LEVELS.WARN: ulogging.WARNING,
+            LOG_LEVELS.ERROR: ulogging.ERROR,
         }
         
         # 兼容原有的级别映射
         self._level_map = {
-            EVENT.LOG_DEBUG: 0,
-            EVENT.LOG_INFO: 1,
-            EVENT.LOG_WARN: 2,
-            EVENT.LOG_ERROR: 3,
+            LOG_LEVELS.DEBUG: 0,
+            LOG_LEVELS.INFO: 1,
+            LOG_LEVELS.WARN: 2,
+            LOG_LEVELS.ERROR: 3,
         }
         
         # 创建 ulogging 实例
@@ -132,7 +137,7 @@ class Logger:
     def set_level(self, new_level):
         """
         设置新的日志记录级别。
-        :param new_level: 来自 EVENT 的日志级别常量
+        :param new_level: 来自 EVENTS 的日志级别常量
         """
         # 设置兼容的级别
         self._level = self._level_map.get(new_level, 1)
@@ -190,10 +195,10 @@ class Logger:
     def _get_level_name(self, event_name):
         """获取日志级别名称"""
         level_map = {
-            EVENT.LOG_DEBUG: 'DEBUG',
-            EVENT.LOG_INFO: 'INFO',
-            EVENT.LOG_WARN: 'WARN',
-            EVENT.LOG_ERROR: 'ERROR'
+            LOG_LEVELS.DEBUG: 'DEBUG',
+            LOG_LEVELS.INFO: 'INFO',
+            LOG_LEVELS.WARN: 'WARN',
+            LOG_LEVELS.ERROR: 'ERROR'
         }
         return level_map.get(event_name, 'INFO')
     
@@ -315,33 +320,33 @@ class Logger:
         """直接记录调试日志"""
         handler = self._handle_log
         if handler is self._default_handle_log:
-            handler(EVENT.LOG_DEBUG, msg, *args, module=module)
+            handler(LOG_LEVELS.DEBUG, msg, *args, module=module)
         else:
-            self._invoke_handler_compat(handler, EVENT.LOG_DEBUG, msg, args, module)
+            self._invoke_handler_compat(handler, LOG_LEVELS.DEBUG, msg, args, module)
         
     def info(self, msg, *args, module=None):
         """直接记录信息日志"""
         handler = self._handle_log
         if handler is self._default_handle_log:
-            handler(EVENT.LOG_INFO, msg, *args, module=module)
+            handler(LOG_LEVELS.INFO, msg, *args, module=module)
         else:
-            self._invoke_handler_compat(handler, EVENT.LOG_INFO, msg, args, module)
+            self._invoke_handler_compat(handler, LOG_LEVELS.INFO, msg, args, module)
         
     def warning(self, msg, *args, module=None):
         """直接记录警告日志"""
         handler = self._handle_log
         if handler is self._default_handle_log:
-            handler(EVENT.LOG_WARN, msg, *args, module=module)
+            handler(LOG_LEVELS.WARN, msg, *args, module=module)
         else:
-            self._invoke_handler_compat(handler, EVENT.LOG_WARN, msg, args, module)
+            self._invoke_handler_compat(handler, LOG_LEVELS.WARN, msg, args, module)
         
     def error(self, msg, *args, module=None):
         """直接记录错误日志"""
         handler = self._handle_log
         if handler is self._default_handle_log:
-            handler(EVENT.LOG_ERROR, msg, *args, module=module)
+            handler(LOG_LEVELS.ERROR, msg, *args, module=module)
         else:
-            self._invoke_handler_compat(handler, EVENT.LOG_ERROR, msg, args, module)
+            self._invoke_handler_compat(handler, LOG_LEVELS.ERROR, msg, args, module)
         
     def critical(self, msg, *args, module=None):
         """直接记录严重错误日志"""

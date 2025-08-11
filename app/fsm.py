@@ -10,7 +10,7 @@
 import utime as time
 import gc
 import machine  # 导入 machine 模块
-from event_const import EVENT
+from lib.event_bus import EVENTS
 from lib.object_pool import ObjectPoolManager
 from lib.static_cache import StaticCache
 from lib.logger import info, error, warning
@@ -99,46 +99,35 @@ class SystemFSM:
         """构建状态转换表"""
         return {
             SystemState.BOOT: {
-                EVENT.SYSTEM_BOOT: SystemState.INIT
+                EVENTS.SYSTEM_STATE_CHANGE: SystemState.INIT
             },
             SystemState.INIT: {
-                EVENT.SYSTEM_INIT: SystemState.NETWORKING,
-                EVENT.SYSTEM_ERROR: SystemState.ERROR
+                EVENTS.SYSTEM_STATE_CHANGE: SystemState.NETWORKING,
+                EVENTS.SYSTEM_ERROR: SystemState.ERROR
             },
             SystemState.NETWORKING: {
-                EVENT.WIFI_CONNECTED: SystemState.RUNNING,
-                EVENT.WIFI_DISCONNECTED: SystemState.WARNING,
-                EVENT.SYSTEM_ERROR: SystemState.ERROR
+                EVENTS.WIFI_STATE_CHANGE: [SystemState.RUNNING, SystemState.WARNING],
+                EVENTS.SYSTEM_ERROR: SystemState.ERROR
             },
             SystemState.RUNNING: {
-                EVENT.WIFI_DISCONNECTED: SystemState.NETWORKING,
-                EVENT.MQTT_DISCONNECTED: SystemState.WARNING,
-                EVENT.SYSTEM_WARNING: SystemState.WARNING,
-                EVENT.SYSTEM_ERROR: SystemState.ERROR,
-                EVENT.MEMORY_CRITICAL: SystemState.SAFE_MODE
+                EVENTS.WIFI_STATE_CHANGE: SystemState.NETWORKING,
+                EVENTS.MQTT_STATE_CHANGE: SystemState.WARNING,
+                EVENTS.SYSTEM_STATE_CHANGE: [SystemState.WARNING, SystemState.ERROR, SystemState.SAFE_MODE]
             },
             SystemState.WARNING: {
-                EVENT.WIFI_CONNECTED: SystemState.RUNNING,
-                EVENT.MQTT_CONNECTED: SystemState.RUNNING,
-                EVENT.SYSTEM_ERROR: SystemState.ERROR,
-                EVENT.MEMORY_CRITICAL: SystemState.SAFE_MODE,
-                EVENT.RECOVERY_SUCCESS: SystemState.RUNNING
+                EVENTS.WIFI_STATE_CHANGE: SystemState.RUNNING,
+                EVENTS.MQTT_STATE_CHANGE: SystemState.RUNNING,
+                EVENTS.SYSTEM_ERROR: SystemState.ERROR,
+                EVENTS.SYSTEM_STATE_CHANGE: [SystemState.RUNNING, SystemState.ERROR, SystemState.SAFE_MODE]
             },
             SystemState.ERROR: {
-                EVENT.RECOVERY_SUCCESS: SystemState.WARNING,
-                EVENT.RECOVERY_FAILED: SystemState.SAFE_MODE,
-                EVENT.MEMORY_CRITICAL: SystemState.SAFE_MODE,
-                EVENT.SYSTEM_SHUTDOWN: SystemState.SHUTDOWN
+                EVENTS.SYSTEM_STATE_CHANGE: [SystemState.WARNING, SystemState.SAFE_MODE, SystemState.SHUTDOWN]
             },
             SystemState.SAFE_MODE: {
-                EVENT.RECOVERY_SUCCESS: SystemState.WARNING,
-                EVENT.SYSTEM_SHUTDOWN: SystemState.SHUTDOWN
+                EVENTS.SYSTEM_STATE_CHANGE: [SystemState.WARNING, SystemState.SHUTDOWN]
             },
             SystemState.RECOVERY: {
-                EVENT.RECOVERY_SUCCESS: SystemState.RUNNING,
-                EVENT.RECOVERY_FAILED: SystemState.SAFE_MODE,
-                EVENT.SYSTEM_ERROR: SystemState.ERROR,
-                EVENT.MEMORY_CRITICAL: SystemState.SAFE_MODE
+                EVENTS.SYSTEM_STATE_CHANGE: [SystemState.RUNNING, SystemState.SAFE_MODE, SystemState.ERROR]
             },
             SystemState.SHUTDOWN: {}  # 终止状态
         }
@@ -146,18 +135,11 @@ class SystemFSM:
     def _subscribe_events(self):
         """订阅事件"""
         events_to_subscribe = [
-            EVENT.SYSTEM_BOOT,
-            EVENT.SYSTEM_INIT,
-            EVENT.SYSTEM_ERROR,
-            EVENT.SYSTEM_WARNING,
-            EVENT.MEMORY_CRITICAL,
-            EVENT.WIFI_CONNECTED,
-            EVENT.WIFI_DISCONNECTED,
-            EVENT.MQTT_CONNECTED,
-            EVENT.MQTT_DISCONNECTED,
-            EVENT.RECOVERY_SUCCESS,
-            EVENT.RECOVERY_FAILED,
-            EVENT.SYSTEM_SHUTDOWN
+            EVENTS.SYSTEM_STATE_CHANGE,
+            EVENTS.SYSTEM_ERROR,
+            EVENTS.WIFI_STATE_CHANGE,
+            EVENTS.MQTT_STATE_CHANGE,
+            EVENTS.NTP_STATE_CHANGE
         ]
         
         for event in events_to_subscribe:
@@ -166,9 +148,54 @@ class SystemFSM:
     def _handle_event(self, event_name, *args, **kwargs):
         """处理事件"""
         if event_name in self.transition_table.get(self.current_state, {}):
-            new_state = self.transition_table[self.current_state][event_name]
+            new_state_config = self.transition_table[self.current_state][event_name]
+            
+            # 根据事件参数确定具体的状态转换
+            new_state = self._determine_target_state(event_name, new_state_config, *args, **kwargs)
+            
             if new_state:
-                self.transition_to(new_state, f"事件: {event_name}")
+                reason = f"事件: {event_name}"
+                if 'state' in kwargs:
+                    reason += f" (状态: {kwargs['state']})"
+                self.transition_to(new_state, reason)
+    
+    def _determine_target_state(self, event_name, new_state_config, *args, **kwargs):
+        """根据事件参数确定目标状态"""
+        if isinstance(new_state_config, list):
+            # 根据事件参数确定具体状态
+            if event_name == EVENTS.WIFI_STATE_CHANGE:
+                state = kwargs.get('state', '')
+                if state == 'connected':
+                    return SystemState.RUNNING if SystemState.RUNNING in new_state_config else new_state_config[0]
+                elif state == 'disconnected':
+                    return SystemState.WARNING if SystemState.WARNING in new_state_config else SystemState.NETWORKING
+            elif event_name == EVENTS.MQTT_STATE_CHANGE:
+                state = kwargs.get('state', '')
+                if state == 'connected':
+                    return SystemState.RUNNING if SystemState.RUNNING in new_state_config else new_state_config[0]
+                elif state == 'disconnected':
+                    return SystemState.WARNING if SystemState.WARNING in new_state_config else new_state_config[0]
+            elif event_name == EVENTS.SYSTEM_STATE_CHANGE:
+                state = kwargs.get('state', '')
+                if state in ['warning']:
+                    return SystemState.WARNING if SystemState.WARNING in new_state_config else new_state_config[0]
+                elif state in ['error']:
+                    return SystemState.ERROR if SystemState.ERROR in new_state_config else new_state_config[0]
+                elif state in ['recovery_success']:
+                    return SystemState.RUNNING if SystemState.RUNNING in new_state_config else SystemState.WARNING
+                elif state in ['recovery_failed']:
+                    return SystemState.SAFE_MODE if SystemState.SAFE_MODE in new_state_config else new_state_config[0]
+                elif state in ['shutdown']:
+                    return SystemState.SHUTDOWN if SystemState.SHUTDOWN in new_state_config else new_state_config[0]
+                elif state in ['boot_complete']:
+                    return SystemState.INIT if SystemState.INIT in new_state_config else new_state_config[0]
+                elif state in ['init_complete']:
+                    return SystemState.NETWORKING if SystemState.NETWORKING in new_state_config else new_state_config[0]
+            # 默认返回列表中的第一个状态
+            return new_state_config[0]
+        else:
+            # 单一状态直接返回
+            return new_state_config
     
     def transition_to(self, new_state, reason=""):
         """转换到新状态"""
@@ -301,20 +328,20 @@ class SystemFSM:
                 handler()
             except Exception as e:
                 error("状态{}的处理器出错: {}", self.current_state, e, module="FSM")
-                self.event_bus.publish(EVENT.SYSTEM_ERROR, str(e))
+                self.event_bus.publish(EVENTS.SYSTEM_ERROR, str(e))
     
     # 状态处理器
     def _handle_boot_state(self):
         """启动状态处理"""
         # 等待系统启动完成
         if self.state_duration > 1000:  # 1秒后进入初始化
-            self.event_bus.publish(EVENT.SYSTEM_BOOT)
+            self.event_bus.publish(EVENTS.SYSTEM_STATE_CHANGE, state='boot_complete')
     
     def _handle_init_state(self):
         """初始化状态处理"""
         # 初始化各模块
         if self.state_duration > 2000:  # 2秒后开始网络连接
-            self.event_bus.publish(EVENT.SYSTEM_INIT)
+            self.event_bus.publish(EVENTS.SYSTEM_STATE_CHANGE, state='init_complete')
     
     def _handle_networking_state(self):
         """网络连接状态处理"""
@@ -366,14 +393,14 @@ class SystemFSM:
         # 尝试自动恢复
         if self.state_duration > 30000:  # 30秒后尝试恢复
             info("尝试从警告状态恢复", module="FSM")
-            self.event_bus.publish(EVENT.RECOVERY_SUCCESS)
+            self.event_bus.publish(EVENTS.SYSTEM_STATE_CHANGE, state='recovery_success')
     
     def _handle_error_state(self):
         """错误状态处理"""
         # 尝试恢复
         if self.state_duration > 15000:  # 15秒后尝试恢复
             info("尝试从错误状态恢复", module="FSM")
-            self.event_bus.publish(EVENT.RECOVERY_SUCCESS)
+            self.event_bus.publish(EVENTS.SYSTEM_STATE_CHANGE, state='recovery_success')
     
     def _handle_safe_mode_state(self):
         """安全模式处理"""
@@ -387,7 +414,7 @@ class SystemFSM:
         # 恢复处理
         if self.state_duration > 10000:  # 10秒后恢复完成
             info("恢复完成", module="FSM")
-            self.event_bus.publish(EVENT.RECOVERY_SUCCESS)
+            self.event_bus.publish(EVENTS.SYSTEM_STATE_CHANGE, state='recovery_success')
     
     def _handle_shutdown_state(self):
         """关机状态处理"""
@@ -405,7 +432,7 @@ class SystemFSM:
             memory_threshold = self.config.get('daemon', {}).get('memory_threshold', 80)
             if mem_percent > memory_threshold:
                 warning("高内存使用率: {:.1f}%", mem_percent, module="FSM")
-                self.event_bus.publish(EVENT.SYSTEM_WARNING, f"高内存使用: {mem_percent:.1f}%")
+                self.event_bus.publish(EVENTS.SYSTEM_STATE_CHANGE, state='warning', warning_msg=f"高内存使用: {mem_percent:.1f}%")
             
             # 检查温度
             try:
@@ -415,7 +442,7 @@ class SystemFSM:
                     temp_threshold = self.config.get('daemon', {}).get('temp_threshold', 65)
                     if temp > temp_threshold:
                         warning("高温: {}°C", temp, module="FSM")
-                        self.event_bus.publish(EVENT.SYSTEM_WARNING, f"高温: {temp}°C")
+                        self.event_bus.publish(EVENTS.SYSTEM_STATE_CHANGE, state='warning', warning_msg=f"高温: {temp}°C")
             except Exception as e:
                 error("温度检查失败: {}", e, module="FSM")
             
@@ -463,7 +490,7 @@ class SystemFSM:
             info("状态机被用户停止", module="FSM")
         except Exception as e:
             error("状态机错误: {}", e, module="FSM")
-            self.event_bus.publish(EVENT.SYSTEM_ERROR, str(e))
+            self.event_bus.publish(EVENTS.SYSTEM_ERROR, str(e))
         finally:
             info("状态机已停止", module="FSM")
 
