@@ -322,26 +322,9 @@ class SystemFSM:
             # LED控制器是自驱动的，无需调用update
             pass
 
-        # 新增: 处理事件总线低优先级事件，确保WiFi及NTP等事件被及时消费
-        if self.event_bus:
-            try:
-                self.event_bus.process_events()
-            except Exception as e:
-                error("事件总线处理事件失败: {}", e, module="FSM")
+
         
-        # 新增: 定期输出事件总线统计信息，确保空闲期间也有状态输出
-        if self.event_bus and self.state_duration % 30000 == 0:  # 每30秒
-            try:
-                stats = self.event_bus.get_stats()
-                info("事件总线状态: 事件数={}, 订阅者数={}, 队列使用={}/{} ({:.1f}%)", 
-                     stats['total_events'], 
-                     stats['total_subscribers'], 
-                     stats['total_queue_length'], 
-                     stats['queue_size'],
-                     stats['queue_usage_ratio'] * 100,
-                     module="FSM")
-            except Exception as e:
-                error("获取事件总线统计失败: {}", e, module="FSM")
+
 
         # 执行当前状态处理器
         handler = self.state_handlers.get(self.current_state)
