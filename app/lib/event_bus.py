@@ -65,7 +65,7 @@ class EventBus:
         }
 
         # 启动计时器轮询队列
-        self._timer = Timer(-1)
+        self._timer = Timer(0)  # ESP32-C3 支持计时器ID 0
         self._timer.init(period=tick_ms, mode=Timer.PERIODIC, callback=self._process_queue)
 
         # 队列监控
