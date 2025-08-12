@@ -10,7 +10,7 @@ from lib.logger import info, error
 from .state_const import STATE_BOOT
 
 def create_fsm_context(event_bus, object_pool, static_cache, config, 
-                      wifi_manager=None, mqtt_controller=None, led_controller=None):
+                      network_manager=None, led_controller=None):
     """创建状态机上下文"""
     context = {
         # 核心依赖
@@ -20,8 +20,7 @@ def create_fsm_context(event_bus, object_pool, static_cache, config,
         'config': config,
         
         # 外部组件
-        'wifi_manager': wifi_manager,
-        'mqtt_controller': mqtt_controller,
+        'network_manager': network_manager,
         'led_controller': led_controller,
         
         # 状态机数据

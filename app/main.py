@@ -16,8 +16,7 @@ from lib.static_cache import StaticCache
 from lib.logger import Logger, set_global_logger
 from lib.event_bus.events_const import EVENTS
 from fsm import StateMachine, create_state_machine
-from net.wifi import WifiManager
-from net.mqtt import MqttController
+from net import NetworkManager
 from hw.led import LEDPatternController
 from hw.sensor import SensorManager
 
@@ -81,9 +80,8 @@ class MainController:
         # Logger 现在是独立的，不需要 EventBus 设置
         set_global_logger(self.logger)
         
-        # 初始化模块控制器
-        self.wifi = WifiManager(self.event_bus, config.get('wifi', {}))
-        self.mqtt = MqttController(self.event_bus, self.object_pool, config.get('mqtt', {}))
+        # 初始化网络管理器
+        self.network_manager = NetworkManager(self.event_bus, config)
         
         # 初始化硬件模块
         led_pins = config.get('daemon', {}).get('led_pins', [12, 13])
@@ -96,8 +94,7 @@ class MainController:
             object_pool=self.object_pool,
             static_cache=self.static_cache,
             config=config,
-            wifi_manager=self.wifi,
-            mqtt_controller=self.mqtt,
+            network_manager=self.network_manager,
             led_controller=self.led
         )
         
@@ -191,6 +188,10 @@ class MainController:
             
             # 持续运行，直到收到关机信号
             while self.state_machine.get_current_state() != "SHUTDOWN":
+                # 更新网络管理器
+                if hasattr(self, 'network_manager') and self.network_manager:
+                    self.network_manager.loop()
+                
                 # 更新状态机
                 self.state_machine.update()
                 # 喂看门狗
@@ -230,11 +231,8 @@ class MainController:
                 self.led.cleanup()
             
             # 断开网络连接
-            if hasattr(self, 'mqtt') and self.mqtt:
-                self.mqtt.disconnect()
-            
-            if hasattr(self, 'wifi') and self.wifi:
-                self.wifi.disconnect()
+            if hasattr(self, 'network_manager') and self.network_manager:
+                self.network_manager.disconnect_all()
             
             # 保存缓存
             if hasattr(self, 'static_cache') and self.static_cache:

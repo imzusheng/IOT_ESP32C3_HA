@@ -26,7 +26,7 @@ class FunctionalStateMachine:
     """
     
     def __init__(self, event_bus, object_pool, static_cache, config, 
-                 wifi_manager=None, mqtt_controller=None, led_controller=None):
+                 network_manager=None, led_controller=None):
         """
         初始化函数式状态机
         Args:
@@ -34,14 +34,13 @@ class FunctionalStateMachine:
             object_pool: 对象池管理器实例
             static_cache: 静态缓存实例
             config: 配置字典
-            wifi_manager: WiFi管理器实例
-            mqtt_controller: MQTT控制器实例
+            network_manager: 网络管理器实例
             led_controller: LED控制器实例
         """
         # 创建状态机上下文
         self.context = create_fsm_context(
             event_bus, object_pool, static_cache, config,
-            wifi_manager, mqtt_controller, led_controller
+            network_manager, led_controller
         )
         
         # 订阅事件
@@ -260,11 +259,11 @@ def get_state_machine():
     return _state_machine_instance
 
 def create_state_machine(event_bus, object_pool, static_cache, config, 
-                        wifi_manager=None, mqtt_controller=None, led_controller=None):
+                        network_manager=None, led_controller=None):
     """创建全局状态机实例"""
     global _state_machine_instance
     _state_machine_instance = FunctionalStateMachine(
         event_bus, object_pool, static_cache, config,
-        wifi_manager, mqtt_controller, led_controller
+        network_manager, led_controller
     )
     return _state_machine_instance
