@@ -93,7 +93,7 @@ class MqttController:
                 return False
             
         except Exception as e:
-            self.logger.error("MQTT连接失败: {}", e, module="NET")
+            # 不在这里输出错误日志，让NetworkManager统一处理
             self._is_connected = False
             # 发布连接失败事件
             if self._event_bus:
