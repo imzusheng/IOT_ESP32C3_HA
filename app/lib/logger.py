@@ -39,6 +39,7 @@ class Logger:
     # ANSI颜色代码
     _COLORS = {
         'FSM': '\033[1;36m',     # 青色加粗
+        'NET': '\033[1;34m',     # 蓝色加粗
         'WiFi': '\033[1;32m',    # 绿色加粗
         'MQTT': '\033[1;33m',    # 黄色加粗
         'Main': '\033[1;35m',    # 紫色加粗
@@ -54,6 +55,8 @@ class Logger:
     # 模块名称映射
     _MODULE_MAP = {
         'fsm': 'FSM',
+        'net': 'NET',
+        'network': 'NET',
         'wifi': 'WiFi',
         'mqtt': 'MQTT',
         'main': 'Main',

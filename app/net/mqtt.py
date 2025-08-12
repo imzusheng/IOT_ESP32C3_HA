@@ -80,30 +80,24 @@ class MqttController:
         if self._is_connected or not self.client:
             return False
 
-        self.logger.info("连接到MQTT代理: {}", self.config.get('broker', 'unknown'), module="MQTT")
         try:
+            # 使用同步连接（MicroPython umqtt 不支持异步连接）
             self.client.connect()
-            self._is_connected = True
-            self.logger.info("MQTT连接成功", module="MQTT")
             
-            # 发布连接成功事件
-            if self._event_bus:
-                self._event_bus.publish(EVENTS.MQTT_STATE_CHANGE, state="connected")
-            
-            # 自动订阅配置的主题
-            for topic in self.config.get('subscribe_topics', []):
-                self.subscribe(topic)
-            
-            return True
+            # 验证连接是否真正建立
+            if self.client.is_connected():
+                self._is_connected = True
+                return True
+            else:
+                self._is_connected = False
+                return False
             
         except Exception as e:
-            self.logger.error("MQTT连接失败: {}", e, module="MQTT")
+            self.logger.error("MQTT连接失败: {}", e, module="NET")
             self._is_connected = False
-            
             # 发布连接失败事件
             if self._event_bus:
                 self._event_bus.publish(EVENTS.MQTT_STATE_CHANGE, state="disconnected", error=str(e))
-            
             return False
 
     def is_connected(self):
@@ -125,8 +119,6 @@ class MqttController:
                 return False
         
         self._is_connected = False
-        self.logger.info("MQTT已断开连接", module="MQTT")
-        
         # 发布断开连接事件
         if self._event_bus:
             self._event_bus.publish(EVENTS.MQTT_STATE_CHANGE, state="disconnected")
@@ -147,14 +139,13 @@ class MqttController:
             bool: 发布成功返回True
         """
         if not self._is_connected or not self.client:
-            self.logger.warning("无法发布，MQTT未连接", module="MQTT")
             return False
 
         try:
             self.client.publish(topic, msg, retain, qos)
             return True
         except Exception as e:
-            self.logger.error("MQTT发布失败: {}", e, module="MQTT")
+            self.logger.error("MQTT发布失败: {}", e, module="NET")
             return False
 
     def subscribe(self, topic, qos=0):
@@ -169,15 +160,13 @@ class MqttController:
             bool: 订阅成功返回True
         """
         if not self._is_connected or not self.client:
-            self.logger.warning("无法订阅，MQTT未连接", module="MQTT")
             return False
         
         try:
-            self.logger.info("订阅主题: {}", topic, module="MQTT")
             self.client.subscribe(topic, qos)
             return True
         except Exception as e:
-            self.logger.error("MQTT订阅失败: {}", e, module="MQTT")
+            self.logger.error("MQTT订阅失败: {}", e, module="NET")
             return False
 
     def loop(self):
@@ -185,19 +174,49 @@ class MqttController:
         在主循环中定期调用
         处理入站消息并维持连接
         """
-        if not self.client or not self._is_connected:
+        if not self.client:
             return
 
         try:
             # 检查入站消息
             self.client.check_msg()
             
+            # 检查连接状态
+            was_connected = self._is_connected
+            # 使用is_connected方法检查连接状态
+            try:
+                actual_connected = self.client.is_connected()
+                if actual_connected and not self._is_connected:
+                    # 连接恢复
+                    self._is_connected = True
+                    self.logger.info("MQTT连接恢复", module="MQTT")
+                    # 发布连接成功事件
+                    if self._event_bus:
+                        self._event_bus.publish(EVENTS.MQTT_STATE_CHANGE, state="connected")
+                        # 自动订阅配置的主题
+                        for topic in self.config.get('subscribe_topics', []):
+                            self.subscribe(topic)
+                elif not actual_connected and self._is_connected:
+                    # 连接丢失
+                    self._is_connected = False
+                    # 发布连接断开事件
+                    if self._event_bus:
+                        self._event_bus.publish(EVENTS.MQTT_STATE_CHANGE, state="disconnected")
+            except Exception as e:
+                # 检查连接状态时出错，认为连接已断开
+                if self._is_connected:
+                    self._is_connected = False
+                    # 发布连接断开事件
+                    if self._event_bus:
+                        self._event_bus.publish(EVENTS.MQTT_STATE_CHANGE, state="disconnected")
+            
             # 发送 PING 以保持连接活跃
-            keepalive_ms = self.config.get('keepalive', 60) * 1000
-            if time.ticks_diff(time.ticks_ms(), self.last_ping_time) > keepalive_ms / 2:
-                self.client.ping()
-                self.last_ping_time = time.ticks_ms()
+            if self._is_connected:
+                keepalive_ms = self.config.get('keepalive', 60) * 1000
+                if time.ticks_diff(time.ticks_ms(), self.last_ping_time) > keepalive_ms / 2:
+                    self.client.ping()
+                    self.last_ping_time = time.ticks_ms()
 
         except Exception as e:
-            self.logger.error("MQTT循环错误: {}", e, module="MQTT")
+            self.logger.error("MQTT循环错误: {}", e, module="NET")
             self._is_connected = False

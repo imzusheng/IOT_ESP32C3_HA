@@ -34,7 +34,6 @@ class NtpManager:
             bool: 同步成功返回True, 失败返回False
         """
         if ntptime is None:
-            self.logger.warning("NTP模块不可用，跳过时间同步", module="NTP")
             return False
         
         # 通过配置允许自定义NTP服务器，默认使用阿里云NTP池
@@ -49,31 +48,18 @@ class NtpManager:
             # 某些端口的ntptime不支持设置host，忽略
             pass
         
-        self.logger.info("NTP同步开始 - 服务器={}", ntp_server, module="NTP")
         
         try:
-            for i in range(max_attempts):
-                try:
-                    # ntptime.settime() 是一个阻塞操作
-                    ntptime.settime()
-                    # 成功
-                    self._ntp_synced = True
-                    timestamp = time.time()
-                    
-                    self.logger.info("NTP同步成功 - 服务器={}, 时间戳={}",
-                                   ntp_server, timestamp, module="NTP")
-                    return True
-                    
-                except Exception as e:
-                    self.logger.warning("NTP同步失败, 尝试 {}/{}: {}", i + 1, max_attempts, str(e), module="NTP")
-                    if i < max_attempts - 1:
-                        time.sleep(retry_interval)
+            # 只尝试一次，让外部的NetworkManager处理重试和退避
+            ntptime.settime()
+            # 成功
+            self._ntp_synced = True
+            timestamp = time.time()
             
-            # 所有尝试都失败
-            return False
+            return True
             
         except Exception as e:
-            self.logger.error("NTP同步异常: {}", e, module="NTP")
+            # 直接返回失败，让外部的NetworkManager处理重试
             return False
     
     def is_synced(self):

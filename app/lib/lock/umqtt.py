@@ -42,10 +42,14 @@ class MQTTClient:
         self._in_callback = False
         
     def _send_str(self, s):
+        if self.sock is None:
+            raise MQTTException("Socket is not connected")
         self.sock.write(ustruct.pack("!H", len(s)))
         self.sock.write(s)
     
     def _recv_len(self):
+        if self.sock is None:
+            raise MQTTException("Socket is not connected")
         n = 0
         sh = 0
         while 1:
@@ -119,10 +123,14 @@ class MQTTClient:
             self.sock = None
     
     def ping(self):
+        if self.sock is None:
+            raise MQTTException("Socket is not connected")
         self.sock.write(b"\xc0\0")
         self.last_ping = time.time()
     
     def publish(self, topic, msg, retain=False, qos=0):
+        if self.sock is None:
+            raise MQTTException("Socket is not connected")
         pkt = bytearray(b"\x30\0\0\0")
         pkt[0] |= qos << 1 | retain
         sz = 2 + len(topic) + len(msg)
@@ -151,6 +159,8 @@ class MQTTClient:
                     return
     
     def subscribe(self, topic, qos=0):
+        if self.sock is None:
+            raise MQTTException("Socket is not connected")
         assert self.cb is not None, "订阅回调未设置"
         pkt = bytearray(b"\x82\0\0\0")
         self.sock.write(pkt)
@@ -166,6 +176,8 @@ class MQTTClient:
                 return
     
     def wait_msg(self):
+        if self.sock is None:
+            return None
         res = self.sock.read(1)
         self.last_ping_resp = time.time()
         if res is None:
@@ -199,6 +211,8 @@ class MQTTClient:
             assert 0
     
     def check_msg(self):
+        if self.sock is None:
+            return None
         self.sock.setblocking(False)
         try:
             return self.wait_msg()

@@ -15,7 +15,7 @@ from lib.object_pool import ObjectPoolManager
 from lib.static_cache import StaticCache
 from lib.logger import Logger, set_global_logger
 from lib.event_bus.events_const import EVENTS
-from fsm import StateMachine, create_state_machine
+from fsm.core import create_state_machine
 from net import NetworkManager
 from hw.led import LEDPatternController
 from hw.sensor import SensorManager

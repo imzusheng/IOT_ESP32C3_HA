@@ -34,7 +34,6 @@ class WifiManager:
         Returns:
             list: 网络列表，每个网络包含 {'ssid': str, 'rssi': int, 'bssid': bytes}
         """
-        self.logger.info("扫描WiFi网络", module="WiFi")
         try:
             scan_results = self.wlan.scan()
             networks = []
@@ -54,12 +53,10 @@ class WifiManager:
             
             # 按RSSI降序排序（信号强度从高到低）
             networks.sort(key=lambda x: x['rssi'], reverse=True)
-            self.logger.info("扫描到{}个网络", len(networks), module="WiFi")
-
             return networks
             
         except OSError as e:
-            self.logger.error("WiFi扫描失败: {}", e, module="WiFi")
+            self.logger.error("WiFi扫描失败: {}", e, module="NET")
             return []
 
     def connect(self, ssid, password):
@@ -73,12 +70,11 @@ class WifiManager:
         Returns:
             bool: 连接成功返回True
         """
-        self.logger.info("连接WiFi: {}", ssid, module="WiFi")
         try:
             self.wlan.connect(ssid, password)
             return True
         except Exception as e:
-            self.logger.error("WiFi连接失败: {}", e, module="WiFi")
+            self.logger.error("WiFi连接失败: {}", e, module="NET")
             return False
 
     def disconnect(self):
@@ -88,13 +84,12 @@ class WifiManager:
         Returns:
             bool: 断开成功返回True
         """
-        self.logger.info("断开WiFi连接", module="WiFi")
         try:
             if self.wlan.isconnected():
                 self.wlan.disconnect()
             return True
         except Exception as e:
-            self.logger.error("WiFi断开失败: {}", e, module="WiFi")
+            self.logger.error("WiFi断开失败: {}", e, module="NET")
             return False
     
     def get_is_connected(self):
