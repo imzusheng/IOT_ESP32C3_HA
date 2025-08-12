@@ -32,7 +32,7 @@ class Logger:
     - 标准化日志格式
     
     使用方法:
-    1. 创建 Logger 实例：logger = Logger(level=EVENTS.LOG_INFO)
+    1. 创建 Logger 实例：logger = Logger(level=LOG_LEVELS.INFO)
     2. 直接使用日志方法：logger.info("消息", module="模块名")
     """
     

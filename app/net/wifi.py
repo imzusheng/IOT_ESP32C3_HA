@@ -7,7 +7,7 @@ try:
 except Exception:
     ntptime = None
 from lib.logger import get_global_logger
-from lib.event_bus import EVENTS
+from lib.event_bus.events_const import EVENTS
 
 class WifiManager:
     """
@@ -270,29 +270,30 @@ class WifiManager:
         self.logger.info("NTP同步开始 - 服务器={}", ntp_server, module="WiFi")
         self.event_bus.publish(EVENTS.NTP_STATE_CHANGE, state="started", ntp_server=ntp_server, module="WiFi")
         
-        for i in range(max_attempts):
-            self._ntp_attempts = i + 1
-            try:
-                # ntptime.settime() 会从 NTP 获取时间并设置 RTC
-                ntptime.settime()
-                # 成功
-                self._ntp_synced = True
-                timestamp = time.time()  # 获取当前时间戳
-                
-                # 合并NTP同步成功日志, 使用结构化格式
-                self.logger.info("NTP同步成功 - 服务器={}, 尝试次数={}, 时间戳={}", 
-                               ntp_server, self._ntp_attempts, timestamp, module="WiFi")
-                
-                # 恢复发布NTP同步成功事件
-                self.event_bus.publish(EVENTS.NTP_STATE_CHANGE, state="success", ntp_server=ntp_server, attempts=self._ntp_attempts, timestamp=timestamp, module="WiFi")
-                break
-            except Exception as e:
-                # 失败则等待后重试
-                self.logger.error(f"NTP同步失败, 尝试 {self._ntp_attempts}/{max_attempts}: {e}", module="WiFi")
-                self.logger.warning("NTP同步失败, 尝试 {}/{}: {}", self._ntp_attempts, max_attempts, str(e), module="WiFi")
-                
-                # 最后一次尝试失败才发布失败事件
-                if i == max_attempts - 1:
-                    self.event_bus.publish(EVENTS.NTP_STATE_CHANGE, state="failed", error=str(e), attempts=self._ntp_attempts, ntp_server=ntp_server, module="WiFi")
-                else:
-                    time.sleep(retry_interval)
+        # 在执行阻塞操作前，暂停事件总线定时器
+        self.event_bus.stop_timer()
+        
+        try:
+            for i in range(max_attempts):
+                self._ntp_attempts = i + 1
+                try:
+                    # ntptime.settime() 是一个阻塞操作
+                    ntptime.settime()
+                    # 成功
+                    self._ntp_synced = True
+                    timestamp = time.time()
+                    
+                    self.logger.info("NTP同步成功 - 服务器={}, 尝试次数={}, 时间戳={}",
+                                   ntp_server, self._ntp_attempts, timestamp, module="WiFi")
+                    
+                    self.event_bus.publish(EVENTS.NTP_STATE_CHANGE, state="success", ntp_server=ntp_server, attempts=self._ntp_attempts, timestamp=timestamp, module="WiFi")
+                    break # 成功后退出循环
+                except Exception as e:
+                    self.logger.warning("NTP同步失败, 尝试 {}/{}: {}", self._ntp_attempts, max_attempts, str(e), module="WiFi")
+                    if i == max_attempts - 1:
+                        self.event_bus.publish(EVENTS.NTP_STATE_CHANGE, state="failed", error=str(e), attempts=self._ntp_attempts, ntp_server=ntp_server, module="WiFi")
+                    else:
+                        time.sleep(retry_interval)
+        finally:
+            # 无论NTP同步成功与否，都恢复事件总线定时器
+            self.event_bus.start_timer()

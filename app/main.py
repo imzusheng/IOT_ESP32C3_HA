@@ -10,12 +10,12 @@ import sys
 
 # 1. 导入所有类
 from config import get_config
-from lib.event_bus import EventBus
+from lib.event_bus.core import EventBus
 from lib.object_pool import ObjectPoolManager
 from lib.static_cache import StaticCache
 from lib.logger import Logger, set_global_logger
-from lib.event_bus import EVENTS
-from fsm import SystemFSM
+from lib.event_bus.events_const import EVENTS
+from fsm import StateMachine, create_state_machine
 from net.wifi import WifiManager
 from net.mqtt import MqttController
 from hw.led import LEDPatternController
@@ -90,8 +90,8 @@ class MainController:
         self.led = LEDPatternController(led_pins)
         self.sensor = SensorManager(self.event_bus, self.object_pool)
         
-        # 创建状态机
-        self.fsm = SystemFSM(
+        # 创建状态机（新版本基于状态模式）
+        self.state_machine = create_state_machine(
             event_bus=self.event_bus,
             object_pool=self.object_pool,
             static_cache=self.static_cache,
@@ -109,10 +109,6 @@ class MainController:
         
         # NTP 时间同步状态变化事件
         self.event_bus.subscribe(EVENTS.NTP_STATE_CHANGE, self._on_ntp_state_change)
-        
-        # 系统状态事件（仅用于监控和日志记录）
-        self.event_bus.subscribe(EVENTS.SYSTEM_ERROR, self._on_system_error)
-        self.event_bus.subscribe(EVENTS.SYSTEM_STATE_CHANGE, self._on_system_state_change)
         
         self.logger.info("系统事件订阅已注册", module="Main")
     
@@ -141,55 +137,6 @@ class MainController:
         
         
 
-    
-    # =================== 系统状态事件处理 ===================
-    def _on_system_error(self, event_name, error_type=None, error_context=None, **kwargs):
-        """处理统一的系统错误事件"""
-        if error_type == 'memory_critical':
-            # 处理内存临界错误
-            mem_info = error_context.get('mem_info') if error_context else None
-            msg = f"内存使用严重: {mem_info or '未知'}"
-            self.logger.error(msg, module="Main")
-            
-            self.logger.info("执行紧急垃圾回收...", module="Main")
-            for _ in range(3):
-                gc.collect()
-                time.sleep_ms(50)
-        elif error_type == 'callback_error':
-            # 处理事件回调错误
-            if error_context:
-                error_msg = error_context.get('error', '未知错误')
-                event = error_context.get('event', '未知事件')
-                callback = error_context.get('callback', '未知回调')
-                msg = f"事件回调执行失败: {event} -> {callback}, 错误: {error_msg}"
-            else:
-                msg = "事件回调执行失败: 未知错误"
-            self.logger.error(msg, module="Main")
-        else:
-            # 处理其他系统错误
-            error_msg = error_context.get('error_msg') if error_context else None
-            msg = f"系统错误 ({error_type or '未知类型'}): {error_msg or '未知错误'}"
-            self.logger.error(msg, module="Main")
-    
-    def _on_system_state_change(self, event_name, state, **kwargs):
-        """处理系统状态变化事件"""
-        if state == 'warning':
-            warning_msg = kwargs.get('warning_msg', '未知警告')
-            msg = f"系统警告: {warning_msg}"
-            self.logger.warning(msg, module="Main")
-        elif state == 'queue_full_warning':
-            queue_usage = kwargs.get('queue_usage', 0)
-            msg = f"事件队列使用率过高: {int(queue_usage * 100)}%"
-            self.logger.warning(msg, module="Main")
-        elif state == 'shutdown':
-            error_context = kwargs.get('error_context')
-            self.logger.critical("触发系统关机！", module="Main")
-            if error_context:
-                self.logger.critical(f"关机原因: {error_context}", module="Main")
-            self.emergency_cleanup()
-        else:
-            # 处理其他系统状态变化
-            self.logger.info(f"系统状态变化: {state}", module="Main")
     
     def on_emergency_shutdown(self, event_name, error_context=None):
         """处理紧急关机事件"""
@@ -234,10 +181,30 @@ class MainController:
         # 配置对象池
         self.setup_object_pools()
         
-        # 启动状态机主循环
+        # 新版状态机是完全事件驱动的，不需要独立的主循环
+        # 系统启动后，所有工作都由事件总线的后台定时器驱动
+        self.logger.info("新版状态机已启动，采用事件驱动架构", module="Main")
+        
         try:
-            self.logger.info("启动系统状态机", module="Main")
-            self.fsm.run()
+            # 简单的事件循环，主要用于保持程序运行和处理用户中断
+            self.logger.info("进入事件驱动主循环", module="Main")
+            
+            # 持续运行，直到收到关机信号
+            while self.state_machine.get_current_state() != "SHUTDOWN":
+                # 喂看门狗
+                self.state_machine.feed_watchdog()
+                
+                # 简单的延迟，避免CPU占用过高
+                main_loop_delay = self.config.get('system', {}).get('main_loop_delay', 300)
+                time.sleep_ms(main_loop_delay)
+                
+                # 更新静态缓存
+                if hasattr(self, 'static_cache') and self.static_cache:
+                    self.static_cache.loop()
+            
+            # 如果到达这里，说明系统进入了SHUTDOWN状态
+            self.logger.info("系统已进入关机状态", module="Main")
+            
         except KeyboardInterrupt:
             self.logger.info("用户中断，正在关闭", module="Main")
             self.cleanup()
@@ -253,8 +220,8 @@ class MainController:
             self.logger.info("开始清理过程", module="Main")
             
             # 停止状态机
-            if hasattr(self, 'fsm') and self.fsm:
-                self.fsm.force_state("SHUTDOWN")
+            if hasattr(self, 'state_machine') and self.state_machine:
+                self.state_machine.force_state("SHUTDOWN")
             
             # 清理LED
             if hasattr(self, 'led') and self.led:
@@ -282,7 +249,6 @@ def main():
     config = get_config()
     
     # 创建临时logger用于启动信息
-    from lib.logger import Logger
     temp_logger = Logger()
     temp_logger.info("=== ESP32-C3 IoT设备启动中 ===", module="Main")
     temp_logger.info("配置已加载", module="Main")

@@ -27,7 +27,7 @@ from ..logger import get_global_logger
 CONFIG = {
     'MAX_QUEUE_SIZE': 64,          # 总队列大小，降低内存占用
     'TIMER_TICK_MS': 25,           # 定时器间隔，平衡响应性和性能
-    'STATS_INTERVAL': 60,          # 统计间隔增大，减少日志输出
+    'STATS_INTERVAL': 30,          # 统计间隔设置为30秒
     'TIMER_ID': 0,
     'HIGH_PRIORITY_RATIO': 0.6,    # 高优先级队列占60%
     'BATCH_PROCESS_COUNT': 5,      # 批处理数量
@@ -172,12 +172,16 @@ class EventBus:
             if self._processed_count % CONFIG['GC_THRESHOLD'] == 0:
                 gc.collect()
             
-            # 定期输出统计和状态检查
-            self._periodic_maintenance()
-            
         except Exception as e:
             self._error_count += 1
             print(f"[EventBus] 定时器异常: {e}")
+        finally:
+            # 定期输出统计和状态检查 - 无论是否处理事件都执行
+            # 这确保了即使没有事件时也会按时间间隔输出统计信息
+            try:
+                self._periodic_maintenance()
+            except Exception as maintenance_error:
+                print(f"[EventBus] 维护任务异常: {maintenance_error}")
 
     def _execute_event(self, event_item):
         """执行事件"""
@@ -367,6 +371,21 @@ class EventBus:
     def get_system_status(self):
         """获取当前系统状态"""
         return self._system_status
+
+    def stop_timer(self):
+        """停止事件总线定时器"""
+        if self._timer:
+            try:
+                self._timer.deinit()
+            except:
+                pass
+            finally:
+                self._timer = None
+
+    def start_timer(self):
+        """启动事件总线定时器"""
+        if not self._timer:
+            self._start_timer()
 
 # 便捷函数
 def get_event_bus():
