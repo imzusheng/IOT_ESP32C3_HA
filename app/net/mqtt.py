@@ -29,7 +29,7 @@ class MqttController:
         self.config = config
         self.logger = get_global_logger()
         self.client = None
-        self.is_connected = False
+        self._is_connected = False
         self.last_ping_time = 0
         
         # 连接失败处理机制
@@ -95,7 +95,7 @@ class MqttController:
     
     def connect(self):
         """连接到MQTT Broker（非阻塞）。"""
-        if self.is_connected or not self.client:
+        if self._is_connected or not self.client:
             return
 
         # 检查是否应该延迟重连
@@ -111,7 +111,7 @@ class MqttController:
         try:
             # 使用非阻塞连接
             self.client.connect()
-            self.is_connected = True
+            self._is_connected = True
             self.connection_failures = 0  # 重置失败计数
             self.logger.info("MQTT连接成功", module="MQTT")
             self.event_bus.publish(EVENTS.MQTT_STATE_CHANGE, state="connected", broker=self.config['broker'])
@@ -125,7 +125,7 @@ class MqttController:
             self.logger.error("连接失败: {}", e, module="MQTT")
             # 发布连接失败事件
             self.event_bus.publish(EVENTS.MQTT_STATE_CHANGE, state="disconnected", error=str(e))
-            self.is_connected = False
+            self._is_connected = False
             
             # 频率限制断开事件的发布，避免事件风暴
             if not self._should_throttle_disconnect_event():
@@ -135,19 +135,23 @@ class MqttController:
                 # 静默处理，避免过多事件
                 self.logger.debug("MQTT断开连接事件被限流", module="MQTT")
 
+    def is_connected(self):
+        """检查MQTT是否已连接"""
+        return self._is_connected
+
     def disconnect(self):
         """断开与MQTT Broker的连接。"""
-        if self.is_connected and self.client:
+        if self._is_connected and self.client:
             try:
                 self.client.disconnect()
             except Exception as e:
                 self.logger.error(f"断开连接失败: {e}", module="MQTT")
-        self.is_connected = False
+        self._is_connected = False
         self.logger.info("MQTT已断开连接", module="MQTT")
 
     def publish(self, topic, msg, retain=False, qos=0):
         """发布消息。"""
-        if not self.is_connected or not self.client:
+        if not self._is_connected or not self.client:
             self.logger.warning("无法发布，MQTT未连接。", module="MQTT")
             return
 
@@ -173,7 +177,7 @@ class MqttController:
                 
         except Exception as e:
             self.logger.error(f"发布失败: {e}", module="MQTT")
-            self.is_connected = False
+            self._is_connected = False
             # 频率限制断开事件的发布
             if not self._should_throttle_disconnect_event():
                 self.event_bus.publish(EVENTS.MQTT_STATE_CHANGE, state="disconnected", reason="发布错误", broker=self.config['broker'])
@@ -181,7 +185,7 @@ class MqttController:
 
     def subscribe(self, topic, qos=0):
         """订阅主题。"""
-        if not self.is_connected or not self.client:
+        if not self._is_connected or not self.client:
             self.logger.warning("无法订阅，MQTT未连接。", module="MQTT")
             return
         
@@ -190,7 +194,7 @@ class MqttController:
             self.client.subscribe(topic, qos)
         except Exception as e:
             self.logger.error(f"订阅失败: {e}", module="MQTT")
-            self.is_connected = False
+            self._is_connected = False
             # 频率限制断开事件的发布
             if not self._should_throttle_disconnect_event():
                 self.event_bus.publish(EVENTS.MQTT_STATE_CHANGE, state="disconnected", reason="订阅错误", broker=self.config['broker'])
@@ -204,7 +208,7 @@ class MqttController:
         if not self.client:
             return
 
-        if self.is_connected:
+        if self._is_connected:
             try:
                 # 检查入站消息
                 self.client.check_msg()
@@ -217,7 +221,7 @@ class MqttController:
 
             except Exception as e:
                 self.logger.error(f"循环错误: {e}. 连接丢失。", module="MQTT")
-                self.is_connected = False
+                self._is_connected = False
                 # 频率限制断开事件的发布
                 if not self._should_throttle_disconnect_event():
                     self.event_bus.publish(EVENTS.MQTT_STATE_CHANGE, state="disconnected", reason="循环错误", broker=self.config['broker'])

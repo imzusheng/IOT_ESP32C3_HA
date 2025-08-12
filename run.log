@@ -1,0 +1,86 @@
+04:27:15.533 [INFO] [Main] === ESP32-C3 IoT设备启动中 ===
+04:27:15.536 [INFO] [Main] 配置已加载
+04:27:15.681 [INFO] [WiFi] 激活WLAN接口...
+04:27:15.756 [INFO] [LED] 控制器已初始化，引脚: [12, 13]
+04:27:15.761 [INFO] [Sensor] 内部温度传感器已初始化
+04:27:15.765 [INFO] [FSM] 看门狗已启用，超时时间: 120000 ms
+04:27:15.771 [INFO] [FSM] 函数式状态机已初始化
+04:27:15.781 [INFO] [Main] 系统事件订阅已注册
+04:27:15.784 [INFO] [Main] 启动ESP32-C3 IoT设备
+04:27:15.789 [INFO] [Main] 对象池已配置 - 共4个对象池
+04:27:15.800 [INFO] [Main] 新版状态机已启动，采用事件驱动架构
+04:27:15.803 [INFO] [Main] 进入事件驱动主循环
+04:27:15.807 [INFO] [FSM] 启动阶段完成，发布boot_complete事件
+04:27:15.820 [INFO] [FSM] 退出启动状态
+04:27:15.823 [INFO] [FSM] 进入初始化状态，开始模块初始化
+04:27:15.830 [INFO] [FSM] 执行系统初始化任务
+04:27:15.834 [INFO] [FSM] LED状态更新为: blink (状态: INIT)
+04:27:18.943 [INFO] [FSM] 初始化阶段完成，发布init_complete事件
+04:27:18.946 [INFO] [FSM] 退出初始化状态
+04:27:18.949 [INFO] [FSM] 进入NETWORKING状态，开始WiFi连接
+04:27:18.961 [INFO] [FSM] 启动WiFi连接过程
+04:27:18.963 [INFO] [WiFi] 开始WiFi连接过程...
+04:27:18.966 [INFO] [WiFi] 扫描网络...
+04:27:20.475 [INFO] [WiFi] 找到最佳网络: leju_software (信号强度: -33)
+04:27:20.479 [INFO] [WiFi] 连接WiFi - ssid=leju_software, rssi=-33
+04:27:20.488 [INFO] [FSM] LED状态更新为: pulse (状态: NETWORKING)
+04:27:33.046 [WARN] [FSM] WiFi连接超时（15085ms），发布超时事件
+04:27:33.048 [INFO] [FSM] 退出NETWORKING状态
+04:27:33.051 [ERROR] [FSM] 进入ERROR状态，系统出现错误
+04:27:33.061 [INFO] [FSM] 错误计数: 1/10
+04:27:33.065 [INFO] [FSM][0m LED状态更新为: blink (状态: ERROR)
+04:27:48.141 [INFO] [FSM] 错误状态超时，尝试恢复
+04:27:48.144 [INFO] [FSM] 退出ERROR状态
+04:27:48.147 [WARN] [FSM] 进入WARNING状态，系统出现警告
+04:27:48.162 [INFO] [FSM] LED状态更新为: blink (状态: WARNING)
+04:28:18.252 [INFO] [FSM] 警告状态超时，尝试恢复
+04:28:18.256 [INFO] [FSM] 退出WARNING状态
+04:28:18.260 [INFO] [FSM] 进入RUNNING状态，系统正常运行中
+04:28:18.264 [INFO] [FSM] NTP同步已完成，系统时间已同步
+04:28:18.270 [INFO] [FSM] 将在1秒后异步启动MQTT连接
+04:28:18.281 [INFO] [FSM] 开始异步MQTT连接
+04:28:18.286 [INFO] [MQTT] 连接到代理服务器192.168.3.15...
+04:28:18.740 [INFO] [MQTT] MQTT连接成功
+04:28:18.744 [INFO] [FSM] MQTT连接请求已发送，等待异步结果
+04:28:18.748 [INFO] [FSM] LED状态更新为: cruise (状态: RUNNING)
+04:28:19.113 [INFO] [FSM] 系统正常运行中 - 运行时间: 0秒
+04:28:19.116 [INFO] [FSM] RUNNING - WiFi状态: 已连接
+04:28:19.119 [INFO] [FSM] RUNNING - MQTT状态: 已连接
+04:28:19.143 [INFO] [FSM] RUNNING - 内存使用: 50.2% (空闲: 75KB)
+04:28:49.412 [INFO] [FSM] 系统正常运行中 - 运行时间: 31秒
+04:28:49.417 [INFO] [FSM] RUNNING - WiFi状态: 已连接
+04:28:49.420 [INFO] [FSM] RUNNING - MQTT状态: 已连接
+04:28:49.443 [INFO] [FSM] RUNNING - 内存使用: 55.5% (空闲: 67KB)
+04:29:19.546 [INFO] [FSM] 系统正常运行中 - 运行时间: 61秒
+04:29:19.549 [INFO] [FSM] RUNNING - WiFi状态: 已连接
+04:29:19.552 [INFO] [FSM] RUNNING - MQTT状态: 已连接
+04:29:19.573 [INFO] [FSM] RUNNING - 内存使用: 55.5% (空闲: 67KB)
+04:29:49.673 [INFO] [FSM] 系统正常运行中 - 运行时间: 91秒
+04:29:49.676 [INFO] [FSM] RUNNING - WiFi状态: 已连接
+04:29:49.679 [INFO] [FSM] RUNNING - MQTT状态: 已连接
+04:29:49.704 [INFO] [FSM] RUNNING - 内存使用: 55.5% (空闲: 67KB)
+04:30:19.804 [INFO] [FSM] 系统正常运行中 - 运行时间: 121秒
+04:30:19.807 [INFO] [FSM] RUNNING - WiFi状态: 已连接
+04:30:19.810 [INFO] [FSM] RUNNING - MQTT状态: 已连接
+04:30:19.834 [INFO] [FSM] RUNNING - 内存使用: 55.5% (空闲: 67KB)
+04:30:50.934 [INFO] [FSM] 系统正常运行中 - 运行时间: 151秒
+04:30:50.937 [INFO] [FSM] RUNNING - WiFi状态: 已连接
+04:30:50.940 [INFO] [FSM] RUNNING - MQTT状态: 已连接
+04:30:50.962 [INFO] [FSM] RUNNING - 内存使用: 55.5% (空闲: 67KB)
+04:31:20.063 [INFO] [FSM] 系统正常运行中 - 运行时间: 181秒
+04:31:20.066 [INFO] [FSM] RUNNING - WiFi状态: 已连接
+04:31:20.069 [INFO] [FSM] RUNNING - MQTT状态: 已连接
+04:31:20.093 [INFO] [FSM] RUNNING - 内存使用: 55.5% (空闲: 67KB)
+04:31:50.193 [INFO] [FSM] 系统正常运行中 - 运行时间: 211秒
+04:31:50.196 [INFO] [FSM] RUNNING - WiFi状态: 已连接
+04:31:50.199 [INFO] [FSM] RUNNING - MQTT状态: 已连接
+04:31:50.223 [INFO] [FSM] RUNNING - 内存使用: 55.5% (空闲: 67KB)
+04:32:20.323 [INFO] [FSM] 系统正常运行中 - 运行时间: 242秒
+04:32:20.327 [INFO] [FSM] RUNNING - WiFi状态: 已连接
+04:32:20.330 [INFO] [FSM] RUNNING - MQTT状态: 已连接
+04:32:20.354 [INFO] [FSM] RUNNING - 内存使用: 55.5% (空闲: 67KB)
+04:32:50.454 [INFO] [FSM] 系统正常运行中 - 运行时间: 272秒
+04:32:50.457 [INFO] [FSM] RUNNING - WiFi状态: 已连接
+04:32:50.460 [INFO] [FSM] RUNNING - MQTT状态: 已连接
+04:32:50.484 [INFO] [FSM] RUNNING - 内存使用: 55.5% (空闲: 67KB)
+

@@ -152,6 +152,13 @@ class EventBus:
                     mode=Timer.PERIODIC, 
                     callback=self._timer_callback
                 )
+                # 关键生命周期日志
+                try:
+                    get_global_logger().info(
+                        "EventBus定时器已启动 - 周期={}ms", CONFIG['TIMER_TICK_MS'], module="EventBus"
+                    )
+                except:
+                    pass
             except Exception as e:
                 print(f"[EventBus] 定时器启动失败: {e}")
                 self._timer = None
@@ -276,6 +283,13 @@ class EventBus:
             self.subscribers[event_name] = []
         if callback not in self.subscribers[event_name]:
             self.subscribers[event_name].append(callback)
+            # 关键操作日志（仅在新增订阅时记录一次）
+            try:
+                get_global_logger().info(
+                    "订阅事件: {} -> {}个回调", event_name, len(self.subscribers[event_name]), module="EventBus"
+                )
+            except:
+                pass
 
     def unsubscribe(self, event_name, callback):
         """取消订阅"""
@@ -296,6 +310,13 @@ class EventBus:
         # 严重错误模式下只处理系统事件
         if (self._system_status == SYSTEM_STATUS['CRITICAL'] and 
             not is_high_priority_event(event_name)):
+            # 关键丢弃日志（仅在严重模式下对低优先级事件）
+            try:
+                get_global_logger().info(
+                    "丢弃事件（CRITICAL模式）: {}", event_name, module="EventBus"
+                )
+            except:
+                pass
             return False
         
         # 入队事件
@@ -307,6 +328,12 @@ class EventBus:
         # 高优先级事件入队失败时立即进入严重错误模式
         if not success and is_high_priority:
             self._system_status = SYSTEM_STATUS['CRITICAL']
+            try:
+                get_global_logger().info(
+                    "进入CRITICAL模式：高优先级事件入队失败 -> {}", event_name, module="EventBus"
+                )
+            except:
+                pass
         
         return success
 
@@ -359,6 +386,10 @@ class EventBus:
                 pass
             finally:
                 self._timer = None
+                try:
+                    get_global_logger().info("EventBus定时器已停止", module="EventBus")
+                except:
+                    pass
         
         self.event_queue.clear()
         self.subscribers.clear()
@@ -381,6 +412,10 @@ class EventBus:
                 pass
             finally:
                 self._timer = None
+                try:
+                    get_global_logger().info("EventBus定时器已停止", module="EventBus")
+                except:
+                    pass
 
     def start_timer(self):
         """启动事件总线定时器"""

@@ -66,16 +66,23 @@ def get_temperature():
     返回摄氏度温度，如果失败则返回None
     """
     try:
+        # 检查是否启用了温度传感器
+        from config import get_config
+        temp_enabled = get_config('daemon', 'enable_temperature_sensor', True)
+        
+        if not temp_enabled:
+            return None
+        
         # ESP32-C3温度传感器实现
         temp_sensor = machine.ADC(4)  # GPIO4是温度传感器
         temp_sensor.width(12)
-        temp_sensor.attenuation(11)  # 11dB衰减
+        temp_sensor.atten(11)  # 11dB衰减
         
         # 读取ADC值
         adc_value = temp_sensor.read()
         
         # 转换为温度（近似公式）
-        # 注意：这是一个近似值，实际校准可能需要调整
+        # 注意: 这是一个近似值, 实际校准可能需要调整
         voltage = adc_value * 3.3 / 4095
         temperature = (voltage - 0.5) * 100  # 简化的转换公式
         
@@ -222,7 +229,7 @@ def calculate_rssi_percentage(rssi):
 
 # 内存优化的字符串常量
 class StringCache:
-    """简单的字符串缓存，减少内存分配"""
+    """简单的字符串缓存, 减少内存分配"""
     def __init__(self):
         self._cache = {}
     
@@ -266,7 +273,7 @@ class Throttle:
         """
         检查是否应该触发
         
-        :return: True表示可以触发，False表示在节流期内
+        :return: True表示可以触发, False表示在节流期内
         """
         now = time.ticks_ms()
         if time.ticks_diff(now, self.last_trigger) >= self.throttle_ms:
@@ -301,7 +308,7 @@ class Throttle:
         """
         检查是否已经准备好触发
         
-        :return: True表示已过节流期，可以触发
+        :return: True表示已过节流期, 可以触发
         """
         return self.time_until_next_trigger() == 0
 

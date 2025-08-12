@@ -21,7 +21,7 @@ class WifiManager:
     - 自动信号强度排序
     - 指数退避重连策略
     - 事件驱动状态报告
-    - 联网成功后自动执行 NTP 同步（使用阿里云时间源）
+    - 联网成功后自动执行 NTP 同步(使用阿里云时间源)
     """
     # 连接状态
     STATUS_DISCONNECTED = 0
@@ -38,11 +38,11 @@ class WifiManager:
         self.config = config
         self.logger = get_global_logger()
         
-        # StaticCache 集成：记录上次连接成功的网络, 优化重连策略（低侵入）
+        # StaticCache 集成: 记录上次连接成功的网络, 优化重连策略(低侵入)
         self.static_cache = None
         try:
             from lib.static_cache import StaticCache
-            # 如果系统中有全局的 static_cache, 尝试获取引用（避免多实例）
+            # 如果系统中有全局的 static_cache, 尝试获取引用(避免多实例)
             # 暂时创建独立实例, 后续可优化为依赖注入方式
             self.static_cache = StaticCache("wifi_cache.json")
         except Exception:
@@ -67,7 +67,9 @@ class WifiManager:
 
     def is_connected(self):
         """检查WiFi是否已连接。"""
-        return self.status == self.STATUS_CONNECTED and self.wlan.isconnected()
+        # 综合检查：内部状态和实际连接状态必须都为真
+        return (self.status == self.STATUS_CONNECTED and 
+                self.wlan.isconnected())
 
     def connect(self):
         """开始连接到最佳可用WiFi网络, 非阻塞。"""
@@ -110,7 +112,7 @@ class WifiManager:
         if not found_networks:
             return None
         
-        # 优先选择上次成功连接的网络（如果在扫描结果中且信号足够）
+        # 优先选择上次成功连接的网络(如果在扫描结果中且信号足够)
         last_successful_ssid = None
         if self.static_cache:
             try:
@@ -119,10 +121,13 @@ class WifiManager:
                     for net in found_networks:
                         if net['ssid'] == last_successful_ssid and net['rssi'] > -70:  # 信号强度阈值
                             self.logger.info(f"使用缓存的成功网络: {last_successful_ssid} (信号强度: {net['rssi']})", module="WiFi")
-                            # 查找完整的网络配置
+                            # 查找完整的网络配置，同时添加rssi信息
                             for net_config in self.config.get('networks', []):
                                 if net_config['ssid'] == last_successful_ssid:
-                                    return net_config
+                                    # 创建网络配置的副本，添加rssi信息
+                                    network_config = net_config.copy()
+                                    network_config['rssi'] = net['rssi']
+                                    return network_config
             except Exception:
                 # 静默处理缓存读取错误
                 pass
@@ -132,10 +137,13 @@ class WifiManager:
         best_ssid = found_networks[0]['ssid']
         self.logger.info(f"找到最佳网络: {best_ssid} (信号强度: {found_networks[0]['rssi']})", module="WiFi")
         
-        # 从原始配置中查找密码并返回整个网络配置
+        # 从原始配置中查找密码并返回整个网络配置，同时添加rssi信息
         for net_config in self.config.get('networks', []):
             if net_config['ssid'] == best_ssid:
-                return net_config
+                # 创建网络配置的副本，添加rssi信息
+                network_config = net_config.copy()
+                network_config['rssi'] = found_networks[0]['rssi']
+                return network_config
         return None
 
     def _attempt_connection(self):
@@ -146,7 +154,7 @@ class WifiManager:
         # 合并连接尝试日志, 使用结构化格式
         self.logger.info("连接WiFi - ssid={}, rssi={}", 
                        self.target_network['ssid'], 
-                       getattr(self.target_network, 'rssi', 'unknown'), 
+                       self.target_network.get('rssi', 'unknown'), 
                        module="WiFi")
         self.status = self.STATUS_CONNECTING
         self.connection_start_time = time.ticks_ms()
@@ -176,6 +184,9 @@ class WifiManager:
                 self.status = self.STATUS_CONNECTED
                 ip_info = self.wlan.ifconfig()
                 
+                # 添加调试日志
+                self.logger.info("WiFi已连接到AP，获取IP信息: {}", ip_info, module="WiFi")
+                
                 # 检查 IP 地址是否有效
                 if ip_info and ip_info[0] and ip_info[0] != "0.0.0.0":
                     ip_address = ip_info[0]
@@ -193,7 +204,7 @@ class WifiManager:
                         # 联网成功后尝试进行 NTP 时间同步
                         self._try_ntp_sync()
                 else:
-                    self.logger.warning("WiFi已连接但未获取有效IP地址, 重试中...", module="WiFi")
+                    self.logger.warning("WiFi已连接但未获取有效IP地址: {}, 重试中...", ip_info, module="WiFi")
                     self.wlan.disconnect()
                     # 重新开始连接过程, 不改变状态
                     self.connection_start_time = time.ticks_ms()
@@ -220,7 +231,7 @@ class WifiManager:
                 self._ntp_synced = False
                 self._ntp_attempts = 0
                 self._last_connect_event = 0
-                # 连接稳定时, 更新 StaticCache 记录成功网络（防抖写入）
+                # 连接稳定时, 更新 StaticCache 记录成功网络(防抖写入)
                 if self.static_cache and self.target_network:
                     try:
                         current_ssid = self.target_network.get('ssid')
@@ -243,13 +254,13 @@ class WifiManager:
 
     # --------------------------- NTP 同步逻辑 ---------------------------
     def _try_ntp_sync(self):
-        """尝试执行 NTP 时间同步（带重试与事件上报）。"""
+        """尝试执行 NTP 时间同步(带重试与事件上报)。"""
         if self._ntp_synced:
             return
         if not self.wlan.isconnected():
             return
         if ntptime is None:
-            # 环境不支持 ntptime（可能是PC端）, 跳过但报告失败事件
+            # 环境不支持 ntptime(可能是PC端), 跳过但报告失败事件
             self.event_bus.publish(EVENTS.NTP_STATE_CHANGE, state="failed", reason="NTP_MODULE_NOT_AVAILABLE", module="WiFi")
             self.logger.warning("NTP模块不可用, 跳过时间同步", module="WiFi")
             return
@@ -266,7 +277,7 @@ class WifiManager:
             # 某些端口的 ntptime 不支持设置 host, 忽略
             pass
         
-        # 发布开始事件（只发布一次）
+        # 发布开始事件(只发布一次)
         self.logger.info("NTP同步开始 - 服务器={}", ntp_server, module="WiFi")
         self.event_bus.publish(EVENTS.NTP_STATE_CHANGE, state="started", ntp_server=ntp_server, module="WiFi")
         

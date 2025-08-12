@@ -117,23 +117,23 @@ def feed_watchdog(context):
         try:
             wdt.feed()
         except Exception as e:
-            error("喂看门狗失败: {}", e, module="FSM-WDT")
+            error("喂看门狗失败: {}", e, module="FSM")
 
 def increase_error_count(context):
     """增加错误计数"""
     context['error_count'] += 1
-    info("错误计数: {}/{}", context['error_count'], context['max_errors'], module="FSM-Error")
+    info("错误计数: {}/{}", context['error_count'], context['max_errors'], module="FSM")
     
     # 检查是否达到最大错误数
     if context['error_count'] >= context['max_errors']:
-        info("达到最大错误计数，进入安全模式", module="FSM-Error")
+        info("达到最大错误计数，进入安全模式", module="FSM")
         return True
     return False
 
 def reset_error_count(context):
     """重置错误计数"""
     context['error_count'] = 0
-    info("错误计数已重置", module="FSM-Error")
+    info("错误计数已重置", module="FSM")
 
 def update_led_for_state(context):
     """根据当前状态更新LED"""
@@ -148,9 +148,9 @@ def update_led_for_state(context):
     
     try:
         led_controller.play(pattern)
-        info("LED状态更新为: {} (状态: {})", pattern, get_state_name(current_state), module="FSM-LED")
+        info("LED状态更新为: {} (状态: {})", pattern, get_state_name(current_state), module="FSM")
     except Exception as e:
-        error("更新LED状态失败: {}", e, module="FSM-LED")
+        error("更新LED状态失败: {}", e, module="FSM")
 
 def save_state_to_cache(context):
     """保存状态到缓存"""

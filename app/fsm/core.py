@@ -104,10 +104,6 @@ class FunctionalStateMachine:
         # 保存状态到缓存
         save_state_to_cache(self.context)
         
-        info("状态转换完成: {} -> {}", 
-             get_state_name(self.context['previous_state']) if self.context['previous_state'] is not None else "None",
-             get_state_name(new_state), module="FSM")
-        
         return True
     
     def _handle_event(self, event_name, *args, **kwargs):
@@ -180,10 +176,6 @@ class FunctionalStateMachine:
         next_state = get_next_state(current_state, event)
         
         if next_state is not None and next_state != current_state:
-            info("状态转换: {} -> {} (事件: {})", 
-                 get_state_name(current_state), 
-                 get_state_name(next_state), 
-                 event, module="FSM")
             self._enter_state(next_state)
         else:
             # 事件未触发状态转换，记录调试信息
