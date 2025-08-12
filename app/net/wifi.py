@@ -1,11 +1,9 @@
 # app/net/wifi.py
+# 注意: 暂时移除 static_cache 相关代码以简化实现，后续根据需要重新添加
 import network
 import utime as time
+import ntptime
 import gc
-try:
-    import ntptime  # MicroPython NTP 客户端
-except Exception:
-    ntptime = None
 from lib.logger import get_global_logger
 from lib.event_bus.events_const import EVENTS
 
@@ -38,16 +36,6 @@ class WifiManager:
         self.config = config
         self.logger = get_global_logger()
         
-        # StaticCache 集成: 记录上次连接成功的网络, 优化重连策略(低侵入)
-        self.static_cache = None
-        try:
-            from lib.static_cache import StaticCache
-            # 如果系统中有全局的 static_cache, 尝试获取引用(避免多实例)
-            # 暂时创建独立实例, 后续可优化为依赖注入方式
-            self.static_cache = StaticCache("wifi_cache.json")
-        except Exception:
-            # 静默处理 StaticCache 不可用的情况
-            pass
         
         self.wlan = network.WLAN(network.STA_IF)
         self.status = self.STATUS_DISCONNECTED
@@ -112,27 +100,7 @@ class WifiManager:
         if not found_networks:
             return None
         
-        # 优先选择上次成功连接的网络(如果在扫描结果中且信号足够)
-        last_successful_ssid = None
-        if self.static_cache:
-            try:
-                last_successful_ssid = self.static_cache.get('last_successful_ssid')
-                if last_successful_ssid:
-                    for net in found_networks:
-                        if net['ssid'] == last_successful_ssid and net['rssi'] > -70:  # 信号强度阈值
-                            self.logger.info(f"使用缓存的成功网络: {last_successful_ssid} (信号强度: {net['rssi']})", module="WiFi")
-                            # 查找完整的网络配置，同时添加rssi信息
-                            for net_config in self.config.get('networks', []):
-                                if net_config['ssid'] == last_successful_ssid:
-                                    # 创建网络配置的副本，添加rssi信息
-                                    network_config = net_config.copy()
-                                    network_config['rssi'] = net['rssi']
-                                    return network_config
-            except Exception:
-                # 静默处理缓存读取错误
-                pass
-        
-        # 如果缓存网络不可用, 按RSSI排序
+        # 按RSSI排序选择最佳网络
         found_networks.sort(key=lambda x: x['rssi'], reverse=True)
         best_ssid = found_networks[0]['ssid']
         self.logger.info(f"找到最佳网络: {best_ssid} (信号强度: {found_networks[0]['rssi']})", module="WiFi")
@@ -231,18 +199,6 @@ class WifiManager:
                 self._ntp_synced = False
                 self._ntp_attempts = 0
                 self._last_connect_event = 0
-                # 连接稳定时, 更新 StaticCache 记录成功网络(防抖写入)
-                if self.static_cache and self.target_network:
-                    try:
-                        current_ssid = self.target_network.get('ssid')
-                        if current_ssid:
-                            # 记录成功连接的网络, 用于下次优先选择
-                            self.static_cache.set('last_successful_ssid', current_ssid)
-                            # 记录连接成功的时间戳
-                            self.static_cache.set('last_connection_time', time.ticks_ms())
-                    except Exception:
-                        # 静默处理缓存写入错误
-                        pass
 
         elif self.status in (self.STATUS_DISCONNECTED, self.STATUS_ERROR):
             # 检查是否到了重试时间
