@@ -191,6 +191,8 @@ class MainController:
             
             # 持续运行，直到收到关机信号
             while self.state_machine.get_current_state() != "SHUTDOWN":
+                # 更新状态机
+                self.state_machine.update()
                 # 喂看门狗
                 self.state_machine.feed_watchdog()
                 
