@@ -10,6 +10,7 @@
 app/net/
 ├── __init__.py          # 模块初始化和导出
 ├── index.py             # 网络统一控制器
+├── fsm.py               # 网络状态机
 ├── wifi.py              # WiFi管理器
 ├── ntp.py               # NTP时间同步管理器
 └── mqtt.py              # MQTT控制器
@@ -49,10 +50,11 @@ app/net/
 **配置示例**:
 ```python
 network_config = {
-    'backoff_base': 2,           # 退避基础时间(秒)
-    'backoff_multiplier': 2,     # 退避倍数
-    'max_backoff_time': 300,     # 最大退避时间(秒)
-    'max_retries': 5,            # 最大重试次数
+    'network': {                 # 状态机配置
+        'backoff_delay': 2,      # 首次重连延迟(秒)
+        'max_retries': 5,        # 最大重试次数
+        'connection_timeout': 120  # 单次连接超时(秒)
+    },
     'wifi': {
         'networks': [
             {'ssid': 'network1', 'password': 'password1'},
@@ -151,10 +153,9 @@ network_config = {
 network_manager = NetworkManager(event_bus, network_config)
 
 # 启动连接流程
-if network_manager.start_connection_flow():
-    print("网络连接成功")
-else:
-    print("网络连接失败")
+network_manager.connect()
+# 可以根据需要检查 status
+
 
 # 主循环中调用
 while True:
