@@ -125,7 +125,7 @@ network_config = {
 
 ```python
 from app.net import NetworkManager
-from lib.event_bus.core import EventBus
+from lib.lock.event_bus import EventBus
 
 # 创建事件总线
 event_bus = EventBus()

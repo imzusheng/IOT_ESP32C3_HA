@@ -5,7 +5,7 @@
 """
 
 import utime as time
-from lib.event_bus.events_const import EVENTS
+from lib.lock.event_bus import EVENTS
 from lib.logger import info, error, warning
 from .state_const import (
     STATE_BOOT, STATE_NAMES, STATE_TRANSITIONS,

@@ -11,6 +11,36 @@ class LOG_LEVELS:
     WARN = 2
     ERROR = 3
 
+# 装饰器：安全日志记录
+def safe_log(level='error'):
+    """装饰器：包装目标函数，自动捕获并安全记录异常"""
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                _log(level, "函数{}异常: {}", func.__name__, str(e))
+                return None
+        return wrapper
+    return decorator
+
+# 安全日志记录函数
+def _log(level, msg, *args, **kwargs):
+    """安全日志记录，避免日志异常影响主逻辑"""
+    try:
+        logger = get_global_logger()
+        if hasattr(logger, level):
+            getattr(logger, level)(msg, *args, **kwargs)
+        else:
+            logger.info(msg, *args, **kwargs)
+    except:
+        # 降级到print输出
+        try:
+            formatted_msg = msg.format(*args) if args else msg
+            print(f"[Logger] {formatted_msg}")
+        except:
+            print(f"[Logger] {msg}")
+
 class Logger:
     """
     基于 ulogging 的日志系统

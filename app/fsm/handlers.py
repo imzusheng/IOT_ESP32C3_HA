@@ -7,7 +7,7 @@
 import utime as time
 import gc
 from lib.logger import info, warning, error
-from lib.event_bus.events_const import EVENTS
+from lib.lock.event_bus import EVENTS
 from .state_const import STATE_NAMES, get_state_name
 
 def boot_state_handler(event, context):
@@ -374,7 +374,7 @@ def _emergency_cleanup(context):
     try:
         # 深度垃圾回收
         info("执行深度垃圾回收", module="FSM")
-        from utils.helpers import emergency_cleanup
+        from lib.helpers import emergency_cleanup
         emergency_cleanup()
         
 

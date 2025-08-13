@@ -1,4 +1,6 @@
 # app/lib/static_cache.py
+# 暂时废弃， 请勿使用
+
 import ujson
 import utime as time
 

@@ -1,5 +1,5 @@
 # app/net/__init__.py
-# QÜ!WË‡ö
+"""ç½‘ç»œæ¨¡å—"""
 
 from .wifi import WifiManager
 from .ntp import NtpManager

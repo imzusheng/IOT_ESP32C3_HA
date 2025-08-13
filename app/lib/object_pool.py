@@ -1,4 +1,5 @@
 # app/lib/object_pool.py
+# 暂时废弃， 请勿使用
 
 class ObjectPool:
     """

@@ -4,7 +4,7 @@ from lib.lock.umqtt import MQTTClient
 import utime as time
 import machine
 from lib.logger import get_global_logger
-from lib.event_bus.events_const import EVENTS
+from lib.lock.event_bus import EVENTS
 
 class MqttController:
     """

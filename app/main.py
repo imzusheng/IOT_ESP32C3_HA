@@ -5,7 +5,7 @@ import machine
 
 # 1. 导入所有类
 from config import get_config
-from lib.event_bus.core import EventBus
+from lib.lock.event_bus import EventBus
 from lib.logger import Logger, set_global_logger
 from fsm.core import create_state_machine
 from net import NetworkManager
