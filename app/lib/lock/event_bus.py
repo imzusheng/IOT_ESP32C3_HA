@@ -49,6 +49,9 @@ EVENTS = {
     # MQTT 状态变化事件
     'MQTT_STATE_CHANGE': "mqtt.state_change",  # data: (state, info) state可以是: connected, disconnected
     
+    # MQTT 消息事件
+    'MQTT_MESSAGE': "mqtt.message",  # data: (topic, message) MQTT消息事件
+    
     # 系统状态变化事件
     'SYSTEM_STATE_CHANGE': "system.state_change",  # data: (state, info) state可以是: 1.init, 2.running, 3.error, 4.shutdown
     
@@ -57,6 +60,9 @@ EVENTS = {
     
     # NTP 时间同步状态变化事件
     'NTP_STATE_CHANGE': "ntp.state_change",  # data: (state, info) state可以是: success, failed, syncing
+    
+    # 传感器数据事件
+    'SENSOR_DATA': "sensor.data",  # data: (sensor_id, value) 传感器数据事件
 }
 
 class EventQueue:
@@ -210,15 +216,21 @@ class EventBus:
         """执行事件"""
         event_name, args, kwargs = event_item
         
+        _log('debug', "执行事件: {} (参数: {}, {})", event_name, args, kwargs, module="EventBus")
+        
         if event_name not in self.subscribers:
+            _log('warning', "事件 {} 没有订阅者", event_name, module="EventBus")
             return
         
         # 复制订阅者列表避免迭代时修改
         callbacks = self.subscribers[event_name][:]
+        _log('debug', "事件 {} 有 {} 个订阅者", event_name, len(callbacks), module="EventBus")
         
         for callback in callbacks:
             try:
+                _log('debug', "调用回调: {} -> {}", event_name, getattr(callback, '__name__', 'unknown'), module="EventBus")
                 callback(event_name, *args, **kwargs)
+                _log('debug', "回调执行成功: {} -> {}", event_name, getattr(callback, '__name__', 'unknown'), module="EventBus")
             except Exception as e:
                 self._handle_callback_error(event_name, callback, e)
 
@@ -228,9 +240,9 @@ class EventBus:
         _log('error', "回调失败: {} - {}", event_name, str(error), module="EventBus")
         
         # 发布系统错误事件
-        if event_name != EVENTS.SYSTEM_STATE_CHANGE:
+        if event_name != EVENTS['SYSTEM_STATE_CHANGE']:
             error_event = (
-                EVENTS.SYSTEM_STATE_CHANGE,
+                EVENTS['SYSTEM_STATE_CHANGE'],
                 ('callback_error',),
                 {
                     'error': str(error),
@@ -308,6 +320,7 @@ class EventBus:
         """发布事件"""
         # 检查是否有订阅者
         if not self.has_subscribers(event_name):
+            _log('debug', "发布事件 {} (无订阅者)", event_name, module="EventBus")
             return True
         
         # 断路器开启时拒绝新事件
@@ -317,7 +330,12 @@ class EventBus:
         
         # 入队事件
         event_item = (event_name, args, kwargs)
-        return self.event_queue.enqueue(event_item)
+        success = self.event_queue.enqueue(event_item)
+        if success:
+            _log('debug', "事件已入队: {} (参数: {}, {})", event_name, args, kwargs, module="EventBus")
+        else:
+            _log('error', "事件入队失败: {}", event_name, module="EventBus")
+        return success
 
     def has_subscribers(self, event_name):
         """检查是否有订阅者"""

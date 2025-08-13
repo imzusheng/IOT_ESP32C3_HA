@@ -34,8 +34,8 @@ IOT_ESP32C3/
 ├── app/                    # 开发源代码目录（编译后直接上传到设备根目录）
 │   ├── lib/               # 通用库和工具模块
 │   │   ├── event_bus.py   # 事件总线
-│   │   ├── object_pool.py # 对象池管理器
-│   │   ├── static_cache.py # 静态缓存系统
+│   │   ├── object_pool.py # 对象池管理器（废弃， 请勿使用）
+│   │   ├── static_cache.py # 静态缓存系统（废弃， 请勿使用）
 │   │   ├── logger.py      # 日志系统
 │   │   └── lock/          # 不可编辑的外部库
 │   │       ├── umqtt.py   # MQTT客户端库

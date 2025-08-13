@@ -461,7 +461,7 @@ def set_global_logger(logger: Logger) -> None:
     _global_logger = logger
     
 # 便捷的全局日志函数，支持模块标注
-def debug(msg: LogMessage, *args, module: ModuleName = None) -> None:
+def debug(msg: 'Logger.LogMessage', *args, module: 'Logger.ModuleName' = None) -> None:
     """
     全局调试日志函数
     
@@ -476,7 +476,7 @@ def debug(msg: LogMessage, *args, module: ModuleName = None) -> None:
     logger = get_global_logger()
     logger.debug(msg, *args, module=module)
     
-def info(msg: LogMessage, *args, module: ModuleName = None) -> None:
+def info(msg: 'Logger.LogMessage', *args, module: 'Logger.ModuleName' = None) -> None:
     """
     全局信息日志函数
     
@@ -491,7 +491,7 @@ def info(msg: LogMessage, *args, module: ModuleName = None) -> None:
     logger = get_global_logger()
     logger.info(msg, *args, module=module)
     
-def warning(msg: LogMessage, *args, module: ModuleName = None) -> None:
+def warning(msg: 'Logger.LogMessage', *args, module: 'Logger.ModuleName' = None) -> None:
     """
     全局警告日志函数
     
@@ -506,7 +506,7 @@ def warning(msg: LogMessage, *args, module: ModuleName = None) -> None:
     logger = get_global_logger()
     logger.warning(msg, *args, module=module)
     
-def error(msg: LogMessage, *args, module: ModuleName = None) -> None:
+def error(msg: 'Logger.LogMessage', *args, module: 'Logger.ModuleName' = None) -> None:
     """
     全局错误日志函数
     
@@ -521,7 +521,7 @@ def error(msg: LogMessage, *args, module: ModuleName = None) -> None:
     logger = get_global_logger()
     logger.error(msg, *args, module=module)
     
-def critical(msg: LogMessage, *args, module: ModuleName = None) -> None:
+def critical(msg: 'Logger.LogMessage', *args, module: 'Logger.ModuleName' = None) -> None:
     """
     全局严重错误日志函数
     

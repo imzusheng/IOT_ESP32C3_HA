@@ -64,13 +64,13 @@ def networking_state_handler(event, context):
             except Exception as e:
                 error("网络状态更新失败: {}", e, module="FSM")
         
-        # 检查连接超时 - 使用更合理的超时时间
+        # 检查连接超时 - 优化超时策略
         elapsed = time.ticks_diff(time.ticks_ms(), context.get('networking_start_time', 0))
-        timeout = context['config'].get('network', {}).get('connection_timeout', 120) * 1000
+        timeout = context['config'].get('network', {}).get('connection_timeout', 60) * 1000  # 改为60秒
         
         if elapsed > timeout:
-            warning("网络连接超时（{}ms），进入RUNNING状态", elapsed, module="FSM")
-            return 'running'  # 超时后直接进入RUNNING状态，而不是ERROR状态
+            warning("网络连接超时（{}ms），但可能部分连接已建立，进入RUNNING状态", elapsed, module="FSM")
+            return 'running'  # 超时后进入RUNNING状态，让系统继续运行
     
     elif event == 'wifi_connected':
         # WiFi连接成功，网络服务已经启动，等待MQTT连接
@@ -272,23 +272,25 @@ def _perform_initialization(context):
         info("执行系统初始化任务", module="FSM")
     except Exception as e:
         error("初始化任务执行失败: {}", e, module="FSM")
-        context['event_bus'].publish(EVENTS.SYSTEM_ERROR, str(e))
+        context['event_bus'].publish(EVENTS['SYSTEM_ERROR'], str(e))
 
 def _start_network_connection(context):
     """启动网络连接过程"""
     network_manager = context.get('network_manager')
     if not network_manager:
         error("网络管理器不可用", module="FSM")
-        context['event_bus'].publish(EVENTS.SYSTEM_ERROR, "缺少网络管理器")
+        context['event_bus'].publish(EVENTS['SYSTEM_ERROR'], "缺少网络管理器")
         return
     
     # 启动网络连接过程 - 由网络管理器统一处理WiFi、NTP、MQTT
     try:
         info("启动网络连接过程", module="FSM")
+        info("网络管理器状态: {}", type(network_manager).__name__, module="FSM")
         network_manager.start_connection_flow()
+        info("网络连接流程已启动", module="FSM")
     except Exception as e:
         error("启动网络连接失败: {}", e, module="FSM")
-        context['event_bus'].publish(EVENTS.SYSTEM_ERROR, f"网络连接启动失败: {str(e)}")
+        context['event_bus'].publish(EVENTS['SYSTEM_ERROR'], f"网络连接启动失败: {str(e)}")
 
 def _start_network_services(context):
     """启动网络服务"""
@@ -363,7 +365,7 @@ def _check_system_health(context):
         memory_threshold = context['config'].get('daemon', {}).get('memory_threshold', 80)
         if mem_percent > memory_threshold:
             warning("高内存使用率: {:.1f}%", mem_percent, module="FSM")
-            context['event_bus'].publish(EVENTS.SYSTEM_STATE_CHANGE, 
+            context['event_bus'].publish(EVENTS['SYSTEM_STATE_CHANGE'], 
                                        state='warning', 
                                        warning_msg=f"高内存使用: {mem_percent:.1f}%")
         
@@ -375,7 +377,7 @@ def _check_system_health(context):
             consistency_ok = network_manager.check_consistency()
             if not consistency_ok:
                 warning("网络状态不一致", module="FSM")
-                context['event_bus'].publish(EVENTS.SYSTEM_STATE_CHANGE, 
+                context['event_bus'].publish(EVENTS['SYSTEM_STATE_CHANGE'], 
                                            state='warning', 
                                            warning_msg="网络状态不一致")
         

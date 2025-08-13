@@ -42,7 +42,7 @@ class NetworkManager:
         # 创建网络状态机
         self.fsm = NetworkFSM(
             event_bus=event_bus,
-            config=config.get('network', {}),
+            config=config,  # 传递完整配置，NetworkFSM内部会正确获取所需配置段
             wifi_manager=self.wifi,
             mqtt_manager=self.mqtt,
             ntp_manager=self.ntp
@@ -80,7 +80,10 @@ class NetworkManager:
         内部状态机会自动处理 WiFi→NTP→MQTT 的完整流程
         外部只需调用此方法即可
         """
+        self.logger.info("NetworkManager.connect() 被调用", module="NET")
+        self.logger.info("当前网络状态: {}", self.fsm.get_status(), module="NET")
         self.fsm.connect()
+        self.logger.info("网络连接流程已启动", module="NET")
     
     def disconnect(self):
         """

@@ -84,15 +84,16 @@ pytest app/tests/ --cov=app
 
 ## 核心架构组件
 
-### 1. 事件总线 (EventBus) - `app/lib/event_bus/core.py`
+### 1. 事件总线 (EventBus) - `app/lib/lock/event_bus.py`
 - **功能**: 模块间异步通信的核心枢纽
 - **特性**: 
-  - 基于硬件计时器的循环队列系统，避免 micropython.schedule 的 queue full 问题
-  - 双优先级队列（高优先级60%，低优先级40%）
+  - 基于硬件计时器的单队列循环系统，避免 micropython.schedule 的 queue full 问题
+  - 错误断路器机制，防止系统级联故障
   - 系统状态监控（正常/警告/严重错误）
   - 批量事件处理和内存优化
+  - 自动垃圾回收和性能统计
 - **接口**: `subscribe(event_name, callback)`, `publish(event_name, *args, **kwargs)`
-- **配置**: 队列大小64，定时器间隔25ms，批处理数量5
+- **配置**: 队列大小64，定时器间隔25ms，批处理数量5，错误阈值10
 
 ### 2. 函数式状态机 (FunctionalStateMachine) - `app/fsm/core.py`
 - **功能**: 清晰的系统状态管理和转换
@@ -114,10 +115,10 @@ pytest app/tests/ --cov=app
 - **特性**: 自动保存、内存优化、错误恢复
 - **接口**: `get(key, default)`, `set(key, value)`, `load()`, `save()`
 
-### 5. 事件常量 (EVENTS) - `app/lib/event_bus/events_const.py`
+### 5. 事件常量 (EVENTS) - `app/lib/lock/event_bus.py`
 - **功能**: 统一事件名称定义，避免字符串散落
-- **包含**: 系统事件、网络事件、传感器事件、错误事件
-- **优先级**: 高优先级事件（SYSTEM_ERROR, SYSTEM_STATE_CHANGE）优先处理
+- **包含**: WIFI_STATE_CHANGE, MQTT_STATE_CHANGE, SYSTEM_STATE_CHANGE, SYSTEM_ERROR, NTP_STATE_CHANGE
+- **特性**: 集中在EventBus模块中，避免额外的导入依赖
 
 ## 硬件抽象层
 
@@ -126,10 +127,18 @@ pytest app/tests/ --cov=app
 - **特性**: 多网络选择、RSSI排序、自动重连、非阻塞连接
 - **事件**: 发布 WIFI_STATE_CHANGE 事件
 
-### 7. MQTT控制器 (MqttController) - `app/net/mqtt.py`
-- **功能**: 高效的MQTT通信管理
-- **特性**: 指数退避重连、内存优化、心跳监控
-- **事件**: 发布 MQTT_STATE_CHANGE, MQTT_MESSAGE 事件
+### 7. 网络管理器 (NetworkManager) - `app/net/__init__.py`
+- **功能**: 统一的网络连接管理，封装WiFi、MQTT、NTP
+- **特性**: 
+  - 统一的网络状态管理
+  - 指数退避重连策略
+  - 内存优化和连接池
+  - 集中的错误处理
+- **子模块**: 
+  - WiFi管理器 (`app/net/wifi.py`)
+  - MQTT控制器 (`app/net/mqtt.py`) 
+  - NTP同步 (`app/net/ntp.py`)
+  - 网络状态机 (`app/net/fsm.py`)
 
 ### 8. LED模式控制器 (LEDPatternController) - `app/hw/led.py`
 - **功能**: 丰富的LED状态指示和模式控制
@@ -233,13 +242,14 @@ timeout = get_config('wifi', 'timeout', 15)
 ```
 app/                        # 开发源代码目录（编译后上传到设备根目录）
 ├── lib/                    # 核心库模块
-│   ├── event_bus/         # 事件总线（核心通信机制）
-│   │   ├── core.py        # 事件总线核心实现
-│   │   └── events_const.py # 事件常量定义
+│   ├── lock/              # 不可编辑的外部库
+│   │   ├── event_bus.py   # 事件总线核心实现（含事件常量）
+│   │   ├── umqtt.py       # MQTT客户端库
+│   │   └── ulogging.py    # 轻量级日志库
 │   ├── object_pool.py     # 对象池管理器
 │   ├── static_cache.py    # 静态缓存系统
 │   ├── logger.py          # 日志系统
-│   └── lock/              # 不可编辑的外部库
+│   └── helpers.py         # 通用辅助函数
 ├── fsm/                    # 函数式状态机
 │   ├── core.py           # 状态机核心实现
 │   ├── handlers.py       # 状态处理函数
@@ -249,8 +259,12 @@ app/                        # 开发源代码目录（编译后上传到设备�
 │   ├── led.py            # LED控制器
 │   └── sensor.py         # 传感器管理器
 ├── net/                    # 网络通信层
+│   ├── __init__.py       # 网络管理器（统一入口）
 │   ├── wifi.py           # WiFi管理器
-│   └── mqtt.py           # MQTT控制器
+│   ├── mqtt.py           # MQTT控制器
+│   ├── ntp.py            # NTP时间同步
+│   ├── fsm.py            # 网络状态机
+│   └── index.py          # 网络索引
 ├── utils/                  # 工具函数
 │   ├── helpers.py        # 系统助手函数
 │   └── timers.py         # 定时器工具集
@@ -277,11 +291,13 @@ class MyModule:
         
     # 2. 事件订阅
     def setup(self):
-        self.event_bus.subscribe(EVENTS.SYSTEM_READY, self.on_system_ready)
+        from lib.lock.event_bus import EVENTS
+        self.event_bus.subscribe(EVENTS.SYSTEM_STATE_CHANGE, self.on_system_state_change)
         
     # 3. 事件发布
     def do_something(self):
-        self.event_bus.publish(EVENTS.MY_EVENT, data="value")
+        from lib.lock.event_bus import EVENTS
+        self.event_bus.publish(EVENTS.SYSTEM_ERROR, error_type="my_error", error_info="details")
 ```
 
 ## 重要注意事项
@@ -297,3 +313,6 @@ class MyModule:
 - **依赖注入**: 使用依赖注入模式，在 `main.py` 中统一管理组件生命周期
 - **状态管理**: 使用函数式状态机管理系统状态，支持自动错误恢复
 - **内存优化**: 使用对象池、静态缓存等技术优化内存使用
+- **事件总线**: EventBus 已简化为单队列模式，集成错误断路器机制
+- **网络管理**: 使用统一的 NetworkManager 管理所有网络连接
+- **配置系统**: 配置集中在 `config.py` 中，支持运行时验证和默认值

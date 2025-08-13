@@ -214,7 +214,7 @@ CONFIG = {
         # 描述: 控制日志输出的最低级别。
         # 影响: 决定了日志的详细程度。`DEBUG`最详细，`CRITICAL`信息最少。生产环境设为`INFO`或`WARNING`可减少不必要的日志刷屏。
         # 建议: "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"。
-        "log_level": "INFO",
+        "log_level": "DEBUG",
 
         # 描述: 是否启用彩色日志输出。
         # 影响: 开启后会在支持ANSI颜色的终端中显示彩色日志，便于快速识别不同模块的日志。
