@@ -53,7 +53,7 @@ class ObjectPool:
 
 class ObjectPoolManager:
     """
-    对象池管理器 (重构版本)
+    对象池管理器 (单例模式)
     
     管理多个命名对象池的管理器，提供统一的接口来创建、
     使用和释放对象池。是事件驱动架构的内存优化核心组件。
@@ -64,10 +64,21 @@ class ObjectPoolManager:
     - 智能内存分配
     - 统一的接口
     - 内存使用统计
+    - 单例模式，全局唯一实例
     """
+    _instance = None
+    _initialized = False
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(ObjectPoolManager, cls).__new__(cls)
+        return cls._instance
+    
     def __init__(self):
-        self._pools = {}
-        self._object_to_pool = {}  # 跟踪对象属于哪个池
+        if not ObjectPoolManager._initialized:
+            self._pools = {}
+            self._object_to_pool = {}  # 跟踪对象属于哪个池
+            ObjectPoolManager._initialized = True
 
     def add_pool(self, name, object_factory, size):
         """
@@ -135,6 +146,15 @@ class ObjectPoolManager:
             # 静默处理不存在的池
             pass
 
+def get_object_pool_manager():
+    """
+    获取全局对象池管理器实例
+    
+    Returns:
+        ObjectPoolManager: 全局唯一的对象池管理器实例
+    """
+    return ObjectPoolManager()
+
 # 使用示例:
 #
 # class Message:
@@ -145,7 +165,7 @@ class ObjectPoolManager:
 #         self.topic = ""
 #         self.payload = ""
 #
-# manager = ObjectPoolManager()
+# manager = get_object_pool_manager()
 # manager.add_pool("mqtt_messages", lambda: Message(), 10)
 #
 # msg_obj = manager.acquire("mqtt_messages")

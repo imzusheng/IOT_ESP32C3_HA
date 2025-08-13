@@ -38,8 +38,10 @@ STATE_TRANSITIONS = {
         'error': STATE_ERROR
     },
     STATE_NETWORKING: {
-        'wifi_connected': STATE_RUNNING,
-        'wifi_disconnected': STATE_WARNING,
+        'wifi_connected': STATE_NETWORKING,
+        'mqtt_connected': STATE_RUNNING,
+        'running': STATE_RUNNING,
+         'wifi_disconnected': STATE_WARNING,
         'error': STATE_ERROR
     },
     STATE_RUNNING: {
@@ -87,19 +89,6 @@ LED_PATTERNS = {
     STATE_RECOVERY: 'blink',
     STATE_SHUTDOWN: 'off'
 }
-
-# 为了保持兼容性，创建SystemState类
-class SystemState:
-    """系统状态定义 - 兼容性类"""
-    BOOT = "BOOT"
-    INIT = "INIT"
-    NETWORKING = "NETWORKING"
-    RUNNING = "RUNNING"
-    WARNING = "WARNING"
-    ERROR = "ERROR"
-    SAFE_MODE = "SAFE_MODE"
-    RECOVERY = "RECOVERY"
-    SHUTDOWN = "SHUTDOWN"
 
 # 工具函数
 def get_state_name(state):

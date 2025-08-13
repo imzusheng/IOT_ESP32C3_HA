@@ -14,7 +14,7 @@ ESP32-C3传感器管理器 (重构版本)
 """
 
 import utime as time
-from lib.object_pool import ObjectPoolManager
+from lib.object_pool import get_object_pool_manager
 from lib.logger import get_global_logger
 from lib.event_bus import EVENTS
 import gc
@@ -24,9 +24,9 @@ class SensorManager:
     传感器管理器
     管理内部和外部传感器数据采集
     """
-    def __init__(self, event_bus, object_pool):
+    def __init__(self, event_bus):
         self.event_bus = event_bus
-        self.object_pool = object_pool
+        self.object_pool = get_object_pool_manager()
         self.logger = get_global_logger()
         self.sensors = {}
         self.sensor_data = {}
@@ -36,6 +36,9 @@ class SensorManager:
         # 数据变化检测和频率限制
         self.last_published_data = {}  # 存储上次发布的数据
         self.last_publish_time = {}   # 存储上次发布时间
+        
+        # 初始化logger
+        self.logger = get_global_logger()
         self.min_publish_interval = 2000  # 最小发布间隔2秒
         self.data_change_threshold = 0.1  # 数据变化阈值10%
         
@@ -218,14 +221,21 @@ class ExternalSensorManager:
     外部传感器管理器
     支持DHT11、DHT22、BMP280等外部传感器
     """
-    def __init__(self, event_bus, object_pool):
+    def __init__(self, event_bus):
         import machine
         self.event_bus = event_bus
-        self.object_pool = object_pool
+        self.object_pool = get_object_pool_manager()
         self.external_sensors = {}
         self.i2c = None
         self.spi = None
         self.machine = machine
+        
+        # 数据变化检测和频率限制
+        self.last_published_data = {}  # 存储上次发布的数据
+        self.last_publish_time = {}   # 存储上次发布时间
+        
+        # 初始化logger
+        self.logger = get_global_logger()
     
     def init_i2c(self, scl_pin, sda_pin, freq=400000):
         """初始化I2C总线"""
@@ -381,5 +391,53 @@ class ExternalSensorManager:
     def get_external_sensors(self):
         """获取所有外部传感器列表"""
         return list(self.external_sensors.keys())
+    
+    def _has_data_changed_significantly(self, sensor_id, new_data):
+        """检查数据是否发生显著变化"""
+        if sensor_id not in self.last_published_data:
+            return True  # 首次发布
+        
+        old_data = self.last_published_data[sensor_id]
+        
+        # 处理不同类型的数据
+        if isinstance(new_data, (int, float)) and isinstance(old_data, (int, float)):
+            # 数值类型数据，检查相对变化
+            if old_data == 0:
+                return new_data != 0  # 避免除零
+            relative_change = abs(new_data - old_data) / abs(old_data)
+            return relative_change > 0.1  # 10%变化阈值
+        elif isinstance(new_data, dict) and isinstance(old_data, dict):
+            # 字典类型数据，检查关键字段的变化
+            for key in new_data:
+                if key in old_data:
+                    if isinstance(new_data[key], (int, float)) and isinstance(old_data[key], (int, float)):
+                        if old_data[key] == 0:
+                            if new_data[key] != 0:
+                                return True
+                        else:
+                            relative_change = abs(new_data[key] - old_data[key]) / abs(old_data[key])
+                            if relative_change > 0.1:  # 10%变化阈值
+                                return True
+                else:
+                    return True  # 新字段
+            return False
+        else:
+            # 其他类型，直接比较
+            return new_data != old_data
+    
+    def _should_publish_sensor_data(self, sensor_id, data):
+        """检查是否应该发布传感器数据"""
+        now = time.ticks_ms()
+        
+        # 检查发布频率限制
+        if sensor_id in self.last_publish_time:
+            if time.ticks_diff(now, self.last_publish_time[sensor_id]) < 2000:  # 2秒间隔
+                return False
+        
+        # 检查数据变化
+        if not self._has_data_changed_significantly(sensor_id, data):
+            return False
+        
+        return True
 
 # Sensor module loaded

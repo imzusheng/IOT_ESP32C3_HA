@@ -193,6 +193,7 @@ class MqttController:
                     # 发布连接成功事件
                     if self._event_bus:
                         self._event_bus.publish(EVENTS.MQTT_STATE_CHANGE, state="connected")
+                        self._event_bus.publish("mqtt_connected")  # 添加这个事件供FSM使用
                         # 自动订阅配置的主题
                         for topic in self.config.get('subscribe_topics', []):
                             self.subscribe(topic)

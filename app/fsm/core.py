@@ -25,21 +25,20 @@ class FunctionalStateMachine:
     采用函数和字典查找替代类继承，彻底简化架构
     """
     
-    def __init__(self, event_bus, object_pool, static_cache, config, 
-                 network_manager=None, led_controller=None):
+    def __init__(self, event_bus, config, 
+                 network_manager=None, led_controller=None, static_cache=None):
         """
         初始化函数式状态机
         Args:
             event_bus: 事件总线实例
-            object_pool: 对象池管理器实例
-            static_cache: 静态缓存实例
+            static_cache: 静态缓存实例 (暂时禁用)
             config: 配置字典
             network_manager: 网络管理器实例
             led_controller: LED控制器实例
         """
         # 创建状态机上下文
         self.context = create_fsm_context(
-            event_bus, object_pool, static_cache, config,
+            event_bus, static_cache, config,
             network_manager, led_controller
         )
         
@@ -58,7 +57,8 @@ class FunctionalStateMachine:
             EVENTS.SYSTEM_ERROR,
             EVENTS.WIFI_STATE_CHANGE,
             EVENTS.MQTT_STATE_CHANGE,
-            EVENTS.NTP_STATE_CHANGE
+            EVENTS.NTP_STATE_CHANGE,
+            "mqtt_connected"  # 添加MQTT连接成功事件
         ]
         
         for event in events_to_subscribe:
@@ -146,6 +146,10 @@ class FunctionalStateMachine:
                     return 'mqtt_connected'
                 elif state == 'disconnected':
                     return 'mqtt_disconnected'
+            
+            elif event_name == "mqtt_connected":
+                # 直接的MQTT连接事件
+                return 'mqtt_connected'
             
             elif event_name == EVENTS.SYSTEM_STATE_CHANGE:
                 state = kwargs.get('state', '')
@@ -258,12 +262,13 @@ def get_state_machine():
     """获取全局状态机实例"""
     return _state_machine_instance
 
-def create_state_machine(event_bus, object_pool, static_cache, config, 
-                        network_manager=None, led_controller=None):
+def create_state_machine(event_bus, config, 
+                        network_manager=None, led_controller=None, static_cache=None):
     """创建全局状态机实例"""
     global _state_machine_instance
     _state_machine_instance = FunctionalStateMachine(
-        event_bus, object_pool, static_cache, config,
-        network_manager, led_controller
+        event_bus, config,
+        network_manager=network_manager, led_controller=led_controller,
+        static_cache=static_cache
     )
     return _state_machine_instance

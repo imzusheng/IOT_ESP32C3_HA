@@ -22,9 +22,6 @@ class EVENTS:
     
     # NTP 时间同步状态变化事件 - 通过参数传递具体状态
     NTP_STATE_CHANGE = "ntp.state_change"  # data: (state, info) state可以是: started, success, failed
-    
-    # 硬件传感器数据事件
-    SENSOR_DATA = "sensor.data"  # data: (sensor_id, value)
 
 # 高优先级事件列表 - 优先处理
 HIGH_PRIORITY_EVENTS = {
@@ -35,7 +32,6 @@ HIGH_PRIORITY_EVENTS = {
 # 低优先级事件列表 - 正常处理
 LOW_PRIORITY_EVENTS = {
     EVENTS.MQTT_MESSAGE,
-    EVENTS.SENSOR_DATA,
     EVENTS.WIFI_STATE_CHANGE,
     EVENTS.MQTT_STATE_CHANGE,
     EVENTS.NTP_STATE_CHANGE,

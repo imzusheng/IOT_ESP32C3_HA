@@ -56,25 +56,29 @@ def networking_state_handler(event, context):
         return None
     
     elif event == 'update':
-        # 定期调用网络管理器的update方法来处理连接状态机
+        # 定期调用网络管理器的loop方法来处理连接状态
         network_manager = context.get('network_manager')
-        if network_manager and hasattr(network_manager, 'update'):
+        if network_manager and hasattr(network_manager, 'loop'):
             try:
-                network_manager.update()
+                network_manager.loop()
             except Exception as e:
                 error("网络状态更新失败: {}", e, module="FSM")
         
-        # 检查连接超时 - 使用网络管理器统一配置的超时时间
+        # 检查连接超时 - 使用更合理的超时时间
         elapsed = time.ticks_diff(time.ticks_ms(), context.get('networking_start_time', 0))
-        timeout = context['config'].get('network', {}).get('max_backoff_time', 300) * 1000
+        timeout = context['config'].get('network', {}).get('connection_timeout', 120) * 1000
         
         if elapsed > timeout:
-            warning("网络连接超时（{}ms），发布超时事件", elapsed, module="FSM")
-            return 'error'
+            warning("网络连接超时（{}ms），进入RUNNING状态", elapsed, module="FSM")
+            return 'running'  # 超时后直接进入RUNNING状态，而不是ERROR状态
     
     elif event == 'wifi_connected':
-        # WiFi连接成功，转换到RUNNING状态
-        info("网络连接成功，转换到RUNNING状态", module="FSM")
+        # WiFi连接成功，网络服务已经启动，等待MQTT连接
+        info("WiFi连接成功，网络服务已启动", module="FSM")
+    
+    elif event == 'mqtt_connected':
+        # MQTT连接成功，转换到RUNNING状态
+        info("MQTT连接成功，转换到RUNNING状态", module="FSM")
         return 'running'
     
     elif event == 'exit':
@@ -253,15 +257,6 @@ def _perform_initialization(context):
     """执行初始化任务"""
     try:
         info("执行系统初始化任务", module="FSM")
-        
-        # 初始化对象池（如果需要）
-        if context.get('object_pool'):
-            pass
-        
-        # 初始化静态缓存（如果需要）
-        if context.get('static_cache'):
-            pass
-    
     except Exception as e:
         error("初始化任务执行失败: {}", e, module="FSM")
         context['event_bus'].publish(EVENTS.SYSTEM_ERROR, str(e))
@@ -277,7 +272,7 @@ def _start_network_connection(context):
     # 启动网络连接过程 - 由网络管理器统一处理WiFi、NTP、MQTT
     try:
         info("启动网络连接过程", module="FSM")
-        network_manager.connect()
+        network_manager.start_connection_flow()
     except Exception as e:
         error("启动网络连接失败: {}", e, module="FSM")
         context['event_bus'].publish(EVENTS.SYSTEM_ERROR, f"网络连接启动失败: {str(e)}")
@@ -308,11 +303,13 @@ def _periodic_maintenance(context, current_time):
         context['last_health_check_time'] = current_time
         _check_system_health(context)
     
-    # 如果网络服务还没有启动，且超过1秒，尝试启动
-    if (not context.get('mqtt_connect_scheduled', False) and 
-        time.ticks_diff(current_time, context.get('running_start_time', 0)) >= 1000):
-        _start_network_services(context)
-        context['mqtt_connect_scheduled'] = True
+    # 网络服务已经在NETWORKING状态启动，这里只需要定期维护
+    network_manager = context.get('network_manager')
+    if network_manager and hasattr(network_manager, 'loop'):
+        try:
+            network_manager.loop()
+        except Exception as e:
+            error("运行状态网络更新失败: {}", e, module="FSM")
 
 def _log_system_status(context):
     """记录系统状态"""
@@ -357,20 +354,7 @@ def _check_system_health(context):
                                        state='warning', 
                                        warning_msg=f"高内存使用: {mem_percent:.1f}%")
         
-        # 检查温度
-        try:
-            from utils.helpers import get_temperature
-            temp = get_temperature()
-            if temp:
-                temp_threshold = context['config'].get('daemon', {}).get('temp_threshold', 65)
-                if temp > temp_threshold:
-                    warning("高温: {}°C", temp, module="FSM")
-                    context['event_bus'].publish(EVENTS.SYSTEM_STATE_CHANGE, 
-                                               state='warning', 
-                                               warning_msg=f"高温: {temp}°C")
-        except Exception:
-            # 温度检查失败不是致命错误，只记录日志
-            pass
+
         
         # 检查网络状态一致性
         network_manager = context.get('network_manager')
@@ -390,15 +374,10 @@ def _emergency_cleanup(context):
     try:
         # 深度垃圾回收
         info("执行深度垃圾回收", module="FSM")
-        for _ in range(3):
-            gc.collect()
-            time.sleep_ms(50)
+        from utils.helpers import emergency_cleanup
+        emergency_cleanup()
         
-        # 清理对象池
-        object_pool = context.get('object_pool')
-        if object_pool and hasattr(object_pool, 'clear_all_pools'):
-            info("清理对象池", module="FSM")
-            object_pool.clear_all_pools()
+
         
         # 断开网络连接
         network_manager = context.get('network_manager')
@@ -409,15 +388,7 @@ def _emergency_cleanup(context):
             except Exception as e:
                 info("断开网络连接失败（忽略）: {}", e, module="FSM")
         
-        # 保存关键状态到缓存
-        static_cache = context.get('static_cache')
-        if static_cache:
-            try:
-                info("保存系统状态", module="FSM")
-                static_cache.set('safe_mode_entry_time', time.ticks_ms())
-                static_cache.save(force=True)
-            except Exception as e:
-                info("保存系统状态失败（忽略）: {}", e, module="FSM")
+
     
     except Exception as e:
         # 即使在安全模式下，清理失败也不应该导致系统崩溃
@@ -446,15 +417,7 @@ def _perform_shutdown_cleanup(context):
             except Exception as e:
                 info("关闭LED失败（忽略）: {}", e, module="FSM")
         
-        # 保存关键数据到缓存
-        static_cache = context.get('static_cache')
-        if static_cache:
-            try:
-                info("保存系统状态", module="FSM")
-                static_cache.set('shutdown_time', time.ticks_ms())
-                static_cache.save(force=True)
-            except Exception as e:
-                info("保存系统状态失败（忽略）: {}", e, module="FSM")
+
         
         info("关机清理完成", module="FSM")
         

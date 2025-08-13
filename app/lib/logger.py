@@ -13,28 +13,18 @@ class LOG_LEVELS:
 
 class Logger:
     """
-    基于 ulogging 的独立日志系统 (重构版本)
-    
-    使用 MicroPython 的 ulogging 模块作为底层日志记录器，
-    独立工作，不再依赖外部事件系统。提供更高效的日志处理
-    和更好的内存管理。
-    
-    特性:
-    - 基于 ulogging 的高效日志记录
-    - 独立日志记录，无需事件总线
-    - 支持模块名称标注
-    - 多级别日志支持 (DEBUG, INFO, WARN, ERROR, CRITICAL)
-    - 内存优化设计
-    - 时间戳格式化
-    - 统一的接口
-    - 错误隔离处理
-    - 模块颜色强调支持
-    - 标准化日志格式
+    基于 ulogging 的日志系统
     
     使用方法:
-    1. 创建 Logger 实例：logger = Logger(level=LOG_LEVELS.INFO)
-    2. 直接使用日志方法：logger.info("消息", module="模块名")
+    1. 创建 Logger 实例: logger = Logger(level=LOG_LEVELS.INFO)
+    2. 直接使用日志方法: logger.info("消息", module="模块名")
     """
+    
+    # 类型定义
+    LogLevel = int
+    ModuleName = str
+    LogMessage = str
+    LogConfig = dict
     
     # ANSI颜色代码
     _COLORS = {
@@ -44,12 +34,16 @@ class Logger:
         'MQTT': '\033[1;33m',    # 黄色加粗
         'Main': '\033[1;35m',    # 紫色加粗
         'Cache': '\033[1;34m',   # 蓝色加粗
-        'EventBus': '\033[1;31m', # 红色加粗
+        'EventBus': '\033[1;31m',# 红色加粗
         'Timer': '\033[1;33m',   # 黄色加粗
         'Sensor': '\033[1;32m',  # 绿色加粗
         'LED': '\033[1;35m',     # 紫色加粗
         'Utils': '\033[1;37m',   # 白色加粗
-        'RESET': '\033[0m'       # 重置颜色
+        'RESET': '\033[0m',      # 重置颜色
+        # 日志级别颜色
+        'ERROR': '\033[1;31m',   # 红色加粗
+        'WARN': '\033[1;33m',    # 黄色加粗（橙黄色）
+        'WARNING': '\033[1;33m'  # 黄色加粗（橙黄色）
     }
     
     # 模块名称映射
@@ -69,7 +63,18 @@ class Logger:
         'config': 'Config'
     }
     
-    def __init__(self, level=LOG_LEVELS.INFO, config=None):
+    def __init__(self, level: LogLevel = LOG_LEVELS.INFO, config: LogConfig = None) -> None:
+        """
+        初始化 Logger 实例
+        
+        Args:
+            level: 日志级别，默认为 INFO
+            config: 日志配置字典，包含以下选项:
+                - enable_colors: 是否启用颜色 (默认: True)
+                - show_milliseconds: 是否显示毫秒 (默认: True) 
+                - auto_module_detection: 是否自动检测模块 (默认: True)
+                - enable_alignment: 是否启用对齐 (默认: True)
+        """
         # ulogging 级别映射
         self._ulogging_level_map = {
             LOG_LEVELS.DEBUG: ulogging.DEBUG,
@@ -77,15 +82,7 @@ class Logger:
             LOG_LEVELS.WARN: ulogging.WARNING,
             LOG_LEVELS.ERROR: ulogging.ERROR,
         }
-        
-        # 兼容原有的级别映射
-        self._level_map = {
-            LOG_LEVELS.DEBUG: 0,
-            LOG_LEVELS.INFO: 1,
-            LOG_LEVELS.WARN: 2,
-            LOG_LEVELS.ERROR: 3,
-        }
-        
+
         # 创建 ulogging 实例
         self._logger = ulogging.getLogger("")
         
@@ -93,21 +90,18 @@ class Logger:
         ulogging_level = self._ulogging_level_map.get(level, ulogging.INFO)
         self._logger.setLevel(ulogging_level)
         
-        # 设置兼容的级别
-        self._level = self._level_map.get(level, 1)
+        # 设置日志级别
+        self._level = level
         
         # 配置日志格式
         self._setup_logger_format()
-        
-        # 保留默认处理器引用用于后续判断回调是否被外部替换，
-        # 若被替换则在直接日志方法中采用兼容调用，避免传递未知关键字参数
-        self._default_handle_log = self._handle_log
         
         # 配置参数
         self._config = config or {}
         self._enable_colors = self._config.get('enable_colors', True)
         self._show_milliseconds = self._config.get('show_milliseconds', True)
         self._auto_module_detection = self._config.get('auto_module_detection', True)
+        self._enable_alignment = self._config.get('enable_alignment', True)
         
     def _setup_logger_format(self):
         """配置自定义的日志输出格式，避免双重前缀"""
@@ -137,13 +131,15 @@ class Logger:
 
     # setup 方法已移除 - Logger 现在独立工作，不再依赖 EventBus
 
-    def set_level(self, new_level):
+    def set_level(self, new_level: LogLevel) -> None:
         """
         设置新的日志记录级别。
-        :param new_level: 来自 EVENTS 的日志级别常量
+        
+        Args:
+            new_level: 新的日志级别 (LOG_LEVELS.DEBUG/INFO/WARN/ERROR)
         """
-        # 设置兼容的级别
-        self._level = self._level_map.get(new_level, 1)
+        # 设置日志级别
+        self._level = new_level
         
         # 设置 ulogging 级别
         ulogging_level = self._ulogging_level_map.get(new_level, ulogging.INFO)
@@ -155,8 +151,13 @@ class Logger:
         except:
             pass  # 如果 ulogging 不可用，忽略
 
-    def _get_formatted_timestamp(self):
-        """获取格式化的时间戳，兼容 MicroPython 优先使用 RTC 本地时间"""
+    def _get_formatted_timestamp(self) -> str:
+        """
+        获取格式化的时间戳，兼容 MicroPython 优先使用 RTC 本地时间
+        
+        Returns:
+            格式化的时间字符串，如 "14:25:36.123"
+        """
         try:
             import utime as time
             # 判断是否有可靠的 RTC 时间（例如通过 NTP 同步）
@@ -195,18 +196,53 @@ class Logger:
             except:
                 return "00:00:00"
     
-    def _get_level_name(self, event_name):
-        """获取日志级别名称"""
+    def _get_level_name(self, event_name: LogLevel) -> str:
+        """
+        获取日志级别名称，支持固定宽度对齐和颜色
+        
+        Args:
+            event_name: 日志级别常量
+            
+        Returns:
+            格式化的级别名称字符串
+        """
         level_map = {
             LOG_LEVELS.DEBUG: 'DEBUG',
             LOG_LEVELS.INFO: 'INFO',
             LOG_LEVELS.WARN: 'WARN',
             LOG_LEVELS.ERROR: 'ERROR'
         }
-        return level_map.get(event_name, 'INFO')
+        level_name = level_map.get(event_name, 'INFO')
+        
+        # 如果启用了对齐，使用固定宽度格式
+        if self._enable_alignment:
+            formatted_level = f"{level_name:<5}"  # 左对齐，宽度5字符
+        else:
+            formatted_level = level_name
+        
+        # 如果启用了颜色，为特定级别添加颜色
+        if self._enable_colors:
+            if level_name == 'ERROR':
+                color_code = self._COLORS.get('ERROR', '')
+                reset_code = self._COLORS.get('RESET', '')
+                return f"{color_code}{formatted_level}{reset_code}"
+            elif level_name in ['WARN', 'WARNING']:
+                color_code = self._COLORS.get('WARN', '')
+                reset_code = self._COLORS.get('RESET', '')
+                return f"{color_code}{formatted_level}{reset_code}"
+        
+        return formatted_level
     
-    def _normalize_module_name(self, module_name):
-        """标准化模块名称"""
+    def _normalize_module_name(self, module_name: ModuleName) -> ModuleName:
+        """
+        标准化模块名称
+        
+        Args:
+            module_name: 原始模块名称
+            
+        Returns:
+            标准化后的模块名称，如 "FSM", "WiFi", "MQTT"
+        """
         if not module_name:
             return None
         
@@ -215,19 +251,26 @@ class Logger:
         return self._MODULE_MAP.get(normalized, module_name.upper())
     
         
-    def _handle_log(self, event_name, msg=None, *args, **kwargs):
+    def _handle_log(self, event_name: LogLevel, msg: LogMessage = None, *args, **kwargs) -> None:
         """
         处理接收到的日志事件。
         直接输出日志，避免双重前缀。
         支持模块来源标注和防抖机制。
+        
+        Args:
+            event_name: 日志级别
+            msg: 日志消息模板
+            *args: 消息格式化参数
+            **kwargs: 额外参数，支持:
+                - module: 模块名称
+                - error_context: 错误上下文字典
         """
         # 从旧格式兼容：如果 msg 是第一个位置参数
         if msg is None and args:
             msg = args[0]
             args = args[1:]
         
-        log_level = self._level_map.get(event_name)
-        if log_level is None or log_level < self._level:
+        if event_name < self._level:
             return
 
         # 格式化消息
@@ -287,83 +330,77 @@ class Logger:
         # 直接输出日志，避免通过 ulogging 添加额外前缀
         print(full_msg)
 
-    def _invoke_handler_compat(self, handler, event_name, msg, args, module):
-        """
-        安全调用（可能被外部替换的）_handle_log 回调，
-        逐步放宽参数，避免因未知关键字参数导致的 TypeError。
-        优先尝试保留 event_name 以及格式化参数。
-        """
-        try:
-            # 优先尝试包含 module 关键字（如果外部实现支持）
-            if module is not None:
-                return handler(event_name, msg, *args, module=module)
-            else:
-                return handler(event_name, msg, *args)
-        except TypeError:
-            pass
-        try:
-            # 去掉关键字参数，仅位置参数
-            return handler(event_name, msg, *args)
-        except TypeError:
-            pass
-        try:
-            # 退化为仅 event_name 与原始消息
-            return handler(event_name, msg)
-        except TypeError:
-            pass
-        try:
-            # 最后尝试仅传入消息（极端兼容）
-            return handler(msg)
-        except TypeError:
-            # 放弃调用，避免影响主流程
-            return
-        
+          
     # 直接日志方法 - 提供更直接的日志记录接口，支持模块标注
-    def debug(self, msg, *args, module=None):
-        """直接记录调试日志"""
-        handler = self._handle_log
-        if handler is self._default_handle_log:
-            handler(LOG_LEVELS.DEBUG, msg, *args, module=module)
-        else:
-            self._invoke_handler_compat(handler, LOG_LEVELS.DEBUG, msg, args, module)
+    def debug(self, msg: LogMessage, *args, module: ModuleName = None) -> None:
+        """
+        直接记录调试日志
         
-    def info(self, msg, *args, module=None):
-        """直接记录信息日志"""
-        handler = self._handle_log
-        if handler is self._default_handle_log:
-            handler(LOG_LEVELS.INFO, msg, *args, module=module)
-        else:
-            self._invoke_handler_compat(handler, LOG_LEVELS.INFO, msg, args, module)
-        
-    def warning(self, msg, *args, module=None):
-        """直接记录警告日志"""
-        handler = self._handle_log
-        if handler is self._default_handle_log:
-            handler(LOG_LEVELS.WARN, msg, *args, module=module)
-        else:
-            self._invoke_handler_compat(handler, LOG_LEVELS.WARN, msg, args, module)
-        
-    def error(self, msg, *args, module=None):
-        """直接记录错误日志"""
-        handler = self._handle_log
-        if handler is self._default_handle_log:
-            handler(LOG_LEVELS.ERROR, msg, *args, module=module)
-        else:
-            self._invoke_handler_compat(handler, LOG_LEVELS.ERROR, msg, args, module)
-        
-    def critical(self, msg, *args, module=None):
-        """直接记录严重错误日志"""
-        try:
-            full_msg = msg.format(*args)
-        except:
-            full_msg = msg
-        
-        if module:
-            full_msg = f"[{module}] CRITICAL: {full_msg}"
-        else:
-            full_msg = f"严重错误: {full_msg}"
+        Args:
+            msg: 日志消息模板
+            *args: 消息格式化参数
+            module: 模块名称，如 "FSM", "WiFi", "MQTT"
             
-        self._logger.error(full_msg)
+        Example:
+            logger.debug("连接状态: {}", status, module="WiFi")
+        """
+        self._handle_log(LOG_LEVELS.DEBUG, msg, *args, module=module)
+        
+    def info(self, msg: LogMessage, *args, module: ModuleName = None) -> None:
+        """
+        直接记录信息日志
+        
+        Args:
+            msg: 日志消息模板
+            *args: 消息格式化参数
+            module: 模块名称，如 "FSM", "WiFi", "MQTT"
+            
+        Example:
+            logger.info("系统已启动", module="Main")
+        """
+        self._handle_log(LOG_LEVELS.INFO, msg, *args, module=module)
+        
+    def warning(self, msg: LogMessage, *args, module: ModuleName = None) -> None:
+        """
+        直接记录警告日志
+        
+        Args:
+            msg: 日志消息模板
+            *args: 消息格式化参数
+            module: 模块名称，如 "FSM", "WiFi", "MQTT"
+            
+        Example:
+            logger.warning("内存使用率过高: {}%", usage, module="System")
+        """
+        self._handle_log(LOG_LEVELS.WARN, msg, *args, module=module)
+        
+    def error(self, msg: LogMessage, *args, module: ModuleName = None) -> None:
+        """
+        直接记录错误日志
+        
+        Args:
+            msg: 日志消息模板
+            *args: 消息格式化参数
+            module: 模块名称，如 "FSM", "WiFi", "MQTT"
+            
+        Example:
+            logger.error("连接失败: {}", error_msg, module="MQTT")
+        """
+        self._handle_log(LOG_LEVELS.ERROR, msg, *args, module=module)
+        
+    def critical(self, msg: LogMessage, *args, module: ModuleName = None) -> None:
+        """
+        直接记录严重错误日志
+        
+        Args:
+            msg: 日志消息模板
+            *args: 消息格式化参数
+            module: 模块名称，如 "FSM", "WiFi", "MQTT"
+            
+        Example:
+            logger.critical("系统严重错误，即将重启", module="System")
+        """
+        self._handle_log(LOG_LEVELS.ERROR, msg, *args, module=module)
   
 # Logger 现在独立工作，不再依赖 EventBus
 # 所有日志记录都通过直接方法调用完成，无需事件总线
@@ -371,40 +408,100 @@ class Logger:
 # 全局日志实例 - 提供便捷的全局日志记录功能
 _global_logger = None
 
-def get_global_logger():
-    """获取全局日志实例"""
+def get_global_logger() -> Logger:
+    """
+    获取全局日志实例
+    
+    Returns:
+        全局 Logger 实例，如果不存在则创建新的
+    """
     global _global_logger
     if _global_logger is None:
         _global_logger = Logger()
     return _global_logger
 
-def set_global_logger(logger):
-    """设置全局日志实例"""
+def set_global_logger(logger: Logger) -> None:
+    """
+    设置全局日志实例
+    
+    Args:
+        logger: 要设置为全局的 Logger 实例
+    """
     global _global_logger
     _global_logger = logger
     
 # 便捷的全局日志函数，支持模块标注
-def debug(msg, *args, module=None):
-    """全局调试日志函数"""
+def debug(msg: LogMessage, *args, module: ModuleName = None) -> None:
+    """
+    全局调试日志函数
+    
+    Args:
+        msg: 日志消息模板
+        *args: 消息格式化参数
+        module: 模块名称
+        
+    Example:
+        debug("调试信息: {}", value, module="Utils")
+    """
     logger = get_global_logger()
     logger.debug(msg, *args, module=module)
     
-def info(msg, *args, module=None):
-    """全局信息日志函数"""
+def info(msg: LogMessage, *args, module: ModuleName = None) -> None:
+    """
+    全局信息日志函数
+    
+    Args:
+        msg: 日志消息模板
+        *args: 消息格式化参数
+        module: 模块名称
+        
+    Example:
+        info("系统信息", module="Main")
+    """
     logger = get_global_logger()
     logger.info(msg, *args, module=module)
     
-def warning(msg, *args, module=None):
-    """全局警告日志函数"""
+def warning(msg: LogMessage, *args, module: ModuleName = None) -> None:
+    """
+    全局警告日志函数
+    
+    Args:
+        msg: 日志消息模板
+        *args: 消息格式化参数
+        module: 模块名称
+        
+    Example:
+        warning("警告信息", module="System")
+    """
     logger = get_global_logger()
     logger.warning(msg, *args, module=module)
     
-def error(msg, *args, module=None):
-    """全局错误日志函数"""
+def error(msg: LogMessage, *args, module: ModuleName = None) -> None:
+    """
+    全局错误日志函数
+    
+    Args:
+        msg: 日志消息模板
+        *args: 消息格式化参数
+        module: 模块名称
+        
+    Example:
+        error("错误信息", module="MQTT")
+    """
     logger = get_global_logger()
     logger.error(msg, *args, module=module)
     
-def critical(msg, *args, module=None):
-    """全局严重错误日志函数"""
+def critical(msg: LogMessage, *args, module: ModuleName = None) -> None:
+    """
+    全局严重错误日志函数
+    
+    Args:
+        msg: 日志消息模板
+        *args: 消息格式化参数
+        module: 模块名称
+        
+    Example:
+        critical("严重错误", module="System")
+    """
     logger = get_global_logger()
     logger.critical(msg, *args, module=module)

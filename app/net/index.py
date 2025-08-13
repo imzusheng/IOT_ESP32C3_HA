@@ -92,6 +92,8 @@ class NetworkManager:
         self.event_bus.subscribe(EVENTS.WIFI_STATE_CHANGE, self._on_wifi_state_change)
         # 订阅MQTT状态变化事件
         self.event_bus.subscribe(EVENTS.MQTT_STATE_CHANGE, self._on_mqtt_state_change)
+        # 订阅NTP状态变化事件
+        self.event_bus.subscribe(EVENTS.NTP_STATE_CHANGE, self._on_ntp_state_change)
     
     def _on_system_state_change(self, state, info=None):
         """
@@ -133,6 +135,32 @@ class NetworkManager:
         """
         if state == 'disconnected':
             self.mqtt_connected = False
+    
+    def _on_ntp_state_change(self, state, **kwargs):
+        """
+        处理NTP状态变化事件
+        
+        Args:
+            state: NTP状态
+            **kwargs: 附加参数
+        """
+        if state == 'started':
+            ntp_server = kwargs.get('ntp_server', 'default')
+            self.logger.debug("NTP同步开始: {}", ntp_server, module="NET")
+        elif state == 'success':
+            ntp_server = kwargs.get('ntp_server', 'unknown')
+            attempts = kwargs.get('attempts', 'unknown')
+            self.logger.debug("NTP同步完成: 服务器={}, 尝试次数={}", 
+                            ntp_server, attempts, module="NET")
+        elif state == 'failed':
+            attempts = kwargs.get('attempts')
+            error = kwargs.get('error')
+            if isinstance(error, Exception):
+                error_msg = str(error)
+            else:
+                error_msg = error or "未知错误"
+            
+            self.logger.debug("NTP同步失败: 尝试次数={}, 错误={}", attempts, error_msg, module="NET")
     
     def _calculate_backoff_delay(self, failures):
         """
@@ -239,6 +267,8 @@ class NetworkManager:
                             self.wifi_failures = 0
                             self.logger.info("WiFi连接成功: {}", ssid, module="NET")
                             self.event_bus.publish(EVENTS.WIFI_STATE_CHANGE, state="connected", ssid=ssid)
+                            # 启动网络服务（NTP和MQTT）
+                            self.start_services()
                             connected = True
                             break
                         else:
@@ -393,9 +423,11 @@ class NetworkManager:
             # WiFi连接正常，检查MQTT连接
             if not self.mqtt_connected or not self.mqtt.is_connected():
                 self.mqtt_connected = False
-                # 只在定期检查时输出日志，避免重复
-                if hasattr(self, '_last_check_time') and time.ticks_diff(time.ticks_ms(), self._last_check_time) < 1000:
+                # 只在状态真正变化时输出日志，避免重复
+                if not hasattr(self, '_last_mqtt_check_time') or \
+                   time.ticks_diff(time.ticks_ms(), self._last_mqtt_check_time) > 10000:
                     self.logger.warning("MQTT连接丢失", module="NET")
+                    self._last_mqtt_check_time = time.ticks_ms()
                 
                 # 尝试重连MQTT
                 if not self.connect_mqtt():
@@ -438,16 +470,20 @@ class NetworkManager:
         # 运行MQTT循环（处理连接状态和消息）
         self.mqtt.loop()
         
-        # 检查MQTT连接状态变化
+        # 检查MQTT连接状态变化 - 避免过于频繁的状态检查
         if self.mqtt.is_connected() and not self.mqtt_connected:
             self.mqtt_connected = True
             self.mqtt_failures = 0
             self.logger.info("MQTT连接成功", module="NET")
         elif not self.mqtt.is_connected() and self.mqtt_connected:
             self.mqtt_connected = False
-            self.logger.warning("MQTT连接丢失", module="NET")
-            # 连接丢失时立即重置失败计数器，允许快速重试一次
-            self.mqtt_failures = 0
+            # 只在状态真正变化时输出日志，避免重复
+            if not hasattr(self, '_last_mqtt_disconnect_time') or \
+               time.ticks_diff(time.ticks_ms(), self._last_mqtt_disconnect_time) > 5000:
+                self.logger.warning("MQTT连接丢失", module="NET")
+                self._last_mqtt_disconnect_time = time.ticks_ms()
+            # 连接丢失时增加失败计数器，但不重置，保持指数退避
+            self.mqtt_failures += 1
         
         # 定期检查连接状态
         current_time = time.ticks_ms()

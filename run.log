@@ -1,110 +1,92 @@
-01:05:06.233 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:06.236 [INFO] [FSM] 系统正常运行中 - 运行时间: 60秒
-01:05:06.240 [INFO] [FSM] RUNNING - 网络状态: {'ntp_synced': True, 'mqtt_connected': False, 'mqtt_failures': 5, 'last_ntp_attempt': 43373, 'wifi_failures': 0, 'last_wifi_attempt': 20224, 'ntp_failures': 0, 'wifi_connected': True, 'last_mqtt_attempt': 99624}
-01:05:06.280 [INFO] [FSM] RUNNING - 内存使用: 59.7% (空闲: 62KB)
-01:05:07.585 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:07.891 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:07.213 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:08.519 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:08.825 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:08.131 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:08.437 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:09.742 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:09.047 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:09.352 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:10.657 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:10.963 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:10.268 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:11.573 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:11.878 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:11.184 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:12.489 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:12.794 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:12.099 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:12.404 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:13.710 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:13.015 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:13.320 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:14.625 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:14.931 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:14.236 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:15.541 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:15.846 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:15.151 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:15.457 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:16.762 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:16.067 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:16.372 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:17.678 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:17.983 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:17.303 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:18.609 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:18.915 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:18.221 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:19.526 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:19.831 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:19.136 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:19.442 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:20.747 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:20.052 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:20.358 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:21.663 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:21.968 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:21.273 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:22.579 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:22.884 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:22.189 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:23.494 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:23.800 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:23.105 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:23.411 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:24.716 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:24.021 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:24.326 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:25.632 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:25.938 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:25.244 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:26.550 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:26.855 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:26.162 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:26.468 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:27.773 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:27.079 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:27.400 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:28.706 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:28.012 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:28.318 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:29.624 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:29.931 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:29.236 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:30.542 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:30.847 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:30.153 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:30.459 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:30.462 [WARN] [NET] MQTT连接丢失
-01:05:31.768 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:31.074 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:31.379 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:32.685 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:32.990 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:32.295 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:33.601 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:33.906 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:33.211 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:34.517 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:34.822 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:34.127 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:34.432 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:35.737 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:35.042 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:35.348 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:36.653 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:36.958 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:36.264 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:36.267 [INFO] [FSM] 系统正常运行中 - 运行时间: 90秒
-01:05:36.271 [INFO] [FSM] RUNNING - 网络状态: {'ntp_synced': True, 'mqtt_connected': False, 'mqtt_failures': 5, 'last_ntp_attempt': 43373, 'wifi_failures': 0, 'last_wifi_attempt': 20224, 'ntp_failures': 0, 'wifi_connected': True, 'last_mqtt_attempt': 99624}
-01:05:36.311 [INFO] [FSM] RUNNING - 内存使用: 59.7% (空闲: 62KB)
-01:05:37.616 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:37.922 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:37.228 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
-01:05:38.549 [ERROR] [NET] MQTT循环错误: [Errno 128] ENOTCONN
+>>> %Run -c $EDITOR_CONTENT
+
+MPY: soft reboot
+18:30:10.760 [INFO ] [Main] === ESP32-C3 IoT设备启动中 ===
+18:30:10.763 [INFO ] [Main] 配置已加载
+18:30:10.769 [INFO ] [EventBus] EventBus定时器已启动 - 周期=25ms
+18:30:10.891 [INFO ] [EventBus] 订阅事件: system.state_change -> 1个回调
+18:30:10.895 [INFO ] [EventBus] 订阅事件: wifi.state_change -> 1个回调
+18:30:10.914 [INFO ] [EventBus] 订阅事件: mqtt.state_change -> 1个回调
+18:30:10.920 [INFO ] [LED] 控制器已初始化，引脚: [12, 13]
+18:30:10.924 [INFO ] [Sensor] 内部温度传感器已初始化
+18:30:10.937 [INFO ] [FSM] 看门狗已启用，超时时间: 120000 ms
+18:30:10.940 [INFO ] [EventBus] 订阅事件: system.state_change -> 2个回调
+18:30:10.946 [INFO ] [EventBus] 订阅事件: system.error -> 1个回调
+18:30:10.956 [INFO ] [EventBus] 订阅事件: wifi.state_change -> 2个回调
+18:30:10.960 [INFO ] [EventBus] 订阅事件: mqtt.state_change -> 2个回调
+18:30:10.970 [INFO ] [EventBus] 订阅事件: ntp.state_change -> 1个回调
+18:30:10.976 [INFO ] [EventBus] 订阅事件: mqtt_connected -> 1个回调
+18:30:10.985 [INFO ] [FSM] 函数式状态机已初始化
+18:30:10.990 [INFO ] [EventBus] 订阅事件: ntp.state_change -> 2个回调
+18:30:10.006 [INFO ] [Main] 系统事件订阅已注册
+18:30:10.009 [INFO ] [Main] 启动ESP32-C3 IoT设备
+18:30:10.014 [INFO ] [Main] 对象池已配置 - 共4个对象池
+18:30:10.017 [INFO ] [Main] 新版状态机已启动，采用事件驱动架构
+18:30:10.026 [INFO ] [Main] 进入事件驱动主循环
+18:30:10.036 [INFO ] [FSM] 启动阶段完成，发布boot_complete事件
+18:30:10.039 [INFO ] [FSM] 退出启动状态
+18:30:10.042 [INFO ] [FSM] 进入初始化状态，开始模块初始化
+18:30:10.055 [INFO ] [FSM] 执行系统初始化任务
+18:30:10.060 [INFO ] [FSM] LED状态更新为: blink (状态: INIT)
+18:30:12.167 [INFO ] [FSM] 初始化阶段完成，发布init_complete事件
+18:30:12.170 [INFO ] [FSM] 退出初始化状态
+18:30:12.173 [INFO ] [FSM] 进入NETWORKING状态，启动网络连接
+18:30:12.186 [INFO ] [FSM] 启动网络连接过程
+18:30:12.189 [INFO ] [NET] 启动网络连接流程
+18:30:12.192 [INFO ] [NET] 尝试连接WiFi网络
+18:30:15.700 [INFO ] [NET] 尝试连接WiFi: leju_software (信号强度: -34)
+18:30:18.374 [INFO ] [NET] WiFi连接成功: leju_software
+18:30:18.378 [INFO ] [NET] 开始NTP时间同步
+10:30:17.474 [INFO ] [NET] NTP同步成功
+10:30:17.478 [INFO ] [NET] 开始连接MQTT服务器: 192.168.3.15
+10:30:17.828 [ERROR] [NET] MQTT连接启动失败
+10:30:17.832 [WARN ] [NET] MQTT连接启动失败，但WiFi已连接
+10:30:17.836 [INFO ] [FSM] LED状态更新为: pulse (状态: NETWORKING)
+10:30:26.009 [WARN ] [NET] MQTT连接丢失
+10:30:26.182 [ERROR] [NET] MQTT连接启动失败
+10:30:56.217 [WARN ] [NET] MQTT连接丢失
+10:30:56.310 [ERROR] [NET] MQTT连接启动失败
+10:31:26.344 [WARN ] [NET] MQTT连接丢失
+10:31:27.630 [ERROR] [NET] MQTT连接启动失败
+10:31:56.369 [WARN ] [NET] MQTT连接丢失
+10:31:56.445 [ERROR] [NET] MQTT连接启动失败
+10:32:11.324 [WARN ] [FSM] 网络连接超时（120138ms），进入RUNNING状态
+10:32:11.327 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
+10:32:12.640 [WARN ] [FSM] 网络连接超时（120454ms），进入RUNNING状态
+10:32:12.643 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
+10:32:12.959 [WARN ] [FSM] 网络连接超时（120774ms），进入RUNNING状态
+10:32:12.963 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
+10:32:12.279 [WARN ] [FSM] 网络连接超时（121094ms），进入RUNNING状态
+10:32:12.283 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
+10:32:13.599 [WARN ] [FSM] 网络连接超时（121414ms），进入RUNNING状态
+10:32:13.603 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
+10:32:13.919 [WARN ] [FSM] 网络连接超时（121734ms），进入RUNNING状态
+10:32:13.923 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
+10:32:13.240 [WARN ] [FSM] 网络连接超时（122055ms），进入RUNNING状态
+10:32:13.244 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
+10:32:14.560 [WARN ] [FSM] 网络连接超时（122374ms），进入RUNNING状态
+10:32:14.563 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
+10:32:14.880 [WARN ] [FSM] 网络连接超时（122694ms），进入RUNNING状态
+10:32:14.883 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
+10:32:14.199 [WARN ] [FSM] 网络连接超时（123014ms），进入RUNNING状态
+10:32:14.203 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
+10:32:15.519 [WARN ] [FSM] 网络连接超时（123334ms），进入RUNNING状态
+10:32:15.523 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
+10:32:15.839 [WARN ] [FSM] 网络连接超时（123654ms），进入RUNNING状态
+10:32:15.843 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
+10:32:15.159 [WARN ] [FSM] 网络连接超时（123974ms），进入RUNNING状态
+10:32:15.163 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
+10:32:16.488 [WARN ] [FSM] 网络连接超时（124294ms），进入RUNNING状态
+10:32:16.492 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
+10:32:16.810 [WARN ] [FSM] 网络连接超时（124625ms），进入RUNNING状态
+10:32:16.814 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
+10:32:16.129 [WARN ] [FSM] 网络连接超时（124944ms），进入RUNNING状态
+10:32:16.133 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
+10:32:16.449 [WARN ] [FSM] 网络连接超时（125264ms），进入RUNNING状态
+10:32:16.453 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
+10:32:17.769 [WARN ] [FSM] 网络连接超时（125584ms），进入RUNNING状态
+10:32:17.773 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
+10:32:17.089 [WARN ] [FSM] 网络连接超时（125904ms），进入RUNNING状态
+10:32:17.093 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
+10:32:17.409 [WARN ] [FSM] 网络连接超时（126224ms），进入RUNNING状态
+10:32:17.413 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换

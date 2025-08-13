@@ -225,6 +225,49 @@
 - ✅ 简化NTP管理器实现
 - ✅ 提高网络资源利用效率
 
+### 11. 状态机MQTT连接事件处理修复 ✅
+
+**问题描述：**
+- FSM状态转换表中缺少NETWORKING状态下的`mqtt_connected`事件处理
+- MQTT连接成功后无法从NETWORKING状态转换到RUNNING状态
+- 系统会一直停留在NETWORKING状态，直到超时
+
+**修复方案：**
+- **添加状态转换** - 在NETWORKING状态下添加`mqtt_connected`事件到RUNNING状态的转换
+- **优化状态流程** - 确保MQTT连接成功后能正确进入RUNNING状态
+
+**代码变更：**
+- `app/fsm/state_const.py:40-45` - 在NETWORKING状态转换表中添加`mqtt_connected`事件
+
+**修复效果：**
+- ✅ MQTT连接成功后能正确转换到RUNNING状态
+- ✅ 优化系统启动流程，减少不必要的超时等待
+- ✅ 提高系统响应速度和稳定性
+
+### 12. 架构优化 - 移除MainController中的网络事件处理 ✅
+
+**问题描述：**
+- MainController中包含NTP事件处理逻辑，违反了架构设计原则
+- 网络相关逻辑应该统一在NetworkManager中处理
+- MainController只负责系统启动和依赖注入，不应处理具体的网络事件
+
+**修复方案：**
+- **事件订阅转移** - 将NTP事件订阅从MainController移到NetworkManager
+- **逻辑内聚** - 将NTP日志处理逻辑移到NetworkManager内部
+- **职责分离** - MainController专注于系统级别的紧急事件处理
+
+**代码变更：**
+- `app/net/index.py:95-96` - 在NetworkManager中添加NTP事件订阅
+- `app/net/index.py:139-163` - 在NetworkManager中添加NTP事件处理方法
+- `app/main.py:104-109` - 简化MainController的事件订阅逻辑
+- `app/main.py:111-132` - 移除MainController中的NTP事件处理方法
+
+**架构改进：**
+- ✅ 职责分离更加清晰 - MainController只负责启动，NetworkManager负责网络逻辑
+- ✅ 事件处理内聚 - 网络相关事件统一由NetworkManager处理
+- ✅ 代码组织更合理 - 遵循单一职责原则
+- ✅ 维护性提升 - 网络逻辑的修改只需要在NetworkManager中进行
+
 ## 修复效果
 
 程序现在在NTP同步后会：

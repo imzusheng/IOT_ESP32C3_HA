@@ -7,8 +7,6 @@
 # 从core模块导入核心状态机类和工厂函数
 from .core import FunctionalStateMachine, StateMachine, create_state_machine, get_state_machine
 
-# 从state_const模块导入状态常量（保持兼容性）
-from .state_const import SystemState
 
 # 从state_const模块导入状态常量和工具函数（合并后）
 from .state_const import (
@@ -28,7 +26,6 @@ __all__ = [
     'get_state_machine',
     
     # 兼容性状态常量
-    'SystemState',
     
     # 新的状态常量
     'STATE_BOOT', 'STATE_INIT', 'STATE_NETWORKING', 'STATE_RUNNING',

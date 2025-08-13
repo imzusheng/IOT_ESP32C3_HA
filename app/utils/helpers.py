@@ -60,37 +60,7 @@ def check_memory():
             'total_kb': 0
         }
 
-def get_temperature():
-    """
-    获取ESP32-C3内部温度传感器读数
-    返回摄氏度温度，如果失败则返回None
-    """
-    try:
-        # 检查是否启用了温度传感器
-        from config import get_config
-        temp_enabled = get_config('daemon', 'enable_temperature_sensor', True)
-        
-        if not temp_enabled:
-            return None
-        
-        # ESP32-C3温度传感器实现
-        temp_sensor = machine.ADC(4)  # GPIO4是温度传感器
-        temp_sensor.width(12)
-        temp_sensor.atten(11)  # 11dB衰减
-        
-        # 读取ADC值
-        adc_value = temp_sensor.read()
-        
-        # 转换为温度（近似公式）
-        # 注意: 这是一个近似值, 实际校准可能需要调整
-        voltage = adc_value * 3.3 / 4095
-        temperature = (voltage - 0.5) * 100  # 简化的转换公式
-        
-        return round(temperature, 1)
-    except Exception as e:
-        logger = get_global_logger()
-        logger.error(f"温度读取失败: {e}", module="Utils")
-        return None
+
 
 def get_formatted_time():
     """
@@ -311,6 +281,26 @@ class Throttle:
         :return: True表示已过节流期, 可以触发
         """
         return self.time_until_next_trigger() == 0
+
+def emergency_cleanup():
+    """执行紧急垃圾回收清理
+    
+    在系统内存不足或进入安全模式时调用，
+    执行深度的垃圾回收以释放内存。
+    """
+    try:
+        logger = get_global_logger()
+        logger.info("执行紧急垃圾回收...", module="Utils")
+        
+        # 深度垃圾回收
+        for _ in range(3):
+            gc.collect()
+            time.sleep_ms(50)
+            
+        logger.info("紧急垃圾回收完成", module="Utils")
+    except Exception as e:
+        logger = get_global_logger()
+        logger.error(f"紧急垃圾回收失败: {e}", module="Utils")
 
 # 模块初始化
 # Helper module loaded

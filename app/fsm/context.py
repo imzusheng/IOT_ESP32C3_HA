@@ -9,14 +9,12 @@ import machine
 from lib.logger import info, error
 from .state_const import STATE_BOOT
 
-def create_fsm_context(event_bus, object_pool, static_cache, config, 
+def create_fsm_context(event_bus, config, 
                       network_manager=None, led_controller=None):
     """创建状态机上下文"""
     context = {
         # 核心依赖
         'event_bus': event_bus,
-        'object_pool': object_pool,
-        'static_cache': static_cache,
         'config': config,
         
         # 外部组件
@@ -153,14 +151,7 @@ def update_led_for_state(context):
 
 def save_state_to_cache(context):
     """保存状态到缓存"""
-    static_cache = context.get('static_cache')
-    if static_cache:
-        try:
-            from .state_const import get_state_name
-            static_cache.set('current_state', get_state_name(context['current_state']))
-            static_cache.set('last_state_change', context['state_start_time'])
-        except Exception as e:
-            error("保存状态到缓存失败: {}", e, module="FSM")
+    pass
 
 def get_state_duration(context):
     """获取当前状态持续时间（毫秒）"""
