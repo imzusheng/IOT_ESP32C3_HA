@@ -53,11 +53,11 @@ class FunctionalStateMachine:
     def _subscribe_events(self):
         """订阅事件"""
         events_to_subscribe = [
-            EVENTS.SYSTEM_STATE_CHANGE,
-            EVENTS.SYSTEM_ERROR,
-            EVENTS.WIFI_STATE_CHANGE,
-            EVENTS.MQTT_STATE_CHANGE,
-            EVENTS.NTP_STATE_CHANGE
+            EVENTS['SYSTEM_STATE_CHANGE'],
+            EVENTS['SYSTEM_ERROR'],
+            EVENTS['WIFI_STATE_CHANGE'],
+            EVENTS['MQTT_STATE_CHANGE'],
+            EVENTS['NTP_STATE_CHANGE']
         ]
         
         for event in events_to_subscribe:

@@ -35,34 +35,64 @@ app/net/
 
 ## 组件说明
 
-### NetworkManager (网络统一控制器)
+### NetworkManager (网络统一控制器) - index.py
 
-**功能**: 管理所有网络连接的统一控制器
+**功能**: 管理所有网络连接的统一控制器，是外部主要交互点。
 
-**主要方法**:
-- `start_connection_flow()`: 启动连接流程
-- `check_connections()`: 检查并维护连接状态
-- `disconnect_all()`: 断开所有连接
-- `loop()`: 主循环处理
-- `get_status()`: 获取连接状态
-- `reset_failures()`: 重置失败计数器
+**初始化**:
+```python
+from app.net import NetworkManager
+network_manager = NetworkManager(event_bus, config)
+```
+- `event_bus`: 事件总线实例 (lib.lock.event_bus.EventBus)
+- `config`: 配置字典 (详见配置示例)
+
+**暴露方法**:
+- `connect()`: 启动网络连接流程
+  - 无参数
+  - 返回: 无
+
+- `disconnect()`: 断开所有网络连接
+  - 无参数
+  - 返回: 无
+
+- `loop()`: 主循环处理 (需在主循环中定期调用)
+  - 无参数
+  - 返回: 无
+
+- `get_status()`: 获取当前网络状态
+  - 无参数
+  - 返回: dict - {'wifi': bool, 'mqtt': bool, 'ntp': bool}
+
+- `publish_mqtt_message(topic, message, retain=False, qos=0)`: 发送MQTT消息
+  - `topic`: str - 主题
+  - `message`: str - 消息内容
+  - `retain`: bool - 是否保留 (默认False)
+  - `qos`: int - 服务质量 (默认0)
+  - 返回: bool - 发送成功
+
+- `subscribe_mqtt_topic(topic, qos=0)`: 订阅MQTT主题
+  - `topic`: str - 主题
+  - `qos`: int - 服务质量 (默认0)
+  - 返回: bool - 订阅成功
+
+- `get_mqtt_status()`: 获取MQTT连接状态
+  - 无参数
+  - 返回: bool - 是否连接
 
 **配置示例**:
 ```python
-network_config = {
-    'network': {                 # 状态机配置
-        'backoff_delay': 2,      # 首次重连延迟(秒)
-        'max_retries': 5,        # 最大重试次数
-        'connection_timeout': 120  # 单次连接超时(秒)
+config = {
+    'network': {
+        'backoff_delay': 2,
+        'max_retries': 5,
+        'connection_timeout': 120
     },
     'wifi': {
-        'networks': [
-            {'ssid': 'network1', 'password': 'password1'},
-            {'ssid': 'network2', 'password': 'password2'}
-        ]
+        'networks': [{'ssid': 'net1', 'password': 'pass1'}]
     },
     'ntp': {
-        'ntp_server': 'ntp1.aliyun.com',
+        'ntp_server': 'ntp.aliyun.com',
         'ntp_max_attempts': 3,
         'ntp_retry_interval': 2
     },
@@ -70,224 +100,97 @@ network_config = {
         'broker': 'broker.hivemq.com',
         'port': 1883,
         'keepalive': 60,
-        'user': 'username',
-        'password': 'password',
-        'subscribe_topics': ['device/+/command']
+        'user': 'user',
+        'password': 'pass',
+        'subscribe_topics': ['topic1']
     }
 }
 ```
 
-### WifiManager (WiFi管理器)
+### WifiManager (WiFi管理器) - wifi.py
 
-**功能**: 管理WiFi网络连接
+**注意**: 通常不直接使用，通过NetworkManager间接操作。
 
-**主要方法**:
-- `scan_networks()`: 扫描可用网络
-- `connect(ssid, password)`: 连接指定网络
-- `disconnect()`: 断开连接
-- `get_is_connected()`: 检查连接状态
+**主要方法** (如果需要直接使用):
+- `connect(ssid, password)`: 连接WiFi
+- `disconnect()`: 断开
+- `is_connected()`: 检查状态
 
-**特性**:
-- 按信号强度排序网络
-- 支持多网络配置
-- 自动网络选择
+### NtpManager (NTP时间同步管理器) - ntp.py
 
-### NtpManager (NTP时间同步管理器)
+**注意**: 通常不直接使用，通过NetworkManager间接操作。
 
-**功能**: 管理NTP时间同步
-
-**主要方法**:
-- `sync_time()`: 执行时间同步
+**主要方法** (如果需要直接使用):
+- `sync_time()`: 同步时间
 - `is_synced()`: 检查同步状态
 
-**特性**:
-- 支持自定义NTP服务器
-- 重试机制
-- 错误处理
+### MqttController (MQTT控制器) - mqtt.py
 
-### MqttController (MQTT控制器)
+**注意**: 通常不直接使用，通过NetworkManager间接操作。
 
-**功能**: 管理MQTT通信
-
-**主要方法**:
-- `connect()`: 连接MQTT服务器
-- `disconnect()`: 断开连接
-- `publish(topic, msg)`: 发布消息
-- `subscribe(topic)`: 订阅主题
-- `loop()`: 主循环处理
-
-**特性**:
-- 心跳保持
-- 消息回调
-- 自动重连
+**主要方法** (如果需要直接使用):
+- `connect()`: 连接MQTT
+- `disconnect()`: 断开
+- `publish(topic, msg, retain=False, qos=0)`: 发布
+- `subscribe(topic, qos=0)`: 订阅
+- `loop()`: 处理循环
+- `is_connected()`: 检查状态
 
 ## 使用示例
 
-### 基本使用
-
+### 基本初始化和连接
 ```python
-from app.net import NetworkManager
 from lib.lock.event_bus import EventBus
+from app.net import NetworkManager
 
-# 创建事件总线
 event_bus = EventBus()
-
-# 创建网络管理器
-network_config = {
-    'network': {
-        'backoff_delay': 2,
-        'max_retries': 5,
-        'connection_timeout': 120
-    },
-    'wifi': {
-        'networks': [
-            {'ssid': 'my_wifi', 'password': 'my_password'}
-        ]
-    },
-    'mqtt': {
-        'broker': 'broker.hivemq.com',
-        'port': 1883,
-        'subscribe_topics': ['device/+/command']
-    }
-}
-
-network_manager = NetworkManager(event_bus, network_config)
-
-# 启动连接流程
+network_manager = NetworkManager(event_bus, config)
 network_manager.connect()
 
-# 主循环中调用
 while True:
     network_manager.loop()
-    # 其他处理...
+    time.sleep(0.1)
+```
+
+### 发送和接收MQTT消息
+```python
+# 发送
+network_manager.publish_mqtt_message('topic', 'message')
+
+# 接收 (通过事件)
+def handle_mqtt(data):
+    print(data['topic'], data['message'])
+
+event_bus.subscribe(EVENTS.MQTT_MESSAGE, handle_mqtt)
 ```
 
 ### 状态监控
-
 ```python
-# 获取网络状态
 status = network_manager.get_status()
-print(f"WiFi连接: {status['wifi_connected']}")
-print(f"MQTT连接: {status['mqtt_connected']}")
-print(f"NTP同步: {status['ntp_synced']}")
-
-# 检查连接状态
-if network_manager.check_connections():
-    print("所有连接正常")
-else:
-    print("存在连接问题")
+print(status)
 ```
 
-### 消息发布
+## 事件管理
 
+所有事件通过 fsm.py 统一发布：
+- EVENTS.WIFI_STATE_CHANGE
+- EVENTS.NTP_STATE_CHANGE
+- EVENTS.MQTT_STATE_CHANGE
+- EVENTS.MQTT_MESSAGE
+
+**订阅示例**:
 ```python
-# 发布MQTT消息
-if network_manager.mqtt_connected:
-    network_manager.mqtt.publish(
-        topic="device/status",
-        msg='{"temperature": 25.5, "humidity": 60}'
-    )
+event_bus.subscribe(EVENTS.MQTT_STATE_CHANGE, handler)
 ```
-
-## 集中化事件管理
-
-网络模块采用集中化事件管理架构：
-- **统一发布点**: 所有网络相关事件都通过 `fsm.py` 统一发布
-- **回调机制**: MQTT控制器使用回调函数向状态机报告状态变化
-- **事件一致性**: 确保事件发布的时序和逻辑正确性
-- **职责分离**: 网络组件专注于功能实现，状态机负责事件管理
-
-### 事件发布流程
-1. 网络组件（WiFi/MQTT/NTP）检测到状态变化
-2. 通过回调函数报告给网络状态机（fsm.py）
-3. 状态机统一发布相应的事件到事件总线
-4. 应用层通过事件总线接收状态变化通知
-
-## 事件处理
-
-网络模块采用**集中化事件管理**架构，所有网络相关事件都通过 `fsm.py` 统一发布：
-
-### 事件管理架构
-- **状态机集中发布**: 所有网络事件都在 `NetworkFSM` 中统一发布
-- **回调机制**: 网络组件通过回调函数向状态机报告状态变化
-- **事件一致性**: 确保事件发布的时序和逻辑正确性
-
-### WiFi事件
-- `EVENTS.WIFI_STATE_CHANGE`: WiFi状态变化
-  - `state="connecting"`: 正在连接
-  - `state="connected"`: 连接成功
-  - `state="disconnected"`: 连接断开
-
-### NTP事件
-- `EVENTS.NTP_STATE_CHANGE`: NTP状态变化
-  - `state="started"`: 开始同步
-  - `state="success"`: 同步成功
-  - `state="failed"`: 同步失败
-
-### MQTT事件
-- `EVENTS.MQTT_STATE_CHANGE`: MQTT状态变化
-  - `state="connecting"`: 正在连接
-  - `state="connected"`: 连接成功
-  - `state="disconnected"`: 连接断开
-- `EVENTS.MQTT_MESSAGE`: 收到MQTT消息（由MQTT控制器直接发布）
-
-## 错误处理
-
-### 重连策略
-1. **指数退避**: 失败次数越多，重连间隔越长
-2. **最大重试**: 超过最大重试次数停止尝试
-3. **状态重置**: 可手动重置失败计数器
-
-### 错误恢复
-- **WiFi重连**: 自动扫描并连接可用网络
-- **MQTT重连**: WiFi恢复后自动重连
-- **NTP重试**: 网络恢复后自动重试
 
 ## 注意事项
 
-1. **内存使用**: ESP32-C3内存有限，注意控制连接数
-2. **网络稳定性**: 在网络不稳定环境下，调整退避参数
-3. **事件架构**: 所有网络事件都通过fsm.py统一发布，不要在其他组件中直接发布网络状态事件
-4. **回调机制**: MQTT等组件使用回调函数报告状态，确保状态变化及时传递给状态机
-5. **超时设置**: 根据网络环境调整连接超时时间
-6. **事件风暴**: 避免频繁发布相同事件
+- 事件发布集中在 fsm.py
+- 外部交互主要通过 index.py 的 NetworkManager
+- 配置参数需完整提供
+- 在主循环中定期调用 loop()
 
-## 配置建议
+## 调试
 
-### 稳定网络环境
-```python
-{
-    'network': {
-        'backoff_delay': 2,
-        'max_retries': 3,
-        'connection_timeout': 60
-    }
-}
-```
-
-### 不稳定网络环境
-```python
-{
-    'network': {
-        'backoff_delay': 5,
-        'max_retries': 10,
-        'connection_timeout': 300
-    }
-}
-```
-
-## 调试信息
-
-网络模块提供详细的日志信息：
-- **连接过程日志**: 记录WiFi、MQTT、NTP的连接过程
-- **错误信息日志**: 详细的错误信息和异常处理
-- **状态变化日志**: 状态机状态转换和事件发布记录
-- **事件发布日志**: 集中化事件管理的发布记录
-- **回调处理日志**: 组件回调函数的调用记录
-
-### 事件调试
-- 所有网络事件都通过fsm.py发布，便于集中调试
-- 状态机日志模块标识为"NET_FSM"
-- 各组件日志分别标识为"WiFi"、"MQTT"、"NTP"
-
-可通过配置日志级别来控制日志输出量。
+- 使用 logger 查看 'NET' 模块日志
+- 监控事件总线输出

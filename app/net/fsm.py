@@ -102,8 +102,8 @@ class NetworkFSM:
     
     def _setup_event_subscriptions(self):
         """设置事件订阅"""
-        self.event_bus.subscribe(EVENTS.WIFI_STATE_CHANGE, self._on_wifi_state_change)
-        self.event_bus.subscribe(EVENTS.NTP_STATE_CHANGE, self._on_ntp_state_change)
+        self.event_bus.subscribe(EVENTS['WIFI_STATE_CHANGE'], self._on_wifi_state_change)
+        self.event_bus.subscribe(EVENTS['NTP_STATE_CHANGE'], self._on_ntp_state_change)
     
     def _on_wifi_state_change(self, state, info=None):
         """处理WiFi状态变化"""

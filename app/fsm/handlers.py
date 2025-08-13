@@ -56,7 +56,7 @@ def networking_state_handler(event, context):
         return None
     
     elif event == 'update':
-        # 定期调用网络管理器的loop方法来处理连接状态
+        # 在NETWORKING状态下，定期调用网络管理器的loop方法来处理连接状态
         network_manager = context.get('network_manager')
         if network_manager and hasattr(network_manager, 'loop'):
             try:
@@ -103,6 +103,19 @@ def running_state_handler(event, context):
     elif event == 'update':
         current_time = time.ticks_ms()
         _periodic_maintenance(context, current_time)
+        
+        # 在RUNNING状态下，也需要定期调用网络管理器来维护连接
+        network_manager = context.get('network_manager')
+        if network_manager and hasattr(network_manager, 'loop'):
+            try:
+                network_manager.loop()
+            except Exception as e:
+                error("RUNNING状态网络维护失败: {}", e, module="FSM")
+    
+    elif event == 'wifi_disconnected' or event == 'mqtt_disconnected':
+        # 网络连接断开，转换到NETWORKING状态重新连接
+        warning("网络连接断开，转换到NETWORKING状态", module="FSM")
+        return 'networking'
     
     elif event == 'exit':
         info("退出RUNNING状态", module="FSM")

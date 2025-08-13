@@ -1,8 +1,20 @@
-# 系统架构与流程图
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>系统架构图</title>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; }
+        .mermaid { margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; }
+    </style>
+</head>
+<body>
 
-## 系统组件交互图
+    <h1>系统架构图</h1>
+    <p>右键点击图表 -> 图片另存为 (Save image as) -> 选择SVG格式</p>
 
-```mermaid
+    <h2>系统组件交互图</h2>
+    <div class="mermaid">
 graph TD
     subgraph 系统组件交互图
         A[MainController] -->|创建| B(EventBus)
@@ -15,11 +27,10 @@ graph TD
         E -- "调用 (例如 start_connection)" --> C
         E -- "调用 (例如 play_pattern)" --> D
     end
-```
+    </div>
 
-## FSM与事件总线协作流程
-
-```mermaid
+    <h2>FSM与事件总线协作流程</h2>
+    <div class="mermaid">
 graph TD
     direction LR
     
@@ -40,40 +51,12 @@ graph TD
     FSM_Core -- "查找状态转换规则\n (NETWORKING, 'wifi_connected') -> RUNNING" --> FSM_Core
     FSM_Core -- "调用新旧状态的Handler\n exit_networking(), enter_running()" --> SH
     SH -- "执行具体操作\n 例如 network_manager.start_services()" --> HW
-end
-```
+    </div>
 
-<style>
-    .mermaid .actor {
-        stroke: #cc0000;
-        fill: #f8f8f8;
-    }
-    .mermaid .label {
-        font-family: 'trebuchet ms', verdana, arial;
-        color: #333;
-    }
-    .mermaid .node rect,
-    .mermaid .node circle,
-    .mermaid .node ellipse,
-    .mermaid .node polygon,
-    .mermaid .node path {
-        fill: #f8f8f8;
-        stroke: #333;
-        stroke-width: 1px;
-    }
-    .mermaid .edgePath .path {
-        stroke: #333;
-        stroke-width: 1.5px;
-    }
-    .mermaid .edgeLabel {
-        background-color: #e8e8e8;
-    }
-    .mermaid .cluster rect {
-        fill: #ffffde;
-        stroke: #aaaa33;
-        stroke-width: 1px;
-    }
-    .mermaid .cluster text {
-        fill: #333;
-    }
-</style>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ startOnLoad: true });
+    </script>
+
+</body>
+</html>

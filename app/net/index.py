@@ -56,7 +56,7 @@ class NetworkManager:
     def _setup_event_subscriptions(self):
         """设置事件订阅"""
         # 订阅系统状态变化事件
-        self.event_bus.subscribe(EVENTS.SYSTEM_STATE_CHANGE, self._on_system_state_change)
+        self.event_bus.subscribe(EVENTS['SYSTEM_STATE_CHANGE'], self._on_system_state_change)
     
     def _on_system_state_change(self, state, info=None):
         """

@@ -6,7 +6,7 @@
 import gc
 import time
 
-from .logger import safe_log, _log
+from lib.logger import safe_log, _log
 from machine import Timer
 
 # 配置类 - 集中化配置管理
@@ -51,6 +51,9 @@ EVENTS = {
     
     # 系统状态变化事件
     'SYSTEM_STATE_CHANGE': "system.state_change",  # data: (state, info) state可以是: 1.init, 2.running, 3.error, 4.shutdown
+    
+    # 系统错误事件
+    'SYSTEM_ERROR': "system.error",  # data: (error_type, error_info) 系统错误事件
     
     # NTP 时间同步状态变化事件
     'NTP_STATE_CHANGE': "ntp.state_change",  # data: (state, info) state可以是: success, failed, syncing
@@ -275,7 +278,7 @@ class EventBus:
 
     def _publish_direct_system_event(self, state, info):
         """直接发布系统事件"""
-        event_item = (EVENTS.SYSTEM_STATE_CHANGE, (state,), info)
+        event_item = (EVENTS['SYSTEM_STATE_CHANGE'], (state,), info)
         # 系统状态事件直接入队
         self.event_queue.enqueue(event_item)
 
