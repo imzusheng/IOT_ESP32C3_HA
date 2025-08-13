@@ -27,7 +27,9 @@ class MqttController:
         self.client = None
         self._is_connected = False
         self.last_ping_time = 0
-        self._event_bus = None
+        # 移除事件总线，所有事件发布通过fsm.py统一处理
+        self._state_callback = None  # 状态变化回调函数
+        self._message_callback = None  # 消息回调函数
         
         self._setup_client()
 
@@ -49,26 +51,37 @@ class MqttController:
     def _mqtt_callback(self, topic, msg):
         """
         MQTT消息回调函数
-        当收到消息时，通过事件总线发布
+        当收到消息时，通过消息回调函数通知上层
         """
         try:
             topic_str = topic.decode('utf-8')
             msg_str = msg.decode('utf-8')
             self.logger.info("收到消息: 主题='{}', 消息='{}'", topic_str, msg_str, module="MQTT")
             
-            # 通过事件总线发布消息
-            if self._event_bus:
-                self._event_bus.publish(EVENTS.MQTT_MESSAGE, topic_str, msg_str)
+            # 通过消息回调函数通知上层（fsm.py）
+            if self._message_callback:
+                self._message_callback(topic_str, msg_str)
             
         except Exception as e:
             self.logger.error("处理MQTT消息失败: {}", e, module="MQTT")
     
-    def set_event_bus(self, event_bus):
+    # set_event_bus方法已移除，所有事件发布通过fsm.py统一处理
+    
+    def set_state_callback(self, callback):
         """
-        设置事件总线
-        :param event_bus: EventBus实例
+        设置状态变化回调函数
+        :param callback: 回调函数，接收状态变化通知
         """
-        self._event_bus = event_bus
+        self._state_callback = callback
+    
+    def set_message_callback(self, callback):
+        """
+        设置消息回调函数
+        :param callback: 回调函数，接收MQTT消息通知
+        """
+        self._message_callback = callback
+    
+
     
     def connect(self):
         """
@@ -95,9 +108,9 @@ class MqttController:
         except Exception as e:
             # 不在这里输出错误日志，让NetworkManager统一处理
             self._is_connected = False
-            # 发布连接失败事件
-            if self._event_bus:
-                self._event_bus.publish(EVENTS.MQTT_STATE_CHANGE, state="disconnected", error=str(e))
+            # 通过回调函数报告连接失败
+            if self._state_callback:
+                self._state_callback('disconnected', error=str(e))
             return False
 
     def is_connected(self):
@@ -119,9 +132,9 @@ class MqttController:
                 return False
         
         self._is_connected = False
-        # 发布断开连接事件
-        if self._event_bus:
-            self._event_bus.publish(EVENTS.MQTT_STATE_CHANGE, state="disconnected")
+        # 通过回调函数报告断开连接
+        if self._state_callback:
+            self._state_callback('disconnected')
         
         return True
 
@@ -190,26 +203,25 @@ class MqttController:
                     # 连接恢复
                     self._is_connected = True
                     self.logger.info("MQTT连接恢复", module="MQTT")
-                    # 发布连接成功事件
-                    if self._event_bus:
-                        self._event_bus.publish(EVENTS.MQTT_STATE_CHANGE, state="connected")
-                        self._event_bus.publish("mqtt_connected")  # 添加这个事件供FSM使用
-                        # 自动订阅配置的主题
-                        for topic in self.config.get('subscribe_topics', []):
-                            self.subscribe(topic)
+                    # 通过回调函数报告连接成功
+                    if self._state_callback:
+                        self._state_callback('connected')
+                    # 自动订阅配置的主题
+                    for topic in self.config.get('subscribe_topics', []):
+                        self.subscribe(topic)
                 elif not actual_connected and self._is_connected:
                     # 连接丢失
                     self._is_connected = False
-                    # 发布连接断开事件
-                    if self._event_bus:
-                        self._event_bus.publish(EVENTS.MQTT_STATE_CHANGE, state="disconnected")
+                    # 通过回调函数报告连接断开
+                    if self._state_callback:
+                        self._state_callback('disconnected')
             except Exception as e:
                 # 检查连接状态时出错，认为连接已断开
                 if self._is_connected:
                     self._is_connected = False
-                    # 发布连接断开事件
-                    if self._event_bus:
-                        self._event_bus.publish(EVENTS.MQTT_STATE_CHANGE, state="disconnected")
+                    # 通过回调函数报告连接断开
+                    if self._state_callback:
+                        self._state_callback('disconnected')
             
             # 发送 PING 以保持连接活跃
             if self._is_connected:

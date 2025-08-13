@@ -57,8 +57,7 @@ class FunctionalStateMachine:
             EVENTS.SYSTEM_ERROR,
             EVENTS.WIFI_STATE_CHANGE,
             EVENTS.MQTT_STATE_CHANGE,
-            EVENTS.NTP_STATE_CHANGE,
-            "mqtt_connected"  # 添加MQTT连接成功事件
+            EVENTS.NTP_STATE_CHANGE
         ]
         
         for event in events_to_subscribe:
@@ -146,10 +145,6 @@ class FunctionalStateMachine:
                     return 'mqtt_connected'
                 elif state == 'disconnected':
                     return 'mqtt_disconnected'
-            
-            elif event_name == "mqtt_connected":
-                # 直接的MQTT连接事件
-                return 'mqtt_connected'
             
             elif event_name == EVENTS.SYSTEM_STATE_CHANGE:
                 state = kwargs.get('state', '')

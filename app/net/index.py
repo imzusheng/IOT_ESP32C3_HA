@@ -37,8 +37,7 @@ class NetworkManager:
         self.ntp = NtpManager(config.get('ntp', {}))
         self.mqtt = MqttController(config.get('mqtt', {}))
         
-        # 设置MQTT的事件总线
-        self.mqtt.set_event_bus(event_bus)
+        # MQTT事件发布已移至fsm.py统一处理，无需设置事件总线
         
         # 创建网络状态机
         self.fsm = NetworkFSM(
@@ -148,3 +147,52 @@ class NetworkManager:
         """
         # 状态机内部保持状态一致性，总是返回True
         return True
+    
+    # =============================================================================
+    # MQTT 消息接口
+    # =============================================================================
+    
+    def publish_mqtt_message(self, topic, message, retain=False, qos=0):
+        """
+        发布MQTT消息
+        
+        Args:
+            topic (str): MQTT主题
+            message (str): 消息内容
+            retain (bool): 是否保留消息
+            qos (int): 服务质量等级
+            
+        Returns:
+            bool: 发布成功返回True
+        """
+        if not self.is_connected():
+            self.logger.warning("网络未连接，无法发布MQTT消息", module="NET")
+            return False
+            
+        return self.mqtt.publish(topic, message, retain, qos)
+    
+    def subscribe_mqtt_topic(self, topic, qos=0):
+        """
+        订阅MQTT主题
+        
+        Args:
+            topic (str): MQTT主题
+            qos (int): 服务质量等级
+            
+        Returns:
+            bool: 订阅成功返回True
+        """
+        if not self.is_connected():
+            self.logger.warning("网络未连接，无法订阅MQTT主题", module="NET")
+            return False
+            
+        return self.mqtt.subscribe(topic, qos)
+    
+    def get_mqtt_status(self):
+        """
+        获取MQTT连接状态
+        
+        Returns:
+            bool: MQTT已连接返回True
+        """
+        return self.mqtt.is_connected()

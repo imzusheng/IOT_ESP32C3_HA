@@ -91,6 +91,10 @@ class NetworkFSM:
         # 连接配置
         self.connection_timeout = config.get('connection_timeout', 120) * 1000  # 毫秒
         
+        # 设置MQTT状态回调和消息回调
+        self.mqtt.set_state_callback(self._on_mqtt_callback)
+        self.mqtt.set_message_callback(self._on_mqtt_message)
+        
         # 订阅事件
         self._setup_event_subscriptions()
         
@@ -99,7 +103,6 @@ class NetworkFSM:
     def _setup_event_subscriptions(self):
         """设置事件订阅"""
         self.event_bus.subscribe(EVENTS.WIFI_STATE_CHANGE, self._on_wifi_state_change)
-        self.event_bus.subscribe(EVENTS.MQTT_STATE_CHANGE, self._on_mqtt_state_change)
         self.event_bus.subscribe(EVENTS.NTP_STATE_CHANGE, self._on_ntp_state_change)
     
     def _on_wifi_state_change(self, state, info=None):
@@ -116,8 +119,15 @@ class NetworkFSM:
             if self.current_state == STATE_CONNECTED:
                 self._handle_event('connection_lost')
     
-    def _on_mqtt_state_change(self, state, info=None):
-        """处理MQTT状态变化"""
+    def _on_mqtt_callback(self, state, error=None):
+        """处理MQTT状态回调"""
+        # 发布MQTT状态变化事件（统一事件发布点）
+        if error:
+            self.event_bus.publish(EVENTS.MQTT_STATE_CHANGE, state=state, error=error)
+        else:
+            self.event_bus.publish(EVENTS.MQTT_STATE_CHANGE, state=state)
+        
+        # 原有的状态处理逻辑
         if state == 'connected':
             self.mqtt_connected = True
             self.logger.info("MQTT连接成功", module="NET_FSM")
@@ -128,6 +138,18 @@ class NetworkFSM:
             if self.current_state == STATE_CONNECTED:
                 self._handle_event('connection_lost')
     
+    def _on_mqtt_message(self, topic, message):
+        """MQTT消息回调"""
+        self.logger.info("收到MQTT消息: 主题={}, 消息={}", topic, message, module="NET_FSM")
+        
+        # 发布MQTT消息事件
+        self.event_bus.publish(EVENTS.MQTT_MESSAGE, {
+            'topic': topic,
+            'message': message,
+            'timestamp': time.ticks_ms()
+        })
+    
+
     def _on_ntp_state_change(self, state, **kwargs):
         """处理NTP状态变化"""
         if state == 'success':
@@ -243,6 +265,9 @@ class NetworkFSM:
             return
         
         self.logger.info("开始连接MQTT", module="NET_FSM")
+        
+        # 发布MQTT连接状态
+        self.event_bus.publish(EVENTS.MQTT_STATE_CHANGE, state="connecting")
         
         # 同步NTP时间（可选）
         self._sync_ntp()

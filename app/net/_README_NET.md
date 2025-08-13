@@ -134,10 +134,11 @@ event_bus = EventBus()
 
 # 创建网络管理器
 network_config = {
-    'backoff_base': 2,
-    'backoff_multiplier': 2,
-    'max_backoff_time': 300,
-    'max_retries': 5,
+    'network': {
+        'backoff_delay': 2,
+        'max_retries': 5,
+        'connection_timeout': 120
+    },
     'wifi': {
         'networks': [
             {'ssid': 'my_wifi', 'password': 'my_password'}
@@ -154,8 +155,6 @@ network_manager = NetworkManager(event_bus, network_config)
 
 # 启动连接流程
 network_manager.connect()
-# 可以根据需要检查 status
-
 
 # 主循环中调用
 while True:
@@ -190,9 +189,28 @@ if network_manager.mqtt_connected:
     )
 ```
 
+## 集中化事件管理
+
+网络模块采用集中化事件管理架构：
+- **统一发布点**: 所有网络相关事件都通过 `fsm.py` 统一发布
+- **回调机制**: MQTT控制器使用回调函数向状态机报告状态变化
+- **事件一致性**: 确保事件发布的时序和逻辑正确性
+- **职责分离**: 网络组件专注于功能实现，状态机负责事件管理
+
+### 事件发布流程
+1. 网络组件（WiFi/MQTT/NTP）检测到状态变化
+2. 通过回调函数报告给网络状态机（fsm.py）
+3. 状态机统一发布相应的事件到事件总线
+4. 应用层通过事件总线接收状态变化通知
+
 ## 事件处理
 
-网络模块发布以下事件：
+网络模块采用**集中化事件管理**架构，所有网络相关事件都通过 `fsm.py` 统一发布：
+
+### 事件管理架构
+- **状态机集中发布**: 所有网络事件都在 `NetworkFSM` 中统一发布
+- **回调机制**: 网络组件通过回调函数向状态机报告状态变化
+- **事件一致性**: 确保事件发布的时序和逻辑正确性
 
 ### WiFi事件
 - `EVENTS.WIFI_STATE_CHANGE`: WiFi状态变化
@@ -208,9 +226,10 @@ if network_manager.mqtt_connected:
 
 ### MQTT事件
 - `EVENTS.MQTT_STATE_CHANGE`: MQTT状态变化
+  - `state="connecting"`: 正在连接
   - `state="connected"`: 连接成功
   - `state="disconnected"`: 连接断开
-- `EVENTS.MQTT_MESSAGE`: 收到MQTT消息
+- `EVENTS.MQTT_MESSAGE`: 收到MQTT消息（由MQTT控制器直接发布）
 
 ## 错误处理
 
@@ -228,37 +247,47 @@ if network_manager.mqtt_connected:
 
 1. **内存使用**: ESP32-C3内存有限，注意控制连接数
 2. **网络稳定性**: 在网络不稳定环境下，调整退避参数
-3. **事件风暴**: 避免频繁发布相同事件
-4. **超时设置**: 根据网络环境调整连接超时时间
+3. **事件架构**: 所有网络事件都通过fsm.py统一发布，不要在其他组件中直接发布网络状态事件
+4. **回调机制**: MQTT等组件使用回调函数报告状态，确保状态变化及时传递给状态机
+5. **超时设置**: 根据网络环境调整连接超时时间
+6. **事件风暴**: 避免频繁发布相同事件
 
 ## 配置建议
 
 ### 稳定网络环境
 ```python
 {
-    'backoff_base': 2,
-    'backoff_multiplier': 2,
-    'max_backoff_time': 60,
-    'max_retries': 3
+    'network': {
+        'backoff_delay': 2,
+        'max_retries': 3,
+        'connection_timeout': 60
+    }
 }
 ```
 
 ### 不稳定网络环境
 ```python
 {
-    'backoff_base': 5,
-    'backoff_multiplier': 1.5,
-    'max_backoff_time': 300,
-    'max_retries': 10
+    'network': {
+        'backoff_delay': 5,
+        'max_retries': 10,
+        'connection_timeout': 300
+    }
 }
 ```
 
 ## 调试信息
 
 网络模块提供详细的日志信息：
-- 连接过程日志
-- 错误信息日志
-- 状态变化日志
-- 性能统计日志
+- **连接过程日志**: 记录WiFi、MQTT、NTP的连接过程
+- **错误信息日志**: 详细的错误信息和异常处理
+- **状态变化日志**: 状态机状态转换和事件发布记录
+- **事件发布日志**: 集中化事件管理的发布记录
+- **回调处理日志**: 组件回调函数的调用记录
+
+### 事件调试
+- 所有网络事件都通过fsm.py发布，便于集中调试
+- 状态机日志模块标识为"NET_FSM"
+- 各组件日志分别标识为"WiFi"、"MQTT"、"NTP"
 
 可通过配置日志级别来控制日志输出量。
