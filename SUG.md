@@ -970,3 +970,36 @@ wifi_networks = config.get('wifi', {}).get('networks', [])  # 返回3个网络
 - 所有状态转换都能正确执行
 
 这次修复确保了状态机能够正确处理所有类型的事件, 大大提高了系统的稳定性和可靠性。
+
+### 2025-08-14 网络模块进一步优化 ✅
+
+**问题描述**:
+- NetworkManager 中存在重复的状态检查逻辑
+- 状态名称访问方式不够统一
+- StateManager 中的方法未被充分利用
+
+**优化方案**:
+- **消除重复逻辑** - NetworkManager 的状态检查方法委托给 StateManager
+- **简化状态访问** - 添加 `get_state_name()` 和 `is_disconnected()` 辅助方法
+- **统一常量管理** - 通过 StateManager 统一访问状态常量
+- **代码复用** - 避免在多个地方重复实现相同的逻辑
+
+**代码变更**:
+- `app/net/index.py:77-83` - `is_connected()` 和 `is_fully_connected()` 方法委托给 StateManager
+- `app/net/index.py:57-66` - `connect()` 方法使用 StateManager 的辅助方法
+- `app/net/modules/state_manager.py:46-52` - 添加 `get_state_name()` 和 `is_disconnected()` 方法
+
+**优化效果**:
+- ✅ 消除了重复的状态检查逻辑
+- ✅ 状态访问更加统一和简洁
+- ✅ 代码复用性提高
+- ✅ 维护性进一步提升
+- ✅ 编译成功 (31个文件已编译)
+
+**技术亮点**:
+1. **代码复用** - 通过方法委托避免了重复实现
+2. **接口简化** - NetworkManager 接口更加简洁明了
+3. **职责分离** - 状态管理逻辑集中在 StateManager 中
+4. **维护性提升** - 状态逻辑的修改只需要在一个地方进行
+
+这次优化进一步完善了网络模块的模块化架构，消除了代码重复，提高了代码的可维护性和一致性。
