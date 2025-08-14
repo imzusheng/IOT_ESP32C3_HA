@@ -251,9 +251,9 @@ class EventBus:
         error("回调失败: {} - {}", event_name, str(error), module="EventBus")
         
         # 发布系统错误事件
-        if event_name != self.EVENTS['SYSTEM_STATE_CHANGE']:
+        if event_name != EVENTS['SYSTEM_STATE_CHANGE']:
             error_event = (
-                self.EVENTS['SYSTEM_STATE_CHANGE'],
+                EVENTS['SYSTEM_STATE_CHANGE'],
                 ('callback_error',),
                 {
                     'error': str(error),

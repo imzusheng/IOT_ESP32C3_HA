@@ -63,23 +63,45 @@ class MqttController:
             bool: 连接成功返回True, 失败返回False
         """
         if self._is_connected:
-            return False
+            return True
             
         if not self.client:
             error("MQTT客户端未初始化", module="MQTT")
             return False
 
         try:
+            debug("尝试连接MQTT服务器: {}:{}", self.config['broker'], self.config.get('port', 1883), module="MQTT")
             self.client.connect()
             
             # 验证连接是否建立
-            if self.client.is_connected():
+            if hasattr(self.client, 'is_connected') and self.client.is_connected():
                 self._is_connected = True
+                debug("MQTT连接成功", module="MQTT")
                 return True
             else:
-                self._is_connected = False
-                return False
+                # 对于某些MQTT库，连接成功后没有is_connected方法
+                # 尝试发送ping来验证连接
+                try:
+                    self.client.ping()
+                    self._is_connected = True
+                    debug("MQTT连接成功 (通过ping验证)", module="MQTT")
+                    return True
+                except:
+                    self._is_connected = False
+                    warning("MQTT连接状态验证失败", module="MQTT")
+                    return False
             
+        except OSError as e:
+            if e.errno == 113:  # ECONNABORTED
+                error("MQTT连接被拒绝: 服务器{}:{}不可达或拒绝连接", 
+                     self.config['broker'], self.config.get('port', 1883), module="MQTT")
+            elif e.errno == 110:  # ETIMEDOUT
+                error("MQTT连接超时: 服务器{}:{}无响应", 
+                     self.config['broker'], self.config.get('port', 1883), module="MQTT")
+            else:
+                error("MQTT连接网络错误 [{}]: {}", e.errno, e, module="MQTT")
+            self._is_connected = False
+            return False
         except Exception as e:
             error("MQTT连接异常: {}", e, module="MQTT")
             self._is_connected = False

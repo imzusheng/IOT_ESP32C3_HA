@@ -17,13 +17,13 @@ class MainController:
     def __init__(self, config):
         self.config = config
         
-        debug("EventBus 初始化...", module="Main")
+        info("EventBus 事件总线初始化...", module="Main")
         self.event_bus = EventBus()
 
-        debug("NetworkManager 初始化...", module="Main")
+        info("NetworkManager 网络管理器初始化...", module="Main")
         self.network_manager = NetworkManager(self.event_bus)
 
-        debug("状态机初始化...", module="Main")
+        info("FSM 状态机初始化...", module="Main")
         self.state_machine = create_state_machine(
             config=self.config,
             event_bus=self.event_bus,
@@ -32,9 +32,9 @@ class MainController:
   
     def start_system(self):
         """启动系统 - 基于diff时间的主循环"""
-        info("开始启动系统...", module="Main")
+        info("启动系统...", module="Main")
         try:
-            main_loop_delay = self.config.get('system', {}).get('main_loop_delay', 50) 
+            main_loop_delay = self.config.get('system', {}).get('main_loop_delay', 100)  # 增加到100ms，减少超时警告 
             
             # 持续运行, 直到收到关机信号
             last_stats_time = time.ticks_ms()
@@ -71,8 +71,11 @@ class MainController:
                     remaining_time = main_loop_delay - elapsed_time
                     time.sleep_ms(remaining_time)
                 else:
-                    # 如果任务执行时间超过设定周期, 记录警告
-                    warn("主循环执行超时: {}ms > {}ms", elapsed_time, main_loop_delay, module="Main")
+                    # 只有当超时严重时才记录警告（超过200ms）
+                    if elapsed_time > 200:
+                        warn("主循环执行严重超时: {}ms > {}ms", elapsed_time, main_loop_delay, module="Main")
+                    # 轻微超时时让出CPU时间
+                    time.sleep_ms(1)
             
             # 如果到达这里, 说明系统进入了SHUTDOWN状态
             info("系统已进入关机状态", module="Main")

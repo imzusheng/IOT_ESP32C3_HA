@@ -46,9 +46,11 @@ class NetworkManager:
         self._reset_state()
         
         # 配置参数
-        self.max_retries = 5
-        self.retry_delay = 2000
-        self.connection_timeout = 30000  # 减少超时时间, 避免长时间阻塞
+        self.max_retries = 3  # 减少重试次数，避免长时间阻塞
+        self.base_retry_delay = 1000  # 减少重试延迟到1秒
+        self.connection_timeout = 20000  # 减少超时时间到20秒
+        self.mqtt_retry_count = 0
+        self.mqtt_last_retry_time = 0
 
     def _reset_state(self):
         """重置状态"""
@@ -75,6 +77,9 @@ class NetworkManager:
         wifi_status = self.wifi.get_is_connected()
         if wifi_status != self.wifi_connected:
             self.wifi_connected = wifi_status
+            # 发布WiFi状态变化事件（避免重复）
+            self.event_bus.publish(EVENTS['WIFI_STATE_CHANGE'], 
+                                 state='connected' if wifi_status else 'disconnected')
         
         # 检查MQTT状态并发布变化事件
         mqtt_status = self.mqtt.is_connected()
@@ -82,13 +87,21 @@ class NetworkManager:
             self.mqtt_connected = mqtt_status
             self.event_bus.publish(EVENTS['MQTT_STATE_CHANGE'], 
                                  state='connected' if mqtt_status else 'disconnected')
+            # 重置MQTT重试计数
+            if mqtt_status:
+                self.mqtt_retry_count = 0
 
     def _check_connection_success(self):
         """检查连接是否成功"""
-        if self.current_state == STATE_CONNECTING and self.wifi_connected and self.mqtt_connected:
-            self._transition_to_state(STATE_CONNECTED)
-            self.retry_count = 0
-            info("网络连接完成", module="NET")
+        if self.current_state == STATE_CONNECTING:
+            # WiFi连接成功后，即使MQTT失败也认为网络基本可用
+            if self.wifi_connected:
+                self._transition_to_state(STATE_CONNECTED)
+                self.retry_count = 0
+                if self.mqtt_connected:
+                    info("网络连接完成 (WiFi+MQTT)", module="NET")
+                else:
+                    info("网络连接完成 (仅WiFi, MQTT连接失败)", module="NET")
 
     def _check_timeouts(self):
         """统一检查各种超时"""
@@ -113,9 +126,11 @@ class NetworkManager:
         self.retry_count += 1
         
         if self.retry_count <= self.max_retries:
+            # 指数退避: 2^(retry_count-1) * base_delay, 最大不超过30秒
+            retry_delay = min(self.base_retry_delay * (2 ** (self.retry_count - 1)), 30000)
             info("连接失败, {}秒后重试 (第{}/{}次)", 
-                 self.retry_delay // 1000, self.retry_count, self.max_retries, module="NET")
-            self.retry_time = time.ticks_ms() + self.retry_delay
+                 retry_delay // 1000, self.retry_count, self.max_retries, module="NET")
+            self.retry_time = time.ticks_ms() + retry_delay
         else:
             error("达到最大重试次数, 断开连接", module="NET")
             self._transition_to_state(STATE_DISCONNECTED)
@@ -199,23 +214,34 @@ class NetworkManager:
         return False
 
     def _connect_mqtt(self):
-        """MQTT连接逻辑"""
+        """MQTT连接逻辑 - 支持重试"""
         if self.mqtt_connected:
-            info("MQTT已连接", module="NET")
             return
 
-        info("开始MQTT连接, WiFi状态: {}", self.wifi_connected, module="NET")
+        # 检查是否需要重试
+        current_time = time.ticks_ms()
+        if (self.mqtt_retry_count >= self.max_retries or 
+            (self.mqtt_last_retry_time > 0 and 
+             time.ticks_diff(current_time, self.mqtt_last_retry_time) < self.base_retry_delay)):
+            return
+
+        info("开始MQTT连接 (尝试 {}/{}), WiFi状态: {}", 
+             self.mqtt_retry_count + 1, self.max_retries, self.wifi_connected, module="NET")
         self.event_bus.publish(EVENTS['MQTT_STATE_CHANGE'], state="connecting")
+        
+        self.mqtt_retry_count += 1
+        self.mqtt_last_retry_time = current_time
 
         try:
             if self.mqtt.connect():
-                info("MQTT连接初始化成功", module="NET")
+                info("MQTT连接成功", module="NET")
+                self.mqtt_retry_count = 0  # 重置重试计数
             else:
-                error("MQTT初始化失败", module="NET")
+                warning("MQTT连接失败 (尝试 {}/{})", self.mqtt_retry_count, self.max_retries, module="NET")
                 self.event_bus.publish(EVENTS['MQTT_STATE_CHANGE'], 
                                      state="disconnected", error="连接失败")
         except Exception as e:
-            error("MQTT连接异常: {}", e, module="NET")
+            warning("MQTT连接异常 (尝试 {}/{}): {}", self.mqtt_retry_count, self.max_retries, e, module="NET")
             self.event_bus.publish(EVENTS['MQTT_STATE_CHANGE'], 
                                  state="disconnected", error=str(e))
 
@@ -299,16 +325,25 @@ class NetworkManager:
             'state': STATE_NAMES[self.current_state],
             'wifi_connected': self.wifi_connected,
             'mqtt_connected': self.mqtt_connected,
-            'retry_count': self.retry_count
+            'retry_count': self.retry_count,
+            'network_available': self.wifi_connected,  # 网络可用性基于WiFi状态
+            'full_connectivity': self.wifi_connected and self.mqtt_connected  # 完整连接性
         }
 
     def is_connected(self):
-        """检查是否已连接"""
-        connected = self.current_state == STATE_CONNECTED
-        debug("连接检查 - 状态:{}, WiFi:{}, MQTT:{}, 结果:{}", 
-              STATE_NAMES[self.current_state], self.wifi_connected, 
-              self.mqtt_connected, connected, module="NET")
-        return connected
+        """检查是否已连接 - 基于WiFi状态"""
+        return (
+            self.current_state == STATE_CONNECTED and 
+            self.wifi_connected
+        )
+    
+    def is_fully_connected(self):
+        """检查是否完全连接 - WiFi和MQTT都连接"""
+        return (
+            self.current_state == STATE_CONNECTED and 
+            self.wifi_connected and 
+            self.mqtt_connected
+        )
 
     # MQTT相关接口
     def publish_mqtt_message(self, topic, message, retain=False, qos=0):
