@@ -331,7 +331,7 @@ def _start_network_connection(context):
     try:
         info("启动网络连接过程", module="FSM")
         info("网络管理器状态: {}", type(network_manager).__name__, module="FSM")
-        network_manager.start_connection_flow()
+        network_manager.connect()
         info("网络连接流程已启动", module="FSM")
     except Exception as e:
         error("启动网络连接失败: {}", e, module="FSM")
@@ -339,17 +339,8 @@ def _start_network_connection(context):
 
 def _start_network_services(context):
     """启动网络服务"""
-    network_manager = context.get('network_manager')
-    if not network_manager:
-        info("网络管理器不可用，跳过网络服务", module="FSM")
-        return
-    
-    try:
-        info("启动网络服务（NTP、MQTT等）", module="FSM")
-        network_manager.start_services()
-        info("网络服务启动请求已发送", module="FSM")
-    except Exception as e:
-        error("启动网络服务失败: {}", e, module="FSM")
+    # 网络服务已在NetworkManager.connect()中统一启动，无需额外调用
+    info("网络服务已集成到连接流程中，无需额外启动", module="FSM")
 
 def _periodic_maintenance(context, current_time):
     """定期维护任务"""

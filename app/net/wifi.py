@@ -1,7 +1,7 @@
 # app/net/wifi.py
 # 简化版WiFi管理器，只提供基本的WiFi操作功能
 import network
-from lib.logger import debug, info, warning, error
+from lib.logger import error
 
 class WifiManager:
     """
@@ -16,26 +16,39 @@ class WifiManager:
     def __init__(self, config=None):
         """
         初始化WiFi管理器
-        :param config: WiFi配置字典（可选）
+        :param config: WiFi配置字典
         """
         self.config = config or {}
-        # 移除logger实例，直接使用全局日志函数
         self.wlan = network.WLAN(network.STA_IF)
         
         # 激活WLAN接口
         if not self.wlan.active():
-            info("激活WLAN接口", module="WiFi")
             self.wlan.active(True)
 
-    def scan_networks(self):
+    def scan_networks(self, timeout_ms=10000):
         """
         扫描可用网络并按信号强度排序
+        
+        Args:
+            timeout_ms: 扫描超时时间（毫秒）
         
         Returns:
             list: 网络列表，每个网络包含 {'ssid': str, 'rssi': int, 'bssid': bytes}
         """
         try:
+            import time
+            
+            # 记录开始时间
+            start_time = time.ticks_ms()
+            
+            # 执行扫描
             scan_results = self.wlan.scan()
+            
+            # 检查扫描是否超时
+            elapsed = time.ticks_diff(time.ticks_ms(), start_time)
+            if elapsed > timeout_ms:
+                warn("WiFi扫描耗时过长: {}ms", elapsed, module="NET")
+            
             networks = []
             
             for result in scan_results:

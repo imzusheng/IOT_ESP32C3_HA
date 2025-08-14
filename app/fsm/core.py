@@ -6,7 +6,7 @@
 
 import utime as time
 from lib.lock.event_bus import EVENTS
-from lib.logger import info, error, warning
+from lib.logger import info, error, warning, debug
 from .state_const import (
     STATE_BOOT, STATE_NAMES, STATE_TRANSITIONS,
     get_state_name, get_next_state
@@ -46,8 +46,6 @@ class FunctionalStateMachine:
         
         # 进入初始状态
         self._enter_state(STATE_BOOT)
-        
-        info("函数式状态机已初始化", module="FSM")
     
     def _subscribe_events(self):
         """订阅事件"""
@@ -61,11 +59,11 @@ class FunctionalStateMachine:
         
         for event in events_to_subscribe:
             self.context['event_bus'].subscribe(event, self._handle_event)
-            info("状态机订阅事件: {}", event, module="FSM")
+            debug("状态机订阅事件: {}", event, module="FSM")
         
         # 订阅网络状态变化事件
         self.context['event_bus'].subscribe("network_state_change", self._handle_network_state_change)
-        info("状态机订阅网络状态事件: network_state_change", module="FSM")
+        debug("状态机订阅网络状态事件: network_state_change", module="FSM")
     
     def _enter_state(self, new_state):
         """进入指定状态"""
@@ -111,11 +109,11 @@ class FunctionalStateMachine:
     def _handle_event(self, event_name, *args, **kwargs):
         """处理外部事件"""
         try:
-            info("状态机收到事件: {} (参数: {}, {})", event_name, args, kwargs, module="FSM")
+            debug("状态机收到事件: {} (参数: {}, {})", event_name, args, kwargs, module="FSM")
             
             # 将事件转换为内部事件
             internal_event = self._convert_external_event(event_name, *args, **kwargs)
-            info("事件转换: {} -> {}", event_name, internal_event, module="FSM")
+            debug("事件转换: {} -> {}", event_name, internal_event, module="FSM")
             
             if internal_event:
                 # 处理状态转换
@@ -126,10 +124,10 @@ class FunctionalStateMachine:
             state_handler = STATE_HANDLERS.get(current_state)
             if state_handler:
                 try:
-                    info("状态 {} 处理事件 {}", get_state_name(current_state), event_name, module="FSM")
-                    result = state_handler(event_name, self.context, *args, **kwargs)
+                    debug("状态 {} 处理事件 {}", get_state_name(current_state), event_name, module="FSM")
+                    result = state_handler(event_name, self.context)
                     if result:
-                        info("状态 {} 返回内部事件: {}", get_state_name(current_state), result, module="FSM")
+                        debug("状态 {} 返回内部事件: {}", get_state_name(current_state), result, module="FSM")
                         self._handle_internal_event(result)
                 except Exception as e:
                     error("状态 {} 处理事件 {} 时发生错误: {}", 
@@ -185,7 +183,7 @@ class FunctionalStateMachine:
         # 网络状态变化时，根据当前状态决定是否需要重新连接
         current_state = self.context['current_state']
         if state == 'disconnected' and current_state in [STATE_RUNNING, STATE_NETWORKING]:
-            info("网络断开，重新连接", module="FSM")
+            warn("网络断开，重新连接", module="FSM")
             self._handle_internal_event('networking')
     
     def _handle_internal_event(self, event):

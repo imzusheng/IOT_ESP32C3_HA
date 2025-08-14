@@ -17,13 +17,13 @@ def safe_log(level='error'):
                 return func(*args, **kwargs)
             except Exception as e:
                 if level == 'error':
-                    error(f"函数{func.__name__}异常: {e}", module="EventBus")
+                    error("函数{}异常: {}", func.__name__, str(e), module="EventBus")
                 elif level == 'warning':
-                    warning(f"函数{func.__name__}异常: {e}", module="EventBus")
+                    warning("函数{}异常: {}", func.__name__, str(e), module="EventBus")
                 elif level == 'info':
-                    info(f"函数{func.__name__}异常: {e}", module="EventBus")
+                    info("函数{}异常: {}", func.__name__, str(e), module="EventBus")
                 else:
-                    debug(f"函数{func.__name__}异常: {e}", module="EventBus")
+                    debug("函数{}异常: {}", func.__name__, str(e), module="EventBus")
                 return None
         return wrapper
     return decorator
@@ -157,6 +157,9 @@ class EventBus:
         self._circuit_breaker_open = False
         self._last_error_time = 0
         
+        # 保存EVENTS引用到实例，避免NameError
+        self.EVENTS = EVENTS
+        
         # 手动处理时间记录
         self._last_process_time = 0
 
@@ -248,9 +251,9 @@ class EventBus:
         error("回调失败: {} - {}", event_name, str(error), module="EventBus")
         
         # 发布系统错误事件
-        if event_name != EVENTS['SYSTEM_STATE_CHANGE']:
+        if event_name != self.EVENTS['SYSTEM_STATE_CHANGE']:
             error_event = (
-                EVENTS['SYSTEM_STATE_CHANGE'],
+                self.EVENTS['SYSTEM_STATE_CHANGE'],
                 ('callback_error',),
                 {
                     'error': str(error),
@@ -298,7 +301,7 @@ class EventBus:
 
     def _publish_direct_system_event(self, state, info):
         """直接发布系统事件"""
-        event_item = (EVENTS['SYSTEM_STATE_CHANGE'], (state,), info)
+        event_item = (self.EVENTS['SYSTEM_STATE_CHANGE'], (state,), info)
         # 系统状态事件直接入队
         self.event_queue.enqueue(event_item)
 
@@ -311,7 +314,7 @@ class EventBus:
             self.subscribers[event_name] = []
         if callback not in self.subscribers[event_name]:
             self.subscribers[event_name].append(callback)
-            info("订阅事件: {} -> {}个回调", event_name, len(self.subscribers[event_name]), module="EventBus")
+            debug("订阅事件: {} -> {}个回调", event_name, len(self.subscribers[event_name]), module="EventBus")
 
     def unsubscribe(self, event_name, callback):
         """取消订阅"""

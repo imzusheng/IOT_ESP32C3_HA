@@ -16,11 +16,13 @@ WARNING = 2
 ERROR = 3
 
 # 当前日志级别 (可根据需要修改)
-LOG_LEVEL = DEBUG
+LOG_LEVEL = INFO
 
 # ANSI颜色代码
 COLOR_RED = '\033[1;31m'
 COLOR_ORANGE = '\033[1;33m'
+COLOR_JADE = '\033[1;32m'  # 翠绿色
+COLOR_INDIGO = '\033[1;34m'  # 靛蓝色
 COLOR_RESET = '\033[0m'
 
 def _get_timestamp():
@@ -57,7 +59,16 @@ def _log(level, level_name, msg, *args, module=None):
         colored_level_name = level_name
     
     if module:
-        prefix = f"[{timestamp}] [{colored_level_name}] [{module.upper()}]"
+        # 为特定模块设置颜色
+        module_name = module.upper()
+        if module_name == "FSM":
+            colored_module = f"{COLOR_JADE}{module_name}{COLOR_RESET}"
+        elif module_name == "NET":
+            colored_module = f"{COLOR_INDIGO}{module_name}{COLOR_RESET}"
+        else:
+            colored_module = module_name
+        
+        prefix = f"[{timestamp}] [{colored_level_name}] [{colored_module}]"
     else:
         prefix = f"[{timestamp}] [{colored_level_name}]"
     
@@ -71,11 +82,11 @@ def debug(msg, *args, module=None):
 
 def info(msg, *args, module=None):
     """信息日志"""
-    _log(INFO, "INFO", msg, *args, module=module)
+    _log(INFO, "INFO ", msg, *args, module=module)
 
 def warning(msg, *args, module=None):
     """警告日志"""
-    _log(WARNING, "WARN", msg, *args, module=module)
+    _log(WARNING, "WARN ", msg, *args, module=module)
 
 def error(msg, *args, module=None):
     """错误日志"""

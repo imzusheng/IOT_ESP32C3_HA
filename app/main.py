@@ -21,7 +21,7 @@ class MainController:
         self.event_bus = EventBus()
 
         debug("NetworkManager 初始化...", module="Main")
-        self.network_manager = NetworkManager(self.event_bus, config)
+        self.network_manager = NetworkManager(self.event_bus)
 
         debug("状态机初始化...", module="Main")
         self.state_machine = create_state_machine(
