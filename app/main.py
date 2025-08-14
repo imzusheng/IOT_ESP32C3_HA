@@ -51,38 +51,36 @@ class MainController:
         
   
     def start_system(self):
-        """启动系统"""
-        debug("开始启动系统...", module="Main")
-        info("启动ESP32-C3 IoT设备", module="Main")
-        
-          
-        # 新版状态机是完全事件驱动的，不需要独立的主循环
-        # 系统启动后，所有工作都由事件总线的后台定时器驱动
-        info("新版状态机已启动，采用事件驱动架构", module="Main")
-        
+        """启动系统 - 基于diff时间的主循环"""
+        info("开始启动系统...", module="Main")
         try:
-            # 简单的事件循环，主要用于保持程序运行和处理用户中断
-            debug("进入事件驱动主循环", module="Main")
-            info("进入事件驱动主循环", module="Main")
+            main_loop_delay = self.config.get('system', {}).get('main_loop_delay', 50)  # 减少默认延迟
             
             # 持续运行，直到收到关机信号
-            loop_count = 0
+            last_stats_time = time.ticks_ms()
+            
             while self.state_machine.get_current_state() != "SHUTDOWN":
-                loop_count += 1
-                if loop_count % 10 == 0:  # 每10次循环输出一次调试信息
-                    debug("主循环运行中... 当前状态: {}, 循环次数: {}", 
-                          self.state_machine.get_current_state(), loop_count, module="Main")
+                # 手动处理EventBus事件（替代硬件定时器）
+                self.event_bus.process_events()
                 
-                # 更新状态机（状态机内部会根据需要调用网络管理器）
+                # 更新状态机
                 self.state_machine.update()
+                
                 # 喂看门狗
                 self.state_machine.feed_watchdog()
                 
-                # 简单的延迟，避免CPU占用过高
-                main_loop_delay = self.config.get('system', {}).get('main_loop_delay', 300)
-                time.sleep_ms(main_loop_delay)
+                # 定期输出调试信息
+                current_time = time.ticks_ms()
+                if time.ticks_diff(current_time, last_stats_time) >= 5000:  # 每5秒输出一次
+                    debug("主循环运行中... 当前状态: {}", 
+                          self.state_machine.get_current_state(), module="Main")
+                    last_stats_time = current_time
                 
-                # 更新静态缓存
+                # 精确的延迟控制
+                loop_start_time = time.ticks_ms()
+                while time.ticks_diff(time.ticks_ms(), loop_start_time) < main_loop_delay:
+                    # 短暂休眠，避免CPU占用过高
+                    time.sleep_ms(1)
             
             # 如果到达这里，说明系统进入了SHUTDOWN状态
             info("系统已进入关机状态", module="Main")

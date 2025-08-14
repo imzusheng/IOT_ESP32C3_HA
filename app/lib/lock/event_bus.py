@@ -7,7 +7,6 @@ import gc
 import time
 
 from lib.logger import debug, info, warning, error
-from machine import Timer
 
 # 简单的安全日志装饰器
 def safe_log(level='error'):
@@ -31,9 +30,8 @@ def safe_log(level='error'):
 
 # 配置类 - 集中化配置管理
 class EventBusConfig:
-    TIMER_ID = 0
-    MAX_QUEUE_SIZE = 64          # 总队列大小, 降低内存占用
     TIMER_TICK_MS = 25           # 定时器间隔, 平衡响应性和性能
+    MAX_QUEUE_SIZE = 64          # 总队列大小, 降低内存占用
     STATS_INTERVAL = 30          # 统计间隔设置为30秒
     BATCH_PROCESS_COUNT = 5      # 批处理数量
     GC_THRESHOLD = 100           # 垃圾回收阈值
@@ -46,7 +44,6 @@ class EventBusConfig:
     def get_dict(cls):
         """获取配置字典格式（向后兼容）"""
         return {
-            'TIMER_ID': cls.TIMER_ID,
             'MAX_QUEUE_SIZE': cls.MAX_QUEUE_SIZE,
             'TIMER_TICK_MS': cls.TIMER_TICK_MS,
             'STATS_INTERVAL': cls.STATS_INTERVAL,
@@ -160,35 +157,25 @@ class EventBus:
         self._circuit_breaker_open = False
         self._last_error_time = 0
         
-        # 启动定时器
-        self._timer = None
-        self._start_timer()
+        # 手动处理时间记录
+        self._last_process_time = 0
 
-    @safe_log('error')
-    def _start_timer(self):
-        """启动定时器"""
-        if Timer:
-            try:
-                self._timer = Timer(EventBusConfig.TIMER_ID)
-                self._timer.init(
-                    period=EventBusConfig.TIMER_TICK_MS, 
-                    mode=Timer.PERIODIC, 
-                    callback=self._timer_callback
-                )
-                info("EventBus定时器已启动 - 周期={}ms", EventBusConfig.TIMER_TICK_MS, module="EventBus")
-            except Exception as e:
-                error("定时器启动失败: {}", str(e), module="EventBus")
-                self._timer = None
-        else:
-            warning("Timer模块不可用, EventBus将无法自动处理事件", module="EventBus")
-
-    @safe_log('error')
-    def _timer_callback(self, timer):
-        """定时器回调 - 核心处理逻辑"""
+    def process_events(self):
+        """手动处理事件 - 由主循环调用"""
+        # 检查是否到了处理时间
+        current_time = time.ticks_ms()
+        if self._last_process_time == 0:
+            self._last_process_time = current_time
+        
+        if time.ticks_diff(current_time, self._last_process_time) < EventBusConfig.TIMER_TICK_MS:
+            return  # 未到处理时间
+        
+        self._last_process_time = current_time
+        
         # 检查断路器状态
         if self._circuit_breaker_open:
-            current_time = time.time()
-            if current_time - self._last_error_time > EventBusConfig.RECOVERY_TIME:
+            current_sec = time.time()
+            if current_sec - self._last_error_time > EventBusConfig.RECOVERY_TIME:
                 self._circuit_breaker_open = False
                 self._consecutive_errors = 0
                 info("断路器已恢复, 重新开始处理事件", module="EventBus")
@@ -213,24 +200,25 @@ class EventBus:
             self._consecutive_errors = 0
             
         except Exception as e:
-            self._handle_timer_error(e)
+            self._handle_processing_error(e)
         finally:
             # 定期维护任务
-             self._periodic_maintenance()
+            self._periodic_maintenance()
 
-    def _handle_timer_error(self, error):
-        """处理定时器错误和断路器逻辑"""
+    def _handle_processing_error(self, error):
+        """处理事件处理错误和断路器逻辑"""
         self._error_count += 1
         self._consecutive_errors += 1
         self._last_error_time = time.time()
         
-        error("定时器处理异常: {}", str(error), module="EventBus")
+        error("事件处理异常: {}", str(error), module="EventBus")
         
         # 检查是否需要开启断路器
         if self._consecutive_errors >= EventBusConfig.ERROR_THRESHOLD:
             self._circuit_breaker_open = True
             warning("连续错误达到阈值({}), 断路器已开启", EventBusConfig.ERROR_THRESHOLD, module="EventBus")
 
+    
     @safe_log('error')
     def _execute_event(self, event_item):
         """执行事件"""
@@ -370,7 +358,6 @@ class EventBus:
             'processed_count': self._processed_count,
             'error_count': self._error_count,
             'system_status': self._system_status,
-            'timer_active': self._timer is not None,
         }
         # 合并队列统计信息
         stats.update(queue_stats)
@@ -394,15 +381,6 @@ class EventBus:
     @safe_log('error')
     def cleanup(self):
         """清理资源"""
-        if self._timer:
-            try:
-                self._timer.deinit()
-            except:
-                pass
-            finally:
-                self._timer = None
-                info("EventBus定时器已停止", module="EventBus")
-        
         self.event_queue.clear()
         self.subscribers.clear()
         
@@ -418,19 +396,4 @@ class EventBus:
         return self._system_status
 
     @safe_log('error')
-    def stop_timer(self):
-        """停止事件总线定时器"""
-        if self._timer:
-            try:
-                self._timer.deinit()
-            except:
-                pass
-            finally:
-                self._timer = None
-                info("EventBus定时器已停止", module="EventBus")
-
-    @safe_log('error')
-    def start_timer(self):
-        """启动事件总线定时器"""
-        if not self._timer:
-            self._start_timer()
+    
