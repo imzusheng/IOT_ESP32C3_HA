@@ -141,9 +141,21 @@ pytest app/tests/ --cov=app
   - NTP同步 (`app/net/ntp.py`)
   - 网络状态机 (`app/net/fsm.py`)
 
-### 8. LED模式控制器 (LEDPatternController) - `app/hw/led.py`
-- **功能**: 丰富的LED状态指示和模式控制
-- **特性**: 多种预设模式、状态可视化、低功耗设计
+### 8. LED模式控制器 - `app/hw/led.py`
+- **功能**: 丰富的LED状态指示和模式控制，开箱即用
+- **特性**: 
+  - 开箱即用：无需初始化，直接调用全局函数
+  - 延迟初始化：首次调用时自动初始化
+  - 单例模式：防止重复实例化
+  - 多种预设模式：blink, pulse, cruise, sos, off
+  - 状态可视化：通过不同LED模式指示系统状态
+  - 低功耗设计：优化的定时器和uasyncio支持
+- **使用方式**: 
+  ```python
+  from hw.led import play, cleanup
+  play('blink')  # 播放闪烁模式
+  cleanup()      # 清理资源
+  ```
 
 ### 9. 传感器管理器 (SensorManager) - `app/hw/sensor.py`
 - **功能**: 统一的传感器数据采集和管理
@@ -331,6 +343,11 @@ class MyModule:
     def do_something(self):
         from lib.lock.event_bus import EVENTS
         self.event_bus.publish(EVENTS.SYSTEM_ERROR, error_type="my_error", error_info="details")
+        
+    # 4. 使用LED（开箱即用）
+    def indicate_status(self):
+        from hw.led import play
+        play('blink')  # 无需初始化，直接使用
 ```
 
 ## 重要注意事项
@@ -350,4 +367,5 @@ class MyModule:
 - **网络管理**: 使用统一的 NetworkManager 管理所有网络连接
 - **配置系统**: 配置集中在 `config.py` 中，支持运行时验证和默认值
 - **日志系统**: 已重构为极简日志系统，直接导入全局函数使用，支持颜色输出
+- **LED系统**: 已重构为开箱即用模式，无需实例化，直接调用全局函数使用，支持延迟初始化
 - **软件定时**: 主循环使用diff时间实现，EventBus采用手动处理，节省硬件定时器资源

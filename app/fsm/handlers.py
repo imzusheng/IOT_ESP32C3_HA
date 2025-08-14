@@ -424,13 +424,12 @@ def _perform_shutdown_cleanup(context):
                 info("断开网络连接失败（忽略）: {}", e, module="FSM")
         
         # 关闭LED
-        led_controller = context.get('led_controller')
-        if led_controller:
-            try:
-                info("关闭LED", module="FSM")
-                led_controller.cleanup()
-            except Exception as e:
-                info("关闭LED失败（忽略）: {}", e, module="FSM")
+        try:
+            info("关闭LED", module="FSM")
+            from hw.led import cleanup as led_cleanup
+            led_cleanup()
+        except Exception as e:
+            info("关闭LED失败（忽略）: {}", e, module="FSM")
         
 
         

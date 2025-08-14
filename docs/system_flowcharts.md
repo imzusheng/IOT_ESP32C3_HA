@@ -7,7 +7,7 @@ graph TD
     subgraph 系统组件交互图
         A[MainController] -->|创建| B(EventBus)
         A -->|创建并注入EventBus| C(NetworkManager)
-        A -->|创建并注入EventBus| D(LEDPatternController)
+        A -->|开箱即用| D(LED模式控制器)
         A -->|创建并注入所有依赖| E(Finite State Machine - FSM)
 
         C -- "发布 (例如 WIFI_STATE_CHANGE)" --> B

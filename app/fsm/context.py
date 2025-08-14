@@ -10,7 +10,7 @@ from lib.logger import info, error
 from .state_const import STATE_BOOT
 
 def create_fsm_context(event_bus, config, 
-                      network_manager=None, led_controller=None):
+                      network_manager=None):
     """创建状态机上下文"""
     context = {
         # 核心依赖
@@ -19,7 +19,6 @@ def create_fsm_context(event_bus, config,
         
         # 外部组件
         'network_manager': network_manager,
-        'led_controller': led_controller,
         
         # 状态机数据
         'current_state': STATE_BOOT,
@@ -134,17 +133,14 @@ def reset_error_count(context):
 
 def update_led_for_state(context):
     """根据当前状态更新LED"""
-    led_controller = context.get('led_controller')
-    if not led_controller:
-        return
-    
     from .state_const import get_led_pattern, get_state_name
+    from hw.led import play as led_play
     
     current_state = context['current_state']
     pattern = get_led_pattern(current_state)
     
     try:
-        led_controller.play(pattern)
+        led_play(pattern)
         info("LED状态更新为: {} (状态: {})", pattern, get_state_name(current_state), module="FSM")
     except Exception as e:
         error("更新LED状态失败: {}", e, module="FSM")

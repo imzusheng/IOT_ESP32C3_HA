@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-通用LED预设闪烁模块 (v4.2 - 单例模式)
+通用LED预设闪烁模块 (v5.0 - 开箱即用)
 
 主要特性:
-- 单例模式: 防止重复实例化，保证硬件控制的唯一性。
-- 高度统一: 所有模式均由同一逻辑驱动。
-- 易于扩展: 添加新模式只需定义一个新的时间序列。
+- 开箱即用: 无需初始化，直接调用函数即可使用
+- 延迟初始化: 首次调用时自动初始化
+- 单例模式: 防止重复实例化，保证硬件控制的唯一性
+- 高度统一: 所有模式均由同一逻辑驱动
+- 易于扩展: 添加新模式只需定义一个新的时间序列
 """
 
 import machine
@@ -20,50 +22,37 @@ try:
 except ImportError:
     UASYNCIO_AVAILABLE = False
 
-class LEDPatternController:
+# =============================================================================
+# LED配置
+# =============================================================================
+
+# 默认LED引脚配置
+DEFAULT_LED_PINS = [12, 13]
+
+# 模式参数常量
+TIMER_PERIOD_MS = 50
+
+# 所有模式均定义为"亮-灭"时间序列 (单位: ms)
+BLINK_SEQUENCE = [500, 500]
+PULSE_SEQUENCE = [150, 150, 150, 850]
+CRUISE_SEQUENCE = [50, 950]
+SOS_SEQUENCE = [
+    200, 200, 200, 200, 200, 700, # S
+    600, 200, 600, 200, 600, 700, # O
+    200, 200, 200, 200, 200, 2000, # S
+]
+
+# =============================================================================
+# 内部实现类
+# =============================================================================
+
+class _LEDPatternController:
     """
-    管理一组LED并根据预设ID播放闪烁模式。
-    采用单例模式实现，并使用一个通用的序列处理器来驱动所有模式。
+    LED模式控制器的内部实现类。
     """
-    _instance = None
-    _initialized = False
-
-    def __new__(cls, *args, **kwargs):
-        if not cls._instance:
-            cls._instance = super(LEDPatternController, cls).__new__(cls)
-        return cls._instance
-
-    # --- 模式参数常量 ---
-    TIMER_PERIOD_MS = 50
-
-    # 所有模式均定义为“亮-灭”时间序列 (单位: ms)
-    BLINK_SEQUENCE = [500, 500]
-    PULSE_SEQUENCE = [150, 150, 150, 850]
-    CRUISE_SEQUENCE = [50, 950]
-    SOS_SEQUENCE = [
-        200, 200, 200, 200, 200, 700, # S
-        600, 200, 600, 200, 600, 700, # O
-        200, 200, 200, 200, 200, 2000, # S
-    ]
-
-    def __init__(self, led_pins: list = None):
-        """
-        初始化LED模式控制器。
-        由于是单例，只有在第一次实例化时led_pins参数才会生效。
-
-        Args:
-            led_pins (list, optional): 一个包含LED引脚编号的列表。仅在首次创建时需要。
-        """
-        if self._initialized:
-            return
-
-        # 初始化logger
-        # 移除logger实例，直接使用全局日志函数
-        
-        if not led_pins:
-            error("首次实例化时必须提供至少一个LED引脚", module="LED")
-            return
-
+    
+    def __init__(self, led_pins: list):
+        """初始化LED模式控制器"""
         self.led_pins = led_pins
         self.leds = self._init_leds()
 
@@ -80,10 +69,10 @@ class LEDPatternController:
         # 模式字典
         self.patterns = {
             'off': self._update_off,
-            'blink': lambda: self._update_sequence(self.BLINK_SEQUENCE),
-            'pulse': lambda: self._update_sequence(self.PULSE_SEQUENCE),
-            'cruise': lambda: self._update_sequence(self.CRUISE_SEQUENCE),
-            'sos': lambda: self._update_sequence(self.SOS_SEQUENCE),
+            'blink': lambda: self._update_sequence(BLINK_SEQUENCE),
+            'pulse': lambda: self._update_sequence(PULSE_SEQUENCE),
+            'cruise': lambda: self._update_sequence(CRUISE_SEQUENCE),
+            'sos': lambda: self._update_sequence(SOS_SEQUENCE),
         }
 
         # 运行控制器 (定时器或uasyncio任务)
@@ -91,8 +80,7 @@ class LEDPatternController:
         self.uasyncio_task = None
         self._start_controller()
 
-        self._initialized = True
-        info(f"控制器已初始化，引脚: {self.led_pins}", module="LED")
+        info(f"LED控制器已初始化，引脚: {self.led_pins}", module="LED")
 
 
     def _init_leds(self) -> list:
@@ -119,7 +107,7 @@ class LEDPatternController:
         for i in range(4):
             try:
                 self.timer = machine.Timer(i)
-                self.timer.init(period=self.TIMER_PERIOD_MS, mode=machine.Timer.PERIODIC, callback=self._update_callback)
+                self.timer.init(period=TIMER_PERIOD_MS, mode=machine.Timer.PERIODIC, callback=self._update_callback)
                 return True
             except (ValueError, OSError):
                 self.timer = None
@@ -139,7 +127,7 @@ class LEDPatternController:
         """uasyncio的异步更新循环。"""
         while True:
             self._update_patterns()
-            await uasyncio.sleep_ms(self.TIMER_PERIOD_MS)
+            await uasyncio.sleep_ms(TIMER_PERIOD_MS)
 
     def _update_callback(self, timer):
         """硬件定时器的回调函数。"""
@@ -182,7 +170,7 @@ class LEDPatternController:
         if pattern_id == 'off':
             self._set_all_leds(0)
         else:
-            # 大多数模式以“亮”开始
+            # 大多数模式以"亮"开始
             self._set_all_leds(1)
         
         # 重启控制器
@@ -236,7 +224,52 @@ class LEDPatternController:
             self.uasyncio_task.cancel()
             self.uasyncio_task = None
         self._set_all_leds(0)
-        info("控制器已清理", module="LED")
+        info("LED控制器已清理", module="LED")
 
-# 模块初始化
-# LED pattern module loaded
+# =============================================================================
+# 模块级别的单例实例和全局函数
+# =============================================================================
+
+# 全局单例实例
+_instance = None
+
+def _get_instance():
+    """获取或创建LED控制器实例"""
+    global _instance
+    if _instance is None:
+        _instance = _LEDPatternController(DEFAULT_LED_PINS)
+    return _instance
+
+# =============================================================================
+# 公共接口函数
+# =============================================================================
+
+def play(pattern_id: str):
+    """
+    播放LED模式。
+    首次调用时会自动初始化LED控制器。
+    
+    Args:
+        pattern_id (str): 模式ID，支持 'off', 'blink', 'pulse', 'cruise', 'sos'
+    
+    Example:
+        from hw.led import play
+        play('blink')  # 闪烁模式
+    """
+    controller = _get_instance()
+    controller.play(pattern_id)
+
+def cleanup():
+    """
+    清理LED资源。
+    
+    Example:
+        from hw.led import cleanup
+        cleanup()  # 清理LED控制器
+    """
+    global _instance
+    if _instance:
+        _instance.cleanup()
+        _instance = None
+
+# LED module loaded silently

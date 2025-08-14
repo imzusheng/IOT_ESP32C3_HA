@@ -6,10 +6,10 @@ import machine
 # 1. 导入所有类
 from config import get_config
 from lib.lock.event_bus import EventBus
-from lib.logger import info, debug, error
+from lib.logger import info, warn, debug, error
 from fsm.core import create_state_machine
 from net import NetworkManager
-from hw.led import LEDPatternController
+from hw.led import play as led_play, cleanup as led_cleanup
 
 class MainController:
     """主控制器 - 负责系统初始化和事件订阅"""
@@ -17,53 +17,41 @@ class MainController:
     def __init__(self, config):
         self.config = config
         
-        # 日志系统现在自动初始化，无需手动调用
-        
-        # 初始化核心服务
-        debug("开始初始化EventBus...", module="Main")
         self.event_bus = EventBus()
         debug("EventBus初始化完成", module="Main")
-          
-        # 启动指标与恢复信息（稳定性优先，低侵入）
-        
-        # 初始化网络管理器
-        debug("开始初始化NetworkManager...", module="Main")
+
         self.network_manager = NetworkManager(self.event_bus, config)
         debug("NetworkManager初始化完成", module="Main")
-        
-        # 初始化硬件模块
-        debug("开始初始化LED...", module="Main")
-        led_pins = config.get('daemon', {}).get('led_pins', [12, 13])
-        self.led = LEDPatternController(led_pins)
-        debug("LED初始化完成", module="Main")
+
+        # LED已重构为开箱即用模式，无需实例化
+        debug("LED已准备就绪（开箱即用模式）", module="Main")
         
         # 创建状态机
-        debug("开始初始化状态机...", module="Main")
         self.state_machine = create_state_machine(
+            config=self.config,
             event_bus=self.event_bus,
-            config=config,
-            network_manager=self.network_manager,
-            led_controller=self.led
+            network_manager=self.network_manager
         )
         debug("状态机初始化完成", module="Main")
-        
-        debug("MainController初始化完成", module="Main")
-        
   
     def start_system(self):
         """启动系统 - 基于diff时间的主循环"""
         info("开始启动系统...", module="Main")
         try:
-            main_loop_delay = self.config.get('system', {}).get('main_loop_delay', 50)  # 减少默认延迟
+            main_loop_delay = self.config.get('system', {}).get('main_loop_delay', 50) 
             
             # 持续运行，直到收到关机信号
             last_stats_time = time.ticks_ms()
             
             while self.state_machine.get_current_state() != "SHUTDOWN":
-                # 手动处理EventBus事件（替代硬件定时器）
+                
+                # 固定循环周期控制
+                loop_start_time = time.ticks_ms()
+                
+                # 驱动EventBus
                 self.event_bus.process_events()
                 
-                # 更新状态机
+                # 驱动状态机
                 self.state_machine.update()
                 
                 # 喂看门狗
@@ -71,16 +59,20 @@ class MainController:
                 
                 # 定期输出调试信息
                 current_time = time.ticks_ms()
-                if time.ticks_diff(current_time, last_stats_time) >= 5000:  # 每5秒输出一次
+                if time.ticks_diff(current_time, last_stats_time) >= 10000:
                     debug("主循环运行中... 当前状态: {}", 
                           self.state_machine.get_current_state(), module="Main")
                     last_stats_time = current_time
                 
-                # 精确的延迟控制
-                loop_start_time = time.ticks_ms()
-                while time.ticks_diff(time.ticks_ms(), loop_start_time) < main_loop_delay:
-                    # 短暂休眠，避免CPU占用过高
-                    time.sleep_ms(1)
+                # 计算任务执行时间，确保固定循环周期
+                elapsed_time = time.ticks_diff(time.ticks_ms(), loop_start_time)
+                if elapsed_time < main_loop_delay:
+                    # 如果任务执行时间小于设定周期，休眠剩余时间
+                    remaining_time = main_loop_delay - elapsed_time
+                    time.sleep_ms(remaining_time)
+                else:
+                    # 如果任务执行时间超过设定周期，记录警告
+                    warn("主循环执行超时: {}ms > {}ms", elapsed_time, main_loop_delay, module="Main")
             
             # 如果到达这里，说明系统进入了SHUTDOWN状态
             info("系统已进入关机状态", module="Main")
@@ -104,8 +96,7 @@ class MainController:
                 self.state_machine.force_state("SHUTDOWN")
             
             # 清理LED
-            if hasattr(self, 'led') and self.led:
-                self.led.cleanup()
+            led_cleanup()
             
             # 断开网络连接
             if hasattr(self, 'network_manager') and self.network_manager:

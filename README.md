@@ -87,10 +87,16 @@ IOT_ESP32C3/
 - **功能**: 统一的传感器数据采集和管理
 - **支持**: 内部温度传感器、外部传感器(DHT11/DHT22/BMP280)
 
-#### 6. LED模式控制器 (LEDPatternController)
+#### 6. LED模式控制器
 - **位置**: [`app/hw/led.py`](app/hw/led.py)
-- **功能**: 丰富的LED状态指示和模式控制
-- **特性**: 多种预设模式、状态可视化、低功耗设计
+- **功能**: 丰富的LED状态指示和模式控制，开箱即用
+- **特性**: 
+  - 开箱即用：无需初始化，直接调用全局函数
+  - 延迟初始化：首次调用时自动初始化
+  - 单例模式：防止重复实例化
+  - 多种预设模式：blink, pulse, cruise, sos, off
+  - 状态可视化：通过不同LED模式指示系统状态
+  - 低功耗设计：优化的定时器和uasyncio支持
 
 ### 网络通信层
 
@@ -210,7 +216,6 @@ WiFi连接成功 → NTP时间同步 → TIME_UPDATED事件 → 计时器队列�
 ```python
 "daemon": {
     "config": {
-        "led_pins": [12, 13],       # LED引脚
         "timer_id": 0,              # 定时器ID
         "monitor_interval": 5000,   # 监控间隔(毫秒)
         "temp_threshold": 65,       # 温度阈值(°C)
