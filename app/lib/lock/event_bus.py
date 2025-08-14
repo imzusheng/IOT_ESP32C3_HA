@@ -394,6 +394,4 @@ class EventBus:
     def get_system_status(self):
         """获取当前系统状态"""
         return self._system_status
-
-    @safe_log('error')
     

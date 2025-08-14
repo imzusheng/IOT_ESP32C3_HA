@@ -17,22 +17,18 @@ class MainController:
     def __init__(self, config):
         self.config = config
         
+        debug("EventBus 初始化...", module="Main")
         self.event_bus = EventBus()
-        debug("EventBus初始化完成", module="Main")
 
+        debug("NetworkManager 初始化...", module="Main")
         self.network_manager = NetworkManager(self.event_bus, config)
-        debug("NetworkManager初始化完成", module="Main")
 
-        # LED已重构为开箱即用模式，无需实例化
-        debug("LED已准备就绪（开箱即用模式）", module="Main")
-        
-        # 创建状态机
+        debug("状态机初始化...", module="Main")
         self.state_machine = create_state_machine(
             config=self.config,
             event_bus=self.event_bus,
             network_manager=self.network_manager
         )
-        debug("状态机初始化完成", module="Main")
   
     def start_system(self):
         """启动系统 - 基于diff时间的主循环"""
