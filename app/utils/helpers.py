@@ -67,7 +67,7 @@ def get_formatted_time():
     由于ESP32-C3没有实时时钟, 返回运行时间
     """
     try:
-        # 获取系统运行时间（毫秒）
+        # 获取系统运行时间(毫秒)
         uptime_ms = time.ticks_ms()
         
         # 转换为秒
@@ -85,7 +85,7 @@ def get_formatted_time():
 
 def get_uptime():
     """
-    获取系统运行时间（秒）
+    获取系统运行时间(秒)
     """
     try:
         return time.ticks_ms() // 1000
@@ -181,7 +181,7 @@ def calculate_rssi_percentage(rssi):
     将WiFi RSSI值转换为百分比信号强度
     """
     try:
-        # RSSI范围通常是-30（极强）到-90（极弱）
+        # RSSI范围通常是-30(极强)到-90(极弱)
         if rssi >= -30:
             return 100
         elif rssi <= -90:
@@ -229,7 +229,7 @@ class Throttle:
         """
         初始化节流器
         
-        :param throttle_ms: 节流时间窗口（毫秒）
+        :param throttle_ms: 节流时间窗口(毫秒)
         """
         self.throttle_ms = throttle_ms
         self.last_trigger = 0
@@ -254,7 +254,7 @@ class Throttle:
         """
         设置节流时间
         
-        :param throttle_ms: 新的节流时间窗口（毫秒）
+        :param throttle_ms: 新的节流时间窗口(毫秒)
         """
         self.throttle_ms = throttle_ms
     
@@ -287,7 +287,7 @@ def get_temperature():
         sensor_temp = machine.ADC(4)  # ADC4连接内部温度传感器
         raw_value = sensor_temp.read()
         
-        # 转换为摄氏度（根据ESP32-C3技术文档）
+        # 转换为摄氏度(根据ESP32-C3技术文档)
         # 转换公式可能需要根据具体硬件调整
         voltage = raw_value / 4095.0 * 3.3  # 转换为电压
         temp_c = (voltage - 0.5) * 100.0  # 转换为摄氏度

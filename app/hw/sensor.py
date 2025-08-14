@@ -4,7 +4,7 @@ ESP32-C3传感器管理器 (重构版本)
 内部温度传感器和外部传感器支持
 
 基于事件驱动架构, 通过对象池优化内存使用。
-支持内部温度传感器和多种外部传感器（DHT11/DHT22/BMP280）。
+支持内部温度传感器和多种外部传感器(DHT11/DHT22/BMP280)。
 
 特性:
 - 事件驱动的数据采集
@@ -157,9 +157,9 @@ class SensorManager:
             self.sensor_data[sensor_id] = value
             self.last_read_time[sensor_id] = time.ticks_ms()
             
-            # 发布传感器数据事件（保持向后兼容的签名：sensor_id, value）
+            # 发布传感器数据事件(保持向后兼容的签名：sensor_id, value)
             if value is not None:
-                # 检查是否应该发布（数据变化检测和频率限制）
+                # 检查是否应该发布(数据变化检测和频率限制)
                 if self._should_publish_sensor_data(sensor_id, value):
                     self.event_bus.publish(EVENTS['SENSOR_DATA'], sensor_id, value)
                     # 更新发布记录
@@ -373,7 +373,7 @@ class ExternalSensorManager:
             
             if data is not None:
                 # 保持事件签名一致
-                # 检查是否应该发布（数据变化检测和频率限制）
+                # 检查是否应该发布(数据变化检测和频率限制)
                 if self._should_publish_sensor_data(sensor_id, data):
                     self.event_bus.publish(EVENTS['SENSOR_DATA'], sensor_id, data)
                     # 更新发布记录

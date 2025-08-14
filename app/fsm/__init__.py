@@ -8,7 +8,7 @@
 from .core import FunctionalStateMachine, StateMachine, create_state_machine, get_state_machine
 
 
-# 从state_const模块导入状态常量和工具函数（合并后）
+# 从state_const模块导入状态常量和工具函数(合并后)
 from .state_const import (
     STATE_BOOT, STATE_INIT, STATE_NETWORKING, STATE_RUNNING,
     STATE_WARNING, STATE_ERROR, STATE_SAFE_MODE, STATE_RECOVERY, STATE_SHUTDOWN,

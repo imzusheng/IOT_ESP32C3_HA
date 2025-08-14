@@ -42,7 +42,7 @@ class EventBusConfig:
     
     @classmethod
     def get_dict(cls):
-        """获取配置字典格式（向后兼容）"""
+        """获取配置字典格式(向后兼容)"""
         return {
             'MAX_QUEUE_SIZE': cls.MAX_QUEUE_SIZE,
             'TIMER_TICK_MS': cls.TIMER_TICK_MS,

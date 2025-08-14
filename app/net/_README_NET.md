@@ -9,7 +9,7 @@
 ```
 app/net/
 ├── __init__.py          # 模块初始化和导出
-├── index.py             # 网络统一控制器（含状态机功能）
+├── index.py             # 网络统一控制器(含状态机功能)
 ├── wifi.py              # WiFi管理器
 ├── ntp.py               # NTP时间同步管理器
 └── mqtt.py              # MQTT控制器

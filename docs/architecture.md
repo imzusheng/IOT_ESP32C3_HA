@@ -46,10 +46,10 @@ graph TD
     %% 初始化与控制流
     Main -- "读取配置" --> Cfg
     Main -- "创建 & 启动 FSM" --> FSM
-    Main -- "初始化基础服务（EventBus, ObjPool, Cache, Logger）" --> Bus
-    Main -- "初始化基础服务（EventBus, ObjPool, Cache, Logger）" --> ObjPool
-    Main -- "初始化基础服务（EventBus, ObjPool, Cache, Logger）" --> Cache
-    Main -- "初始化基础服务（EventBus, ObjPool, Cache, Logger）" --> Log
+    Main -- "初始化基础服务(EventBus, ObjPool, Cache, Logger)" --> Bus
+    Main -- "初始化基础服务(EventBus, ObjPool, Cache, Logger)" --> ObjPool
+    Main -- "初始化基础服务(EventBus, ObjPool, Cache, Logger)" --> Cache
+    Main -- "初始化基础服务(EventBus, ObjPool, Cache, Logger)" --> Log
 
     %% FSM 控制网络初始化
     FSM -- "Init(config)" --> Wifi
@@ -57,7 +57,7 @@ graph TD
     FSM -- "Init" --> Sensor
     FSM -- "Init" --> Led
 
-    %% 使用关系（对象池/缓存被哪些模块用到）
+    %% 使用关系(对象池/缓存被哪些模块用到)
     Wifi -.->|"acquire/release buffers"| ObjPool
     Mqtt -.->|"acquire/release msg objs"| ObjPool
     Sensor -.->|"acquire sensor data buffer"| ObjPool
@@ -82,12 +82,12 @@ graph TD
 #### MainController (app/main.py)
 - **职责**：主控制器, 负责系统初始化与事件订阅管理, 是依赖注入容器的核心实现。
 - **功能**：
-  - 初始化核心服务（EventBus、ObjectPool、StaticCache、Logger）
-  - 初始化模块控制器（WiFi、MQTT、LED、Sensor）
+  - 初始化核心服务(EventBus、ObjectPool、StaticCache、Logger)
+  - 初始化模块控制器(WiFi、MQTT、LED、Sensor)
   - 创建并启动 SystemFSM 状态机
-  - 统一订阅与处理系统级事件（WiFi/MQTT/NTP/系统告警）
+  - 统一订阅与处理系统级事件(WiFi/MQTT/NTP/系统告警)
   - 统一日志输出与串口信息打印, 便于调试与追踪
-- **事件订阅（NTP相关）**：
+- **事件订阅(NTP相关)**：
   - EVENT.NTP_SYNC_STARTED → 打印同步开始日志
   - EVENT.NTP_SYNC_SUCCESS → 打印成功信息并输出当前时间
   - EVENT.NTP_SYNC_FAILED → 打印失败原因与重试次数
@@ -165,7 +165,7 @@ graph TD
 - **职责**：静态缓存系统, 提供防抖写入和自动保存功能。
 - **接口**：
   - `get(key, default=None)`: 获取值
-  - `set(key, value)`: 设置值（防抖写入）
+  - `set(key, value)`: 设置值(防抖写入)
   - `load()`: 从闪存加载缓存
   - `save()`: 强制将缓存写入闪存
 - **功能**：
@@ -186,7 +186,7 @@ graph TD
   - 非阻塞连接与自动重连
   - 信号强度排序
   - 指数退避策略
-  - NTP时间同步（可配置服务器/重试次数/间隔）
+  - NTP时间同步(可配置服务器/重试次数/间隔)
   - TIME_UPDATED 事件包含 timestamp 载荷
 
 #### app/net/mqtt.py
@@ -220,27 +220,27 @@ graph TD
 1. **boot.py**：平台相关启动, 执行最小化硬件初始化
 2. **main.py (MainController)**：系统主入口, 作为依赖注入容器
    - 加载配置
-   - 初始化核心服务（EventBus, ObjectPool, StaticCache, Logger）
-   - 初始化模块控制器（WiFi, MQTT, LED, Sensor）
+   - 初始化核心服务(EventBus, ObjectPool, StaticCache, Logger)
+   - 初始化模块控制器(WiFi, MQTT, LED, Sensor)
    - 创建并启动状态机
-   - 订阅NTP同步相关事件（NTP_SYNC_* 与 TIME_UPDATED）
+   - 订阅NTP同步相关事件(NTP_SYNC_* 与 TIME_UPDATED)
 3. **SystemFSM**：状态机负责按状态初始化其他模块
-   - 初始化WiFi（成功后自动触发NTP同步）
+   - 初始化WiFi(成功后自动触发NTP同步)
    - 初始化MQTT
    - 初始化硬件模块
    - 进入运行状态
 
 ## 事件流程
 
-### 系统启动流程（含NTP与时间更新）
+### 系统启动流程(含NTP与时间更新)
 1. `main.py` 发布 `EVENT.SYSTEM_BOOT`
 2. `SystemFSM` 接收事件, 进入 `STATE_BOOT` 状态
 3. `SystemFSM` 初始化WiFi, 进入 `STATE_WIFI_CONNECTING` 状态
 4. WiFi连接成功, 发布 `EVENT.WIFI_CONNECTED`
 5. WifiManager 自动执行 `_try_ntp_sync()` 并发布：
    - `EVENT.NTP_SYNC_STARTED`
-   - 成功：`EVENT.NTP_SYNC_SUCCESS` → 随后发布 `EVENT.TIME_UPDATED`（携带 `timestamp` 载荷）
-   - 失败：`EVENT.NTP_SYNC_FAILED`（可按配置重试）
+   - 成功：`EVENT.NTP_SYNC_SUCCESS` → 随后发布 `EVENT.TIME_UPDATED`(携带 `timestamp` 载荷)
+   - 失败：`EVENT.NTP_SYNC_FAILED`(可按配置重试)
 6. MainController 订阅上述事件并统一记录日志与串口输出
 7. `SystemFSM` 初始化MQTT, 进入 `STATE_MQTT_CONNECTING` 状态
 8. MQTT连接成功, 发布 `EVENT.MQTT_CONNECTED`
@@ -253,7 +253,7 @@ graph TD
 4. 重连成功或失败后, 根据结果转换到相应状态
 
 ## 事件载荷约定
-- `EVENT.TIME_UPDATED`：携带 `timestamp`（秒级Unix时间戳）关键字参数, 订阅方应优先按新签名处理：`callback(event_name, timestamp=None, **kwargs)`。
+- `EVENT.TIME_UPDATED`：携带 `timestamp`(秒级Unix时间戳)关键字参数, 订阅方应优先按新签名处理：`callback(event_name, timestamp=None, **kwargs)`。
 - 事件总线回调签名兼容策略：优先 `callback(event_name, *args, **kwargs)`, 若不兼容自动降级为 `callback(*args, **kwargs)`, 再降级为 `callback()`。
 
 ## 资源管理
@@ -294,7 +294,7 @@ graph TD
 ### 目录结构
 ```
 IOT_ESP32C3/
-├── app/                    # 设备运行代码（核心应用层）
+├── app/                    # 设备运行代码(核心应用层)
 │   ├── lib/               # 通用库和工具模块
 │   │   ├── event_bus/     # 事件总线模块
 │   │   │   ├── __init__.py    # 模块导出

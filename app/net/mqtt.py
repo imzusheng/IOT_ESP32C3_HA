@@ -79,7 +79,7 @@ class MqttController:
                 debug("MQTT连接成功", module="MQTT")
                 return True
             else:
-                # 对于某些MQTT库，连接成功后没有is_connected方法
+                # 对于某些MQTT库,连接成功后没有is_connected方法
                 # 尝试发送ping来验证连接
                 try:
                     self.client.ping()

@@ -1,7 +1,7 @@
 # ESP32-C3 MicroPython IoT 项目 (重构版)
 
 - ESP32C3 设备基础限制
-    - 最多支持 2 个定时器（编号 0 至 1）
+    - 最多支持 2 个定时器(编号 0 至 1)
     - 总RAM: 129536 字节 (126.50 KB)
     - 总Flash: 2097152 字节 (2.00 MB)
     - CPU频率: 160000000 Hz (160.00 MHz)
@@ -31,11 +31,11 @@
 
 ```
 IOT_ESP32C3/
-├── app/                    # 开发源代码目录（编译后直接上传到设备根目录）
+├── app/                    # 开发源代码目录(编译后直接上传到设备根目录)
 │   ├── lib/               # 通用库和工具模块
 │   │   ├── event_bus.py   # 事件总线
-│   │   ├── object_pool.py # 对象池管理器（废弃,  请勿使用）
-│   │   ├── static_cache.py # 静态缓存系统（废弃,  请勿使用）
+│   │   ├── object_pool.py # 对象池管理器(废弃,  请勿使用)
+│   │   ├── static_cache.py # 静态缓存系统(废弃,  请勿使用)
 │   │   ├── logger.py      # 日志系统
 │   │   └── lock/          # 不可编辑的外部库
 │   │       ├── umqtt.py   # MQTT客户端库
@@ -160,14 +160,14 @@ WiFi连接成功 → NTP时间同步 → TIME_UPDATED事件 → 计时器队列�
 ### 事件载荷与回调签名约定
 - 回调优先采用新签名：callback(event_name, *args, **kwargs), 事件名作为第一个参数, 便于统一处理与日志追踪。
 - 兼容旧签名：若回调不接受 event_name, 将自动降级为 callback(*args, **kwargs)；仍不兼容则尝试 callback(), 确保向后兼容。
-- TIME_UPDATED 事件载荷：从"完成B"起, 事件将附带关键字参数 timestamp（秒级Unix时间戳）。示例：
+- TIME_UPDATED 事件载荷：从"完成B"起, 事件将附带关键字参数 timestamp(秒级Unix时间戳)。示例：
   - 发布方：event_bus.publish(EVENT.TIME_UPDATED, timestamp=timestamp)
   - 订阅方回调示例：def _on_time_updated(self, event_name, timestamp=None, **kwargs): ...
 
 ### 事件总线技术特性
 - **计时器队列驱动**: 使用硬件计时器实现精确的事件调度, 避免 micropython.schedule 的队列满问题
-- **循环队列系统**: 高效的内存管理, 支持可配置的队列大小（默认64个事件）
-- **事件优先级**: 5级优先级系统（0=最高, 4=最低）, 关键事件立即处理
+- **循环队列系统**: 高效的内存管理, 支持可配置的队列大小(默认64个事件)
+- **事件优先级**: 5级优先级系统(0=最高, 4=最低), 关键事件立即处理
 - **智能事件丢弃**: 队列满时智能丢弃低优先级事件, 确保关键事件不丢失
 - **频率限制**: 内置事件频率限制机制, 防止事件风暴
 - **错误隔离**: 完善的错误处理和恢复机制, 避免级联故障
@@ -177,7 +177,7 @@ WiFi连接成功 → NTP时间同步 → TIME_UPDATED事件 → 计时器队列�
 
 ### 配置文件结构
 项目使用纯Python配置系统：
-- [`app/config.py`](app/config.py): Python字典配置（主要配置和验证规则）
+- [`app/config.py`](app/config.py): Python字典配置(主要配置和验证规则)
 
 ### 主要配置项
 
@@ -252,7 +252,7 @@ WiFi连接成功 → NTP时间同步 → TIME_UPDATED事件 → 计时器队列�
 
 ### 硬件要求
 - ESP32-C3开发板
-- LED指示灯（连接到GPIO 12和13）
+- LED指示灯(连接到GPIO 12和13)
 - USB数据线
 
 ### 软件依赖
@@ -294,10 +294,10 @@ WiFi连接成功 → NTP时间同步 → TIME_UPDATED事件 → 计时器队列�
 使用 [`build.py`](build.py) 脚本构建和部署项目：
 
 ```bash
-# 构建项目（排除测试文件）
+# 构建项目(排除测试文件)
 python build.py
 
-# 构建项目（包含测试文件）
+# 构建项目(包含测试文件)
 python build.py --test
 
 # 仅编译不部署
@@ -312,7 +312,7 @@ python build.py --upload --port COM3
 # 启用完整REPL交互模式
 python build.py --upload --repl
 
-# 使用原始REPL模式（调试用）
+# 使用原始REPL模式(调试用)
 python build.py --upload --raw-repl
 
 # 诊断设备安全模式状态
@@ -336,11 +336,11 @@ python build.py --clean-cache
 - **SHUTDOWN**: 关机状态
 
 ### LED状态指示
-- **normal**: 正常运行（LED1亮, LED2灭）
-- **warning**: 警告状态（LED1亮, LED2亮）
-- **error**: 错误状态（LED1灭, LED2亮）
-- **off**: 关闭状态（LED1灭, LED2灭）
-- **safe_mode**: 安全模式（SOS闪烁模式）
+- **normal**: 正常运行(LED1亮, LED2灭)
+- **warning**: 警告状态(LED1亮, LED2亮)
+- **error**: 错误状态(LED1灭, LED2亮)
+- **off**: 关闭状态(LED1灭, LED2灭)
+- **safe_mode**: 安全模式(SOS闪烁模式)
 
 ### 预设闪烁模式
 - **快闪三下**: 快速闪烁三次
@@ -355,8 +355,8 @@ python build.py --clean-cache
 ## 🛠️ 开发和调试
 
 ### 系统监控指标
-- 内存使用率（实时监控）
-- 温度监控（MCU内部温度）
+- 内存使用率(实时监控)
+- 温度监控(MCU内部温度)
 - 错误计数和统计
 - 网络连接状态
 - MQTT连接状态
@@ -387,7 +387,7 @@ python build.py --clean-cache
 
 ### 关键内存优化技术
 - 全局变量减少实例化开销
-- 智能垃圾回收（根据内存使用动态调整）
+- 智能垃圾回收(根据内存使用动态调整)
 - 轻量级数据结构
 - 避免复杂对象创建
 - 定期内存清理和监控
@@ -419,7 +419,7 @@ python build.py --clean-cache
 - **第5轮**: 等待40秒后重试3次
 - **第6轮**: 等待80秒后重试3次
 - **第7轮**: 等待160秒后重试3次
-- **第8轮及以后**: 等待300秒（最大值）后重试3次
+- **第8轮及以后**: 等待300秒(最大值)后重试3次
 
 ## 🛡️ 错误处理和恢复
 

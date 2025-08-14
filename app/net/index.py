@@ -46,7 +46,7 @@ class NetworkManager:
         self._reset_state()
         
         # 配置参数
-        self.max_retries = 3  # 减少重试次数，避免长时间阻塞
+        self.max_retries = 3  # 减少重试次数,避免长时间阻塞
         self.base_retry_delay = 1000  # 减少重试延迟到1秒
         self.connection_timeout = 20000  # 减少超时时间到20秒
         self.mqtt_retry_count = 0
@@ -77,7 +77,7 @@ class NetworkManager:
         wifi_status = self.wifi.get_is_connected()
         if wifi_status != self.wifi_connected:
             self.wifi_connected = wifi_status
-            # 发布WiFi状态变化事件（避免重复）
+            # 发布WiFi状态变化事件(避免重复)
             self.event_bus.publish(EVENTS['WIFI_STATE_CHANGE'], 
                                  state='connected' if wifi_status else 'disconnected')
         
@@ -94,7 +94,7 @@ class NetworkManager:
     def _check_connection_success(self):
         """检查连接是否成功"""
         if self.current_state == STATE_CONNECTING:
-            # WiFi连接成功后，即使MQTT失败也认为网络基本可用
+            # WiFi连接成功后,即使MQTT失败也认为网络基本可用
             if self.wifi_connected:
                 self._transition_to_state(STATE_CONNECTED)
                 self.retry_count = 0

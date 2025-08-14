@@ -150,7 +150,7 @@ def save_state_to_cache(context):
     pass
 
 def get_state_duration(context):
-    """获取当前状态持续时间（毫秒）"""
+    """获取当前状态持续时间(毫秒)"""
     return time.ticks_diff(time.ticks_ms(), context['state_start_time'])
 
 def get_state_info(context):
@@ -166,7 +166,7 @@ def get_state_info(context):
 
 def cleanup_context(context):
     """清理上下文资源"""
-    # 关闭看门狗（如果有的话）
+    # 关闭看门狗(如果有的话)
     wdt = context.get('wdt')
     if wdt:
         try:

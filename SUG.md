@@ -318,8 +318,8 @@
 ### 实现特点
 
 #### 1. 极简状态设计
-- **DISCONNECTED**: 断开状态（初始状态）
-- **CONNECTING**: 连接中（WiFi→MQTT流程）
+- **DISCONNECTED**: 断开状态(初始状态)
+- **CONNECTING**: 连接中(WiFi→MQTT流程)
 - **CONNECTED**: 已连接
 - **ERROR**: 错误状态
 
@@ -371,13 +371,13 @@
 
 ### 使用示例
 ```python
-# 外部调用（极简）
+# 外部调用(极简)
 network_manager.connect()  # 启动连接
 network_manager.disconnect()  # 断开连接
 status = network_manager.get_status()  # 获取状态
 network_manager.loop()  # 主循环调用
 
-# 内部流程（封装）
+# 内部流程(封装)
 # 1. WiFi扫描和连接
 # 2. NTP时间同步
 # 3. MQTT服务器连接
@@ -769,7 +769,7 @@ python build.py --monitor
 - ✅ NetworkFSM能够正确读取WiFi配置
 - ✅ 系统能够检测到配置的3个WiFi网络
 - ✅ WiFi连接流程能够正常启动
-- ✅ 配置读取验证通过（本地测试确认）
+- ✅ 配置读取验证通过(本地测试确认)
 - ✅ 保持网络状态机接口的兼容性
 
 **验证方法**:
@@ -933,18 +933,18 @@ wifi_networks = config.get('wifi', {}).get('networks', [])  # 返回3个网络
 ### 2025-08-14 状态机外部事件处理修复 ✅
 
 **问题描述**:
-- 状态机处理外部事件（如 `mqtt.state_change`）时出现参数错误
+- 状态机处理外部事件(如 `mqtt.state_change`)时出现参数错误
 - 状态处理函数无法正确处理EventBus传递的 `*args, **kwargs` 参数
 - `_handle_network_state_change` 函数签名与EventBus调用方式不匹配
 - 系统启动时出现 `'TypeError' object isn't callable` 错误
 
 **根本原因**:
-1. **状态处理器错误**：状态处理函数只处理预定义的内部事件（enter、exit、update）, 没有处理外部事件（如 `mqtt.state_change`）
+1. **状态处理器错误**：状态处理函数只处理预定义的内部事件(enter、exit、update), 没有处理外部事件(如 `mqtt.state_change`)
 2. **EventBus回调错误**：`_handle_network_state_change` 函数签名与EventBus调用方式不匹配, 缺少 `event_name` 参数
 
 **修复方案**:
 - **添加外部事件处理**：为所有状态处理函数添加外部事件处理逻辑
-- **优化错误处理**：当收到包含点号（`.`）的事件名称时, 记录日志但不报错
+- **优化错误处理**：当收到包含点号(`.`)的事件名称时, 记录日志但不报错
 - **修复函数签名**：更新 `_handle_network_state_change` 函数签名以匹配EventBus调用方式
 
 **代码变更**:
@@ -959,7 +959,7 @@ wifi_networks = config.get('wifi', {}).get('networks', [])  # 返回3个网络
 - ✅ 编译成功 (28个文件已编译)
 
 **技术细节**:
-1. **事件类型区分**：通过检查事件名称是否包含点号（`.`）来区分内部事件和外部事件
+1. **事件类型区分**：通过检查事件名称是否包含点号(`.`)来区分内部事件和外部事件
 2. **错误处理改进**：外部事件不会导致状态处理函数出错, 只会记录调试日志
 3. **函数签名匹配**：确保所有EventBus回调函数都使用正确的签名 `callback(event_name, *args, **kwargs)`
 

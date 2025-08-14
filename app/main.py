@@ -34,7 +34,7 @@ class MainController:
         """启动系统 - 基于diff时间的主循环"""
         info("启动系统...", module="Main")
         try:
-            main_loop_delay = self.config.get('system', {}).get('main_loop_delay', 100)  # 增加到100ms，减少超时警告 
+            main_loop_delay = self.config.get('system', {}).get('main_loop_delay', 100)  # 增加到100ms,减少超时警告 
             
             # 持续运行, 直到收到关机信号
             last_stats_time = time.ticks_ms()
@@ -71,7 +71,7 @@ class MainController:
                     remaining_time = main_loop_delay - elapsed_time
                     time.sleep_ms(remaining_time)
                 else:
-                    # 只有当超时严重时才记录警告（超过200ms）
+                    # 只有当超时严重时才记录警告(超过200ms)
                     if elapsed_time > 200:
                         warn("主循环执行严重超时: {}ms > {}ms", elapsed_time, main_loop_delay, module="Main")
                     # 轻微超时时让出CPU时间

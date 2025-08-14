@@ -28,7 +28,7 @@ def boot_state_handler(event, context):
         return None
 
 
-    # 处理其他事件（如 mqtt.state_change）
+    # 处理其他事件(如 mqtt.state_change)
     elif isinstance(event, str) and "." in event:
         # 外部事件, 不处理, 只记录日志
         info("BOOT状态收到外部事件: {}", event, module="FSM")
@@ -53,7 +53,7 @@ def init_state_handler(event, context):
     elif event == "exit":
         info("状态: {} ,退出初始化状态", event, module="FSM")
 
-    # 处理其他事件（如 mqtt.state_change）
+    # 处理其他事件(如 mqtt.state_change)
     elif isinstance(event, str) and "." in event:
         info("INIT状态收到外部事件: {}", event, module="FSM")
 
@@ -81,7 +81,7 @@ def networking_state_handler(event, context):
         elapsed = time.ticks_diff(
             time.ticks_ms(), context.get("networking_start_time", 0)
         )
-        # 减少超时时间到45秒，避免过长等待
+        # 减少超时时间到45秒,避免过长等待
         timeout = (
             context["config"].get("network", {}).get("connection_timeout", 45) * 1000
         )
@@ -96,13 +96,13 @@ def networking_state_handler(event, context):
             
             if wifi_connected:
                 warning(
-                    "网络连接超时（{}ms），WiFi已连接但MQTT可能失败，进入RUNNING状态",
+                    "网络连接超时({}ms),WiFi已连接但MQTT可能失败,进入RUNNING状态",
                     elapsed,
                     module="FSM",
                 )
             else:
                 warning(
-                    "网络连接完全超时（{}ms），WiFi连接失败，进入RUNNING状态",
+                    "网络连接完全超时({}ms),WiFi连接失败,进入RUNNING状态",
                     elapsed,
                     module="FSM",
                 )
@@ -120,7 +120,7 @@ def networking_state_handler(event, context):
     elif event == "exit":
         info("退出NETWORKING状态", module="FSM")
 
-    # 处理其他事件（如 mqtt.state_change）
+    # 处理其他事件(如 mqtt.state_change)
     elif isinstance(event, str) and "." in event:
         # 外部事件, 不处理, 只记录日志
         info("NETWORKING状态收到外部事件: {}", event, module="FSM")
@@ -161,7 +161,7 @@ def running_state_handler(event, context):
     elif event == "exit":
         info("退出RUNNING状态", module="FSM")
 
-    # 处理其他事件（如 mqtt.state_change）
+    # 处理其他事件(如 mqtt.state_change)
     elif isinstance(event, str) and "." in event:
         # 外部事件, 不处理, 只记录日志
         info("RUNNING状态收到外部事件: {}", event, module="FSM")
@@ -189,7 +189,7 @@ def warning_state_handler(event, context):
         info("退出WARNING状态", module="FSM")
         context.pop("recovery_triggered", None)
 
-    # 处理其他事件（如 mqtt.state_change）
+    # 处理其他事件(如 mqtt.state_change)
     elif isinstance(event, str) and "." in event:
         # 外部事件, 不处理, 只记录日志
         info("WARNING状态收到外部事件: {}", event, module="FSM")
@@ -233,7 +233,7 @@ def error_state_handler(event, context):
         info("退出ERROR状态", module="FSM")
         context.pop("recovery_triggered", None)
 
-    # 处理其他事件（如 mqtt.state_change）
+    # 处理其他事件(如 mqtt.state_change)
     elif isinstance(event, str) and "." in event:
         # 外部事件, 不处理, 只记录日志
         info("ERROR状态收到外部事件: {}", event, module="FSM")
@@ -253,7 +253,7 @@ def safe_mode_state_handler(event, context):
     elif event == "update":
         current_time = time.ticks_ms()
 
-        # 定期垃圾回收（每30秒）
+        # 定期垃圾回收(每30秒)
         if time.ticks_diff(current_time, context.get("last_gc_time", 0)) >= 30000:
             context["last_gc_time"] = current_time
             try:
@@ -275,7 +275,7 @@ def safe_mode_state_handler(event, context):
         except:
             pass
 
-    # 处理其他事件（如 mqtt.state_change）
+    # 处理其他事件(如 mqtt.state_change)
     elif isinstance(event, str) and "." in event:
         # 外部事件, 不处理, 只记录日志
         info("SAFE_MODE状态收到外部事件: {}", event, module="FSM")
@@ -305,7 +305,7 @@ def recovery_state_handler(event, context):
         info("退出RECOVERY状态", module="FSM")
         context.pop("completion_triggered", None)
 
-    # 处理其他事件（如 mqtt.state_change）
+    # 处理其他事件(如 mqtt.state_change)
     elif isinstance(event, str) and "." in event:
         # 外部事件, 不处理, 只记录日志
         info("RECOVERY状态收到外部事件: {}", event, module="FSM")
@@ -325,9 +325,9 @@ def shutdown_state_handler(event, context):
         pass
 
     elif event == "exit":
-        info("退出SHUTDOWN状态（这通常不应该发生）", module="FSM")
+        info("退出SHUTDOWN状态(这通常不应该发生)", module="FSM")
 
-    # 处理其他事件（如 mqtt.state_change）
+    # 处理其他事件(如 mqtt.state_change)
     elif isinstance(event, str) and "." in event:
         # 外部事件, 不处理, 只记录日志
         info("SHUTDOWN状态收到外部事件: {}", event, module="FSM")
@@ -499,11 +499,11 @@ def _emergency_cleanup(context):
                 info("断开网络连接", module="FSM")
                 network_manager.disconnect()
             except Exception as e:
-                info("断开网络连接失败（忽略）: {}", e, module="FSM")
+                info("断开网络连接失败(忽略): {}", e, module="FSM")
 
     except Exception as e:
         # 即使在安全模式下, 清理失败也不应该导致系统崩溃
-        info("安全模式紧急清理部分失败（继续运行）: {}", e, module="FSM")
+        info("安全模式紧急清理部分失败(继续运行): {}", e, module="FSM")
 
 
 def _perform_shutdown_cleanup(context):
@@ -518,7 +518,7 @@ def _perform_shutdown_cleanup(context):
                 info("断开网络连接", module="FSM")
                 network_manager.disconnect()
             except Exception as e:
-                info("断开网络连接失败（忽略）: {}", e, module="FSM")
+                info("断开网络连接失败(忽略): {}", e, module="FSM")
 
         # 关闭LED
         try:
@@ -527,9 +527,9 @@ def _perform_shutdown_cleanup(context):
 
             led_cleanup()
         except Exception as e:
-            info("关闭LED失败（忽略）: {}", e, module="FSM")
+            info("关闭LED失败(忽略): {}", e, module="FSM")
 
         info("关机清理完成", module="FSM")
 
     except Exception as e:
-        info("关机清理过程中出现错误（忽略）: {}", e, module="FSM")
+        info("关机清理过程中出现错误(忽略): {}", e, module="FSM")

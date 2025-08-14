@@ -226,7 +226,7 @@ def detect_esp32_port():
 # ==================== 工具检查 ====================
 
 def check_tool(executable):
-    """检查核心工具（mpy-cross, mpremote）是否在系统中可用"""
+    """检查核心工具(mpy-cross, mpremote)是否在系统中可用"""
     try:
         cmd = [executable, "--version"] if executable == MPY_CROSS_EXECUTABLE else [executable, "version"]
         subprocess.run(cmd, capture_output=True, check=True, text=True, timeout=5)
@@ -592,7 +592,7 @@ def main():
 短参数组合示例:
   python build.py -cu    # 编译并上传
   python build.py -Cv    # 清理设备并显示详细输出
-  python build.py -cu -t # 编译并上传（包含测试文件）
+  python build.py -cu -t # 编译并上传(包含测试文件)
         """
     )
     

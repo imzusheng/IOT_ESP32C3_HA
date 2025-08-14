@@ -215,14 +215,14 @@ class FunctionalStateMachine:
         except Exception as e:
             error("更新状态机时发生错误: {}", e, module="FSM")
     
-    # ========== 公共接口方法（保持兼容性） ==========
+    # ========== 公共接口方法(保持兼容性) ==========
     
     def get_current_state(self):
         """获取当前状态名称"""
         return get_state_name(self.context['current_state'])
     
     def get_state_duration(self):
-        """获取当前状态持续时间（毫秒）"""
+        """获取当前状态持续时间(毫秒)"""
         return time.ticks_diff(time.ticks_ms(), self.context['state_start_time'])
     
     def get_state_info(self):
@@ -246,7 +246,7 @@ class FunctionalStateMachine:
             return False
     
     def transition_to(self, new_state_name, reason=""):
-        """转换到新状态（兼容性接口）"""
+        """转换到新状态(兼容性接口)"""
         info("请求状态转换: {} (原因: {})", new_state_name, reason, module="FSM")
         return self.force_state(new_state_name)
     

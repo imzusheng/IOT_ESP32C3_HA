@@ -8,7 +8,7 @@ class WifiManager:
     WiFi管理器
     
     只提供基本的WiFi操作功能：
-    - 扫描网络（按信号强度排序）
+    - 扫描网络(按信号强度排序)
     - 连接指定网络
     - 断开连接
     """
@@ -30,7 +30,7 @@ class WifiManager:
         扫描可用网络并按信号强度排序
         
         Args:
-            timeout_ms: 扫描超时时间（毫秒）
+            timeout_ms: 扫描超时时间(毫秒)
         
         Returns:
             list: 网络列表, 每个网络包含 {'ssid': str, 'rssi': int, 'bssid': bytes}
@@ -64,7 +64,7 @@ class WifiManager:
                 except UnicodeError:
                     continue  # 忽略无法解码的SSID
             
-            # 按RSSI降序排序（信号强度从高到低）
+            # 按RSSI降序排序(信号强度从高到低)
             networks.sort(key=lambda x: x['rssi'], reverse=True)
             return networks
             
