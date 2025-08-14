@@ -31,6 +31,9 @@ class MqttController:
         self._state_callback = None  # 状态变化回调函数
         self._message_callback = None  # 消息回调函数
         
+        # 添加失败计数器管理
+        self.failure_count = 0
+        
         self._setup_client()
 
     def _setup_client(self):
@@ -81,6 +84,13 @@ class MqttController:
         """
         self._message_callback = callback
     
+    def reset_failure_count(self):
+        """
+        重置失败计数器
+        """
+        self.failure_count = 0
+        debug("[MQTT-DEBUG] 失败计数器已重置", module="MQTT")
+    
 
     
     def connect(self):
@@ -123,20 +133,23 @@ class MqttController:
             info("验证MQTT连接状态...", module="MQTT")
             if self.client.is_connected():
                 self._is_connected = True
+                self.failure_count = 0  # 连接成功时重置失败计数器
                 info("MQTT连接验证成功", module="MQTT")
-                debug("[MQTT-DEBUG] MQTT连接验证成功，连接状态已更新", module="MQTT")
+                debug("[MQTT-DEBUG] MQTT连接验证成功，连接状态已更新，失败计数器已重置", module="MQTT")
                 # 通过回调函数报告连接成功
                 if self._state_callback:
                     self._state_callback('connected')
                 return True
             else:
                 self._is_connected = False
-                error("MQTT连接验证失败", module="MQTT")
+                self.failure_count += 1
+                error("MQTT连接验证失败 (失败次数: {})", self.failure_count, module="MQTT")
                 debug("[MQTT-DEBUG] MQTT连接验证失败，可能原因：服务器未启动、网络不通、认证失败", module="MQTT")
                 return False
             
         except Exception as e:
-            error("MQTT连接异常: {}", e, module="MQTT")
+            self.failure_count += 1
+            error("MQTT连接异常: {} (失败次数: {})", e, self.failure_count, module="MQTT")
             debug("[MQTT-DEBUG] MQTT连接异常详情 - 错误类型: {}, 错误信息: {}", type(e).__name__, str(e), module="MQTT")
             self._is_connected = False
             # 通过回调函数报告连接失败

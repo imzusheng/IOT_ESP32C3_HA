@@ -9,8 +9,7 @@
 ```
 app/net/
 ├── __init__.py          # 模块初始化和导出
-├── index.py             # 网络统一控制器
-├── fsm.py               # 网络状态机
+├── index.py             # 网络统一控制器（含状态机功能）
 ├── wifi.py              # WiFi管理器
 ├── ntp.py               # NTP时间同步管理器
 └── mqtt.py              # MQTT控制器
@@ -37,7 +36,7 @@ app/net/
 
 ### NetworkManager (网络统一控制器) - index.py
 
-**功能**: 管理所有网络连接的统一控制器，是外部主要交互点。
+**功能**: 管理所有网络连接的统一控制器，包含完整的状态机功能，是外部主要交互点。
 
 **初始化**:
 ```python
@@ -172,7 +171,7 @@ print(status)
 
 ## 事件管理
 
-所有事件通过 fsm.py 统一发布：
+所有事件通过 NetworkManager 统一发布：
 - EVENTS.WIFI_STATE_CHANGE
 - EVENTS.NTP_STATE_CHANGE
 - EVENTS.MQTT_STATE_CHANGE
@@ -185,7 +184,7 @@ event_bus.subscribe(EVENTS.MQTT_STATE_CHANGE, handler)
 
 ## 注意事项
 
-- 事件发布集中在 fsm.py
+- 事件发布集中在 NetworkManager 中
 - 外部交互主要通过 index.py 的 NetworkManager
 - 配置参数需完整提供
 - 在主循环中定期调用 loop()

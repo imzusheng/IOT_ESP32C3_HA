@@ -9,7 +9,7 @@ from lib.lock.event_bus import EventBus
 from lib.logger import info, warn, debug, error
 from fsm.core import create_state_machine
 from net import NetworkManager
-from hw.led import play as led_play, cleanup as led_cleanup
+from hw.led import cleanup as led_cleanup
 
 class MainController:
     """主控制器 - 负责系统初始化和事件订阅"""
@@ -96,7 +96,7 @@ class MainController:
             
             # 断开网络连接
             if hasattr(self, 'network_manager') and self.network_manager:
-                self.network_manager.disconnect_all()
+                self.network_manager.disconnect()
             
             # 保存缓存
             
