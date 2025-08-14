@@ -177,8 +177,9 @@ class FunctionalStateMachine:
         
         return None
     
-    def _handle_network_state_change(self, state, **kwargs):
+    def _handle_network_state_change(self, event_name, *args, **kwargs):
         """处理网络状态变化事件"""
+        state = kwargs.get('state', 'unknown')
         info("网络状态变化: {} (参数: {})", state, kwargs, module="FSM")
         
         # 网络状态变化时，根据当前状态决定是否需要重新连接

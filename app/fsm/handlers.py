@@ -26,6 +26,11 @@ def boot_state_handler(event, context):
     elif event == 'exit':
         info("退出启动状态", module="FSM")
     
+    # 处理其他事件（如 mqtt.state_change）
+    elif isinstance(event, str) and '.' in event:
+        # 外部事件，不处理，只记录日志
+        info("BOOT状态收到外部事件: {}", event, module="FSM")
+    
     return None
 
 def init_state_handler(event, context):
@@ -44,6 +49,11 @@ def init_state_handler(event, context):
     
     elif event == 'exit':
         info("退出初始化状态", module="FSM")
+    
+    # 处理其他事件（如 mqtt.state_change）
+    elif isinstance(event, str) and '.' in event:
+        # 外部事件，不处理，只记录日志
+        info("INIT状态收到外部事件: {}", event, module="FSM")
     
     return None
 
@@ -84,6 +94,11 @@ def networking_state_handler(event, context):
     elif event == 'exit':
         info("退出NETWORKING状态", module="FSM")
     
+    # 处理其他事件（如 mqtt.state_change）
+    elif isinstance(event, str) and '.' in event:
+        # 外部事件，不处理，只记录日志
+        info("NETWORKING状态收到外部事件: {}", event, module="FSM")
+    
     return None
 
 def running_state_handler(event, context):
@@ -120,6 +135,11 @@ def running_state_handler(event, context):
     elif event == 'exit':
         info("退出RUNNING状态", module="FSM")
     
+    # 处理其他事件（如 mqtt.state_change）
+    elif isinstance(event, str) and '.' in event:
+        # 外部事件，不处理，只记录日志
+        info("RUNNING状态收到外部事件: {}", event, module="FSM")
+    
     return None
 
 def warning_state_handler(event, context):
@@ -141,6 +161,11 @@ def warning_state_handler(event, context):
     elif event == 'exit':
         info("退出WARNING状态", module="FSM")
         context.pop('recovery_triggered', None)
+    
+    # 处理其他事件（如 mqtt.state_change）
+    elif isinstance(event, str) and '.' in event:
+        # 外部事件，不处理，只记录日志
+        info("WARNING状态收到外部事件: {}", event, module="FSM")
     
     return None
 
@@ -174,6 +199,11 @@ def error_state_handler(event, context):
     elif event == 'exit':
         info("退出ERROR状态", module="FSM")
         context.pop('recovery_triggered', None)
+    
+    # 处理其他事件（如 mqtt.state_change）
+    elif isinstance(event, str) and '.' in event:
+        # 外部事件，不处理，只记录日志
+        info("ERROR状态收到外部事件: {}", event, module="FSM")
     
     return None
 
@@ -211,6 +241,11 @@ def safe_mode_state_handler(event, context):
         except:
             pass
     
+    # 处理其他事件（如 mqtt.state_change）
+    elif isinstance(event, str) and '.' in event:
+        # 外部事件，不处理，只记录日志
+        info("SAFE_MODE状态收到外部事件: {}", event, module="FSM")
+    
     return None
 
 def recovery_state_handler(event, context):
@@ -233,6 +268,11 @@ def recovery_state_handler(event, context):
         info("退出RECOVERY状态", module="FSM")
         context.pop('completion_triggered', None)
     
+    # 处理其他事件（如 mqtt.state_change）
+    elif isinstance(event, str) and '.' in event:
+        # 外部事件，不处理，只记录日志
+        info("RECOVERY状态收到外部事件: {}", event, module="FSM")
+    
     return None
 
 def shutdown_state_handler(event, context):
@@ -248,6 +288,11 @@ def shutdown_state_handler(event, context):
     
     elif event == 'exit':
         info("退出SHUTDOWN状态（这通常不应该发生）", module="FSM")
+    
+    # 处理其他事件（如 mqtt.state_change）
+    elif isinstance(event, str) and '.' in event:
+        # 外部事件，不处理，只记录日志
+        info("SHUTDOWN状态收到外部事件: {}", event, module="FSM")
     
     return None
 
