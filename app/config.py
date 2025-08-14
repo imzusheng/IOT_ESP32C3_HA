@@ -36,6 +36,52 @@ CONFIG = {
         # 影响: 这是主循环每次迭代的间隔, 直接影响系统的响应速度和CPU使用率。值越小响应越快, 但CPU占用越高, 也越耗电。
         # 建议: 100-1000 毫秒。
         "main_loop_delay": 50
+    },
+    "wifi": {
+        # 描述: WiFi网络名称(SSID)
+        # 影响: 设备将连接到指定的WiFi网络
+        # 建议: 使用2.4GHz频段的WiFi网络
+        "ssid": "Your_WiFi_Name",
+
+        # 描述: WiFi密码
+        # 影响: 用于连接WiFi网络的认证
+        # 建议: 使用强密码保护网络安全
+        "password": "Your_WiFi_Password"
+    },
+    "mqtt": {
+        # 描述: MQTT服务器地址
+        # 影响: 设备将连接到指定的MQTT服务器
+        # 建议: 使用稳定的MQTT服务器地址
+        "broker": "mqtt.example.com",
+
+        # 描述: MQTT服务器端口
+        # 影响: MQTT服务器的连接端口
+        # 建议: 默认1883，SSL连接使用8883
+        "port": 1883,
+
+        # 描述: MQTT用户名
+        # 影响: MQTT服务器的认证用户名
+        "user": "",
+
+        # 描述: MQTT密码
+        # 影响: MQTT服务器的认证密码
+        "password": "",
+
+        # 描述: MQTT保持连接时间
+        # 影响: 客户端与服务器之间的心跳间隔
+        # 建议: 60-120秒
+        "keepalive": 60
+    },
+    "ntp": {
+        # 描述: NTP服务器地址
+        # 影响: 设备将从此服务器同步时间
+        # 建议: 使用可靠的NTP服务器
+        "server": "pool.ntp.org",
+
+        # 描述: NTP同步超时时间
+        # 影响: 等待NTP响应的最长时间
+        # 建议: 5-10秒
+        "timeout": 5000
     }
 }
 

@@ -40,8 +40,9 @@ STATE_TRANSITIONS = {
     STATE_NETWORKING: {
         'wifi_connected': STATE_NETWORKING,
         'mqtt_connected': STATE_RUNNING,
+        'mqtt_disconnected': STATE_NETWORKING,
         'running': STATE_RUNNING,
-         'wifi_disconnected': STATE_WARNING,
+        'wifi_disconnected': STATE_WARNING,
         'error': STATE_ERROR
     },
     STATE_RUNNING: {
