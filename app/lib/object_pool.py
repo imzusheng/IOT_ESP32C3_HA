@@ -1,12 +1,12 @@
 # app/lib/object_pool.py
-# 暂时废弃， 请勿使用
+# 暂时废弃,  请勿使用
 
 class ObjectPool:
     """
     对象池 (重构版本)
     
-    一个简单的对象池实现，用于高效的对象复用和内存管理。
-    减少频繁的对象创建和销毁，降低垃圾回收压力。
+    一个简单的对象池实现, 用于高效的对象复用和内存管理。
+    减少频繁的对象创建和销毁, 降低垃圾回收压力。
     
     特性:
     - 预分配对象
@@ -27,8 +27,8 @@ class ObjectPool:
             if not self._in_use[i]:
                 self._in_use[i] = True
                 return self._pool[i]
-        # 如果池已耗尽，可以选择抛出异常或动态创建新对象
-        # 这里为了简单，我们返回 None，静默处理
+        # 如果池已耗尽, 可以选择抛出异常或动态创建新对象
+        # 这里为了简单, 我们返回 None, 静默处理
         return None
 
     def release(self, obj):
@@ -56,7 +56,7 @@ class ObjectPoolManager:
     """
     对象池管理器 (单例模式)
     
-    管理多个命名对象池的管理器，提供统一的接口来创建、
+    管理多个命名对象池的管理器, 提供统一的接口来创建、
     使用和释放对象池。是事件驱动架构的内存优化核心组件。
     
     特性:
@@ -65,7 +65,7 @@ class ObjectPoolManager:
     - 智能内存分配
     - 统一的接口
     - 内存使用统计
-    - 单例模式，全局唯一实例
+    - 单例模式, 全局唯一实例
     """
     _instance = None
     _initialized = False
@@ -98,7 +98,7 @@ class ObjectPoolManager:
         """
         从指定的池中获取一个对象。
         :param pool_name: 池的名称
-        :return: 池中的一个对象，如果池不存在或耗尽则返回 None
+        :return: 池中的一个对象, 如果池不存在或耗尽则返回 None
         """
         if pool_name in self._pools:
             obj = self._pools[pool_name].acquire()
@@ -120,10 +120,10 @@ class ObjectPoolManager:
             pool_name = self._object_to_pool[obj_id]
             if pool_name in self._pools:
                 self._pools[pool_name].release(obj)
-                # 修复: 从跟踪字典中移除，防止内存泄漏
+                # 修复: 从跟踪字典中移除, 防止内存泄漏
                 del self._object_to_pool[obj_id]
             else:
-                # 如果池不存在，也应该从跟踪字典中移除
+                # 如果池不存在, 也应该从跟踪字典中移除
                 del self._object_to_pool[obj_id]
                 # 静默处理不存在的池
                 pass
@@ -138,7 +138,7 @@ class ObjectPoolManager:
         :param obj: 要归还的对象
         """
         if pool_name in self._pools:
-            # 如果对象在跟踪字典中，先移除它
+            # 如果对象在跟踪字典中, 先移除它
             obj_id = id(obj)
             if obj_id in self._object_to_pool:
                 del self._object_to_pool[obj_id]

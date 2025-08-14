@@ -10,7 +10,7 @@ from lib.logger import debug, info, warning, error
 
 # 简单的安全日志装饰器
 def safe_log(level='error'):
-    """装饰器：包装目标函数，自动捕获并安全记录异常"""
+    """装饰器：包装目标函数, 自动捕获并安全记录异常"""
     def decorator(func):
         def wrapper(*args, **kwargs):
             try:
@@ -157,7 +157,7 @@ class EventBus:
         self._circuit_breaker_open = False
         self._last_error_time = 0
         
-        # 保存EVENTS引用到实例，避免NameError
+        # 保存EVENTS引用到实例, 避免NameError
         self.EVENTS = EVENTS
         
         # 手动处理时间记录

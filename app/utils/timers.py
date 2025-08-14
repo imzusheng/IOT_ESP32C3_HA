@@ -3,7 +3,7 @@
 定时器工具模块 (重构版本)
 提供防抖定时器、周期定时器、超时定时器等功能
 
-为事件驱动架构提供定时器支持，包括防抖、周期执行、
+为事件驱动架构提供定时器支持, 包括防抖、周期执行、
 超时检测和性能分析等功能。
 
 特性:
@@ -32,7 +32,7 @@ class DebounceTimer:
     def should_trigger(self):
         """
         检查是否应该触发
-        返回True表示可以触发，False表示在防抖期内
+        返回True表示可以触发, False表示在防抖期内
         """
         current_time = time.ticks_ms()
         if time.ticks_diff(current_time, self.last_trigger) >= self.debounce_ms:
@@ -62,7 +62,7 @@ class PeriodicTimer:
     def check_and_run(self, *args, **kwargs):
         """
         检查并执行周期任务
-        返回True表示执行了回调，False表示未执行
+        返回True表示执行了回调, False表示未执行
         """
         if not self.enabled or not self.callback:
             return False
@@ -167,7 +167,7 @@ class HardwareTimerManager:
     def create_timer(self, period_ms, callback, mode=machine.Timer.PERIODIC):
         """
         创建硬件定时器
-        返回定时器实例，失败返回None
+        返回定时器实例, 失败返回None
         """
         timer_id = self.get_available_timer()
         if timer_id is None:

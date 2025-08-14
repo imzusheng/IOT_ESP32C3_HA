@@ -1,5 +1,5 @@
 # app/net/wifi.py
-# 简化版WiFi管理器，只提供基本的WiFi操作功能
+# 简化版WiFi管理器, 只提供基本的WiFi操作功能
 import network
 from lib.logger import error
 
@@ -33,7 +33,7 @@ class WifiManager:
             timeout_ms: 扫描超时时间（毫秒）
         
         Returns:
-            list: 网络列表，每个网络包含 {'ssid': str, 'rssi': int, 'bssid': bytes}
+            list: 网络列表, 每个网络包含 {'ssid': str, 'rssi': int, 'bssid': bytes}
         """
         try:
             import time

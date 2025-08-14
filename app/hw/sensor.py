@@ -3,7 +3,7 @@
 ESP32-C3传感器管理器 (重构版本)
 内部温度传感器和外部传感器支持
 
-基于事件驱动架构，通过对象池优化内存使用。
+基于事件驱动架构, 通过对象池优化内存使用。
 支持内部温度传感器和多种外部传感器（DHT11/DHT22/BMP280）。
 
 特性:
@@ -27,7 +27,7 @@ class SensorManager:
     def __init__(self, event_bus):
         self.event_bus = event_bus
         self.object_pool = get_object_pool_manager()
-        # 移除logger实例，直接使用全局日志函数
+        # 移除logger实例, 直接使用全局日志函数
         self.sensors = {}
         self.sensor_data = {}
         self.last_read_time = {}
@@ -38,7 +38,7 @@ class SensorManager:
         self.last_publish_time = {}   # 存储上次发布时间
         
         # 初始化logger
-        # 移除logger实例，直接使用全局日志函数
+        # 移除logger实例, 直接使用全局日志函数
         self.min_publish_interval = 2000  # 最小发布间隔2秒
         self.data_change_threshold = 0.1  # 数据变化阈值10%
         
@@ -54,13 +54,13 @@ class SensorManager:
         
         # 处理不同类型的数据
         if isinstance(new_data, (int, float)) and isinstance(old_data, (int, float)):
-            # 数值类型数据，检查相对变化
+            # 数值类型数据, 检查相对变化
             if old_data == 0:
                 return new_data != 0  # 避免除零
             relative_change = abs(new_data - old_data) / abs(old_data)
             return relative_change > self.data_change_threshold
         elif isinstance(new_data, dict) and isinstance(old_data, dict):
-            # 字典类型数据，检查关键字段的变化
+            # 字典类型数据, 检查关键字段的变化
             for key in new_data:
                 if key in old_data:
                     if isinstance(new_data[key], (int, float)) and isinstance(old_data[key], (int, float)):
@@ -75,7 +75,7 @@ class SensorManager:
                     return True  # 新字段
             return False
         else:
-            # 其他类型，直接比较
+            # 其他类型, 直接比较
             return new_data != old_data
     
     def _should_publish_sensor_data(self, sensor_id, data):
@@ -143,7 +143,7 @@ class SensorManager:
     def read_sensor(self, sensor_id):
         """
         读取指定传感器数据
-        返回传感器数据，失败返回None
+        返回传感器数据, 失败返回None
         """
         if sensor_id not in self.sensors:
             return None
@@ -166,8 +166,8 @@ class SensorManager:
                     self.last_published_data[sensor_id] = value
                     self.last_publish_time[sensor_id] = time.ticks_ms()
                 else:
-                    # 数据无显著变化或发布频率过高，跳过发布
-                    debug("传感器{}数据无显著变化，跳过发布", sensor_id, module="Sensor")
+                    # 数据无显著变化或发布频率过高, 跳过发布
+                    debug("传感器{}数据无显著变化, 跳过发布", sensor_id, module="Sensor")
             
             return value
         except Exception as e:
@@ -235,7 +235,7 @@ class ExternalSensorManager:
         self.last_publish_time = {}   # 存储上次发布时间
         
         # 初始化logger
-        # 移除logger实例，直接使用全局日志函数
+        # 移除logger实例, 直接使用全局日志函数
     
     def init_i2c(self, scl_pin, sda_pin, freq=400000):
         """初始化I2C总线"""
@@ -380,8 +380,8 @@ class ExternalSensorManager:
                     self.last_published_data[sensor_id] = data
                     self.last_publish_time[sensor_id] = time.ticks_ms()
                 else:
-                    # 数据无显著变化或发布频率过高，跳过发布
-                    debug("外部传感器{}数据无显著变化，跳过发布", sensor_id, module="Sensor")
+                    # 数据无显著变化或发布频率过高, 跳过发布
+                    debug("外部传感器{}数据无显著变化, 跳过发布", sensor_id, module="Sensor")
             
             return data
         except Exception as e:
@@ -401,13 +401,13 @@ class ExternalSensorManager:
         
         # 处理不同类型的数据
         if isinstance(new_data, (int, float)) and isinstance(old_data, (int, float)):
-            # 数值类型数据，检查相对变化
+            # 数值类型数据, 检查相对变化
             if old_data == 0:
                 return new_data != 0  # 避免除零
             relative_change = abs(new_data - old_data) / abs(old_data)
             return relative_change > 0.1  # 10%变化阈值
         elif isinstance(new_data, dict) and isinstance(old_data, dict):
-            # 字典类型数据，检查关键字段的变化
+            # 字典类型数据, 检查关键字段的变化
             for key in new_data:
                 if key in old_data:
                     if isinstance(new_data[key], (int, float)) and isinstance(old_data[key], (int, float)):
@@ -422,7 +422,7 @@ class ExternalSensorManager:
                     return True  # 新字段
             return False
         else:
-            # 其他类型，直接比较
+            # 其他类型, 直接比较
             return new_data != old_data
     
     def _should_publish_sensor_data(self, sensor_id, data):

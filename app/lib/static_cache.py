@@ -1,5 +1,5 @@
 # app/lib/static_cache.py
-# 暂时废弃， 请勿使用
+# 暂时废弃,  请勿使用
 
 import ujson
 import utime as time
@@ -45,7 +45,7 @@ class StaticCache:
     def set(self, key, value):
         """
         向缓存中设置一个值。
-        如果值发生变化，则将缓存标记为"脏"，以便后续写入。
+        如果值发生变化, 则将缓存标记为"脏", 以便后续写入。
         :param key: 键
         :param value: 值
         """

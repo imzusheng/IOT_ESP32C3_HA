@@ -1,7 +1,7 @@
 # app/fsm/handlers.py
 """
 状态处理函数模块
-每个状态对应一个处理函数，负责处理状态进入、退出和定时事件
+每个状态对应一个处理函数, 负责处理状态进入、退出和定时事件
 """
 
 import utime as time
@@ -13,14 +13,14 @@ from .state_const import STATE_NAMES, get_state_name
 def boot_state_handler(event, context):
     """启动状态处理函数"""
     if event == 'enter':
-        info("进入启动状态，系统开始初始化", module="FSM")
+        info("进入启动状态, 系统开始初始化", module="FSM")
         context['boot_start_time'] = time.ticks_ms()
         return None
     
     elif event == 'update':
         # 检查是否超过1秒
         if time.ticks_diff(time.ticks_ms(), context.get('boot_start_time', 0)) >= 1000:
-            info("启动阶段完成，发布boot_complete事件", module="FSM")
+            info("启动阶段完成, 发布boot_complete事件", module="FSM")
             return 'boot_complete'
     
     elif event == 'exit':
@@ -28,7 +28,7 @@ def boot_state_handler(event, context):
     
     # 处理其他事件（如 mqtt.state_change）
     elif isinstance(event, str) and '.' in event:
-        # 外部事件，不处理，只记录日志
+        # 外部事件, 不处理, 只记录日志
         info("BOOT状态收到外部事件: {}", event, module="FSM")
     
     return None
@@ -36,7 +36,7 @@ def boot_state_handler(event, context):
 def init_state_handler(event, context):
     """初始化状态处理函数"""
     if event == 'enter':
-        info("进入初始化状态，开始模块初始化", module="FSM")
+        info("进入初始化状态, 开始模块初始化", module="FSM")
         context['init_start_time'] = time.ticks_ms()
         _perform_initialization(context)
         return None
@@ -44,7 +44,7 @@ def init_state_handler(event, context):
     elif event == 'update':
         # 检查是否超过2秒
         if time.ticks_diff(time.ticks_ms(), context.get('init_start_time', 0)) >= 2000:
-            info("初始化阶段完成，发布init_complete事件", module="FSM")
+            info("初始化阶段完成, 发布init_complete事件", module="FSM")
             return 'init_complete'
     
     elif event == 'exit':
@@ -52,7 +52,7 @@ def init_state_handler(event, context):
     
     # 处理其他事件（如 mqtt.state_change）
     elif isinstance(event, str) and '.' in event:
-        # 外部事件，不处理，只记录日志
+        # 外部事件, 不处理, 只记录日志
         info("INIT状态收到外部事件: {}", event, module="FSM")
     
     return None
@@ -60,13 +60,13 @@ def init_state_handler(event, context):
 def networking_state_handler(event, context):
     """网络连接状态处理函数"""
     if event == 'enter':
-        info("进入NETWORKING状态，启动网络连接", module="FSM")
+        info("进入NETWORKING状态, 启动网络连接", module="FSM")
         context['networking_start_time'] = time.ticks_ms()
         _start_network_connection(context)
         return None
     
     elif event == 'update':
-        # 在NETWORKING状态下，定期调用网络管理器的loop方法来处理连接状态
+        # 在NETWORKING状态下, 定期调用网络管理器的loop方法来处理连接状态
         network_manager = context.get('network_manager')
         if network_manager and hasattr(network_manager, 'loop'):
             try:
@@ -79,16 +79,16 @@ def networking_state_handler(event, context):
         timeout = context['config'].get('network', {}).get('connection_timeout', 60) * 1000  # 改为60秒
         
         if elapsed > timeout:
-            warning("网络连接超时（{}ms），但可能部分连接已建立，进入RUNNING状态", elapsed, module="FSM")
-            return 'running'  # 超时后进入RUNNING状态，让系统继续运行
+            warning("网络连接超时（{}ms）, 但可能部分连接已建立, 进入RUNNING状态", elapsed, module="FSM")
+            return 'running'  # 超时后进入RUNNING状态, 让系统继续运行
     
     elif event == 'wifi_connected':
-        # WiFi连接成功，网络服务已经启动，等待MQTT连接
-        info("WiFi连接成功，网络服务已启动", module="FSM")
+        # WiFi连接成功, 网络服务已经启动, 等待MQTT连接
+        info("WiFi连接成功, 网络服务已启动", module="FSM")
     
     elif event == 'mqtt_connected':
-        # MQTT连接成功，转换到RUNNING状态
-        info("MQTT连接成功，转换到RUNNING状态", module="FSM")
+        # MQTT连接成功, 转换到RUNNING状态
+        info("MQTT连接成功, 转换到RUNNING状态", module="FSM")
         return 'running'
     
     elif event == 'exit':
@@ -96,7 +96,7 @@ def networking_state_handler(event, context):
     
     # 处理其他事件（如 mqtt.state_change）
     elif isinstance(event, str) and '.' in event:
-        # 外部事件，不处理，只记录日志
+        # 外部事件, 不处理, 只记录日志
         info("NETWORKING状态收到外部事件: {}", event, module="FSM")
     
     return None
@@ -104,8 +104,8 @@ def networking_state_handler(event, context):
 def running_state_handler(event, context):
     """运行状态处理函数"""
     if event == 'enter':
-        info("进入RUNNING状态，系统正常运行中", module="FSM")
-        info("网络连接已完成，启动网络服务", module="FSM")
+        info("进入RUNNING状态, 系统正常运行中", module="FSM")
+        info("网络连接已完成, 启动网络服务", module="FSM")
         
         context['running_start_time'] = time.ticks_ms()
         context['last_status_log_time'] = 0
@@ -119,7 +119,7 @@ def running_state_handler(event, context):
         current_time = time.ticks_ms()
         _periodic_maintenance(context, current_time)
         
-        # 在RUNNING状态下，也需要定期调用网络管理器来维护连接
+        # 在RUNNING状态下, 也需要定期调用网络管理器来维护连接
         network_manager = context.get('network_manager')
         if network_manager and hasattr(network_manager, 'loop'):
             try:
@@ -128,8 +128,8 @@ def running_state_handler(event, context):
                 error("RUNNING状态网络维护失败: {}", e, module="FSM")
     
     elif event == 'wifi_disconnected' or event == 'mqtt_disconnected':
-        # 网络连接断开，转换到NETWORKING状态重新连接
-        warning("网络连接断开，转换到NETWORKING状态", module="FSM")
+        # 网络连接断开, 转换到NETWORKING状态重新连接
+        warning("网络连接断开, 转换到NETWORKING状态", module="FSM")
         return 'networking'
     
     elif event == 'exit':
@@ -137,7 +137,7 @@ def running_state_handler(event, context):
     
     # 处理其他事件（如 mqtt.state_change）
     elif isinstance(event, str) and '.' in event:
-        # 外部事件，不处理，只记录日志
+        # 外部事件, 不处理, 只记录日志
         info("RUNNING状态收到外部事件: {}", event, module="FSM")
     
     return None
@@ -145,7 +145,7 @@ def running_state_handler(event, context):
 def warning_state_handler(event, context):
     """警告状态处理函数"""
     if event == 'enter':
-        warning("进入WARNING状态，系统出现警告", module="FSM")
+        warning("进入WARNING状态, 系统出现警告", module="FSM")
         context['warning_start_time'] = time.ticks_ms()
         return None
     
@@ -155,7 +155,7 @@ def warning_state_handler(event, context):
         if elapsed >= 30000:  # 30秒
             if not context.get('recovery_triggered', False):
                 context['recovery_triggered'] = True
-                info("警告状态超时，尝试恢复", module="FSM")
+                info("警告状态超时, 尝试恢复", module="FSM")
                 return 'recovery_success'
     
     elif event == 'exit':
@@ -164,7 +164,7 @@ def warning_state_handler(event, context):
     
     # 处理其他事件（如 mqtt.state_change）
     elif isinstance(event, str) and '.' in event:
-        # 外部事件，不处理，只记录日志
+        # 外部事件, 不处理, 只记录日志
         info("WARNING状态收到外部事件: {}", event, module="FSM")
     
     return None
@@ -172,7 +172,7 @@ def warning_state_handler(event, context):
 def error_state_handler(event, context):
     """错误状态处理函数"""
     if event == 'enter':
-        error("进入ERROR状态，系统出现错误", module="FSM")
+        error("进入ERROR状态, 系统出现错误", module="FSM")
         
         # 增加错误计数
         context['error_count'] += 1
@@ -182,7 +182,7 @@ def error_state_handler(event, context):
         
         # 检查是否达到最大错误数
         if context['error_count'] >= context['max_errors']:
-            info("达到最大错误计数，进入安全模式", module="FSM")
+            info("达到最大错误计数, 进入安全模式", module="FSM")
             return 'safe_mode'
         
         return None
@@ -193,7 +193,7 @@ def error_state_handler(event, context):
         if elapsed >= 15000:  # 15秒
             if not context.get('recovery_triggered', False):
                 context['recovery_triggered'] = True
-                info("错误状态超时，尝试恢复", module="FSM")
+                info("错误状态超时, 尝试恢复", module="FSM")
                 return 'recovery_success'
     
     elif event == 'exit':
@@ -202,7 +202,7 @@ def error_state_handler(event, context):
     
     # 处理其他事件（如 mqtt.state_change）
     elif isinstance(event, str) and '.' in event:
-        # 外部事件，不处理，只记录日志
+        # 外部事件, 不处理, 只记录日志
         info("ERROR状态收到外部事件: {}", event, module="FSM")
     
     return None
@@ -243,7 +243,7 @@ def safe_mode_state_handler(event, context):
     
     # 处理其他事件（如 mqtt.state_change）
     elif isinstance(event, str) and '.' in event:
-        # 外部事件，不处理，只记录日志
+        # 外部事件, 不处理, 只记录日志
         info("SAFE_MODE状态收到外部事件: {}", event, module="FSM")
     
     return None
@@ -251,7 +251,7 @@ def safe_mode_state_handler(event, context):
 def recovery_state_handler(event, context):
     """恢复状态处理函数"""
     if event == 'enter':
-        info("进入RECOVERY状态，开始系统恢复", module="FSM")
+        info("进入RECOVERY状态, 开始系统恢复", module="FSM")
         context['recovery_start_time'] = time.ticks_ms()
         return None
     
@@ -261,7 +261,7 @@ def recovery_state_handler(event, context):
         if elapsed >= 10000:  # 10秒
             if not context.get('completion_triggered', False):
                 context['completion_triggered'] = True
-                info("恢复超时，自动完成恢复", module="FSM")
+                info("恢复超时, 自动完成恢复", module="FSM")
                 return 'recovery_success'
     
     elif event == 'exit':
@@ -270,7 +270,7 @@ def recovery_state_handler(event, context):
     
     # 处理其他事件（如 mqtt.state_change）
     elif isinstance(event, str) and '.' in event:
-        # 外部事件，不处理，只记录日志
+        # 外部事件, 不处理, 只记录日志
         info("RECOVERY状态收到外部事件: {}", event, module="FSM")
     
     return None
@@ -278,7 +278,7 @@ def recovery_state_handler(event, context):
 def shutdown_state_handler(event, context):
     """关机状态处理函数"""
     if event == 'enter':
-        info("进入SHUTDOWN状态，系统准备关机", module="FSM")
+        info("进入SHUTDOWN状态, 系统准备关机", module="FSM")
         _perform_shutdown_cleanup(context)
         return None
     
@@ -291,7 +291,7 @@ def shutdown_state_handler(event, context):
     
     # 处理其他事件（如 mqtt.state_change）
     elif isinstance(event, str) and '.' in event:
-        # 外部事件，不处理，只记录日志
+        # 外部事件, 不处理, 只记录日志
         info("SHUTDOWN状态收到外部事件: {}", event, module="FSM")
     
     return None
@@ -339,8 +339,8 @@ def _start_network_connection(context):
 
 def _start_network_services(context):
     """启动网络服务"""
-    # 网络服务已在NetworkManager.connect()中统一启动，无需额外调用
-    info("网络服务已集成到连接流程中，无需额外启动", module="FSM")
+    # 网络服务已在NetworkManager.connect()中统一启动, 无需额外调用
+    info("网络服务已集成到连接流程中, 无需额外启动", module="FSM")
 
 def _periodic_maintenance(context, current_time):
     """定期维护任务"""
@@ -354,7 +354,7 @@ def _periodic_maintenance(context, current_time):
         context['last_health_check_time'] = current_time
         _check_system_health(context)
     
-    # 网络服务已经在NETWORKING状态启动，这里只需要定期维护
+    # 网络服务已经在NETWORKING状态启动, 这里只需要定期维护
     network_manager = context.get('network_manager')
     if network_manager and hasattr(network_manager, 'loop'):
         try:
@@ -442,7 +442,7 @@ def _emergency_cleanup(context):
 
     
     except Exception as e:
-        # 即使在安全模式下，清理失败也不应该导致系统崩溃
+        # 即使在安全模式下, 清理失败也不应该导致系统崩溃
         info("安全模式紧急清理部分失败（继续运行）: {}", e, module="FSM")
 
 def _perform_shutdown_cleanup(context):

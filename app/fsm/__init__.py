@@ -1,7 +1,7 @@
 # app/fsm/__init__.py
 """
 函数式状态机模块
-基于函数和字典查找的简化状态机架构，解决事件风暴问题
+基于函数和字典查找的简化状态机架构, 解决事件风暴问题
 """
 
 # 从core模块导入核心状态机类和工厂函数
@@ -19,7 +19,7 @@ from .state_const import (
 __all__ = [
     # 核心状态机类
     'FunctionalStateMachine',
-    'StateMachine',  # 别名，保持兼容性
+    'StateMachine',  # 别名, 保持兼容性
     
     # 工厂函数
     'create_state_machine',

@@ -64,7 +64,7 @@ def _init_watchdog(context, config):
         wdt_timeout = config.get('daemon', {}).get('wdt_timeout', 120000)
         try:
             context['wdt'] = machine.WDT(timeout=wdt_timeout)
-            info("看门狗已启用，超时时间: {} ms", wdt_timeout, module="FSM")
+            info("看门狗已启用, 超时时间: {} ms", wdt_timeout, module="FSM")
         except Exception as e:
             error("启用看门狗失败: {}", e, module="FSM")
 
@@ -122,7 +122,7 @@ def increase_error_count(context):
     
     # 检查是否达到最大错误数
     if context['error_count'] >= context['max_errors']:
-        info("达到最大错误计数，进入安全模式", module="FSM")
+        info("达到最大错误计数, 进入安全模式", module="FSM")
         return True
     return False
 

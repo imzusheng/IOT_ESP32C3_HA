@@ -1,5 +1,5 @@
 # app/net/ntp.py
-# 简化版NTP时间同步管理器，只提供基本的NTP操作功能
+# 简化版NTP时间同步管理器, 只提供基本的NTP操作功能
 import utime as time
 from lib.logger import debug, info, warning, error
 
@@ -23,7 +23,7 @@ class NtpManager:
         :param config: NTP配置字典-可选
         """
         self.config = config or {}
-        # 移除logger实例，直接使用全局日志函数
+        # 移除logger实例, 直接使用全局日志函数
         self._ntp_synced = False
     
     def sync_time(self):
@@ -36,7 +36,7 @@ class NtpManager:
         if ntptime is None:
             return False
         
-        # 通过配置允许自定义NTP服务器，默认使用阿里云NTP池
+        # 通过配置允许自定义NTP服务器, 默认使用阿里云NTP池
         ntp_server = self.config.get('ntp_server', 'ntp1.aliyun.com')
         max_attempts = int(self.config.get('ntp_max_attempts', 3))
         retry_interval = int(self.config.get('ntp_retry_interval', 2))  # 秒
@@ -45,12 +45,12 @@ class NtpManager:
             if hasattr(ntptime, 'host'):
                 ntptime.host = ntp_server  # 设置NTP服务器
         except Exception:
-            # 某些端口的ntptime不支持设置host，忽略
+            # 某些端口的ntptime不支持设置host, 忽略
             pass
         
         
         try:
-            # 只尝试一次，让外部的NetworkManager处理重试和退避
+            # 只尝试一次, 让外部的NetworkManager处理重试和退避
             ntptime.settime()
             # 成功
             self._ntp_synced = True
@@ -59,7 +59,7 @@ class NtpManager:
             return True
             
         except Exception as e:
-            # 直接返回失败，让外部的NetworkManager处理重试
+            # 直接返回失败, 让外部的NetworkManager处理重试
             return False
     
     def is_synced(self):

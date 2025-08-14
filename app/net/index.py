@@ -48,7 +48,7 @@ class NetworkManager:
         # 配置参数
         self.max_retries = 5
         self.retry_delay = 2000
-        self.connection_timeout = 30000  # 减少超时时间，避免长时间阻塞
+        self.connection_timeout = 30000  # 减少超时时间, 避免长时间阻塞
 
     def _reset_state(self):
         """重置状态"""

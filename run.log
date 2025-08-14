@@ -1,92 +1,63 @@
 >>> %Run -c $EDITOR_CONTENT
 
 MPY: soft reboot
-18:30:10.760 [INFO ] [Main] === ESP32-C3 IoT设备启动中 ===
-18:30:10.763 [INFO ] [Main] 配置已加载
-18:30:10.769 [INFO ] [EventBus] EventBus定时器已启动 - 周期=25ms
-18:30:10.891 [INFO ] [EventBus] 订阅事件: system.state_change -> 1个回调
-18:30:10.895 [INFO ] [EventBus] 订阅事件: wifi.state_change -> 1个回调
-18:30:10.914 [INFO ] [EventBus] 订阅事件: mqtt.state_change -> 1个回调
-18:30:10.920 [INFO ] [LED] 控制器已初始化，引脚: [12, 13]
-18:30:10.924 [INFO ] [Sensor] 内部温度传感器已初始化
-18:30:10.937 [INFO ] [FSM] 看门狗已启用，超时时间: 120000 ms
-18:30:10.940 [INFO ] [EventBus] 订阅事件: system.state_change -> 2个回调
-18:30:10.946 [INFO ] [EventBus] 订阅事件: system.error -> 1个回调
-18:30:10.956 [INFO ] [EventBus] 订阅事件: wifi.state_change -> 2个回调
-18:30:10.960 [INFO ] [EventBus] 订阅事件: mqtt.state_change -> 2个回调
-18:30:10.970 [INFO ] [EventBus] 订阅事件: ntp.state_change -> 1个回调
-18:30:10.976 [INFO ] [EventBus] 订阅事件: mqtt_connected -> 1个回调
-18:30:10.985 [INFO ] [FSM] 函数式状态机已初始化
-18:30:10.990 [INFO ] [EventBus] 订阅事件: ntp.state_change -> 2个回调
-18:30:10.006 [INFO ] [Main] 系统事件订阅已注册
-18:30:10.009 [INFO ] [Main] 启动ESP32-C3 IoT设备
-18:30:10.014 [INFO ] [Main] 对象池已配置 - 共4个对象池
-18:30:10.017 [INFO ] [Main] 新版状态机已启动，采用事件驱动架构
-18:30:10.026 [INFO ] [Main] 进入事件驱动主循环
-18:30:10.036 [INFO ] [FSM] 启动阶段完成，发布boot_complete事件
-18:30:10.039 [INFO ] [FSM] 退出启动状态
-18:30:10.042 [INFO ] [FSM] 进入初始化状态，开始模块初始化
-18:30:10.055 [INFO ] [FSM] 执行系统初始化任务
-18:30:10.060 [INFO ] [FSM] LED状态更新为: blink (状态: INIT)
-18:30:12.167 [INFO ] [FSM] 初始化阶段完成，发布init_complete事件
-18:30:12.170 [INFO ] [FSM] 退出初始化状态
-18:30:12.173 [INFO ] [FSM] 进入NETWORKING状态，启动网络连接
-18:30:12.186 [INFO ] [FSM] 启动网络连接过程
-18:30:12.189 [INFO ] [NET] 启动网络连接流程
-18:30:12.192 [INFO ] [NET] 尝试连接WiFi网络
-18:30:15.700 [INFO ] [NET] 尝试连接WiFi: leju_software (信号强度: -34)
-18:30:18.374 [INFO ] [NET] WiFi连接成功: leju_software
-18:30:18.378 [INFO ] [NET] 开始NTP时间同步
-10:30:17.474 [INFO ] [NET] NTP同步成功
-10:30:17.478 [INFO ] [NET] 开始连接MQTT服务器: 192.168.3.15
-10:30:17.828 [ERROR] [NET] MQTT连接启动失败
-10:30:17.832 [WARN ] [NET] MQTT连接启动失败，但WiFi已连接
-10:30:17.836 [INFO ] [FSM] LED状态更新为: pulse (状态: NETWORKING)
-10:30:26.009 [WARN ] [NET] MQTT连接丢失
-10:30:26.182 [ERROR] [NET] MQTT连接启动失败
-10:30:56.217 [WARN ] [NET] MQTT连接丢失
-10:30:56.310 [ERROR] [NET] MQTT连接启动失败
-10:31:26.344 [WARN ] [NET] MQTT连接丢失
-10:31:27.630 [ERROR] [NET] MQTT连接启动失败
-10:31:56.369 [WARN ] [NET] MQTT连接丢失
-10:31:56.445 [ERROR] [NET] MQTT连接启动失败
-10:32:11.324 [WARN ] [FSM] 网络连接超时（120138ms），进入RUNNING状态
-10:32:11.327 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
-10:32:12.640 [WARN ] [FSM] 网络连接超时（120454ms），进入RUNNING状态
-10:32:12.643 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
-10:32:12.959 [WARN ] [FSM] 网络连接超时（120774ms），进入RUNNING状态
-10:32:12.963 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
-10:32:12.279 [WARN ] [FSM] 网络连接超时（121094ms），进入RUNNING状态
-10:32:12.283 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
-10:32:13.599 [WARN ] [FSM] 网络连接超时（121414ms），进入RUNNING状态
-10:32:13.603 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
-10:32:13.919 [WARN ] [FSM] 网络连接超时（121734ms），进入RUNNING状态
-10:32:13.923 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
-10:32:13.240 [WARN ] [FSM] 网络连接超时（122055ms），进入RUNNING状态
-10:32:13.244 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
-10:32:14.560 [WARN ] [FSM] 网络连接超时（122374ms），进入RUNNING状态
-10:32:14.563 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
-10:32:14.880 [WARN ] [FSM] 网络连接超时（122694ms），进入RUNNING状态
-10:32:14.883 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
-10:32:14.199 [WARN ] [FSM] 网络连接超时（123014ms），进入RUNNING状态
-10:32:14.203 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
-10:32:15.519 [WARN ] [FSM] 网络连接超时（123334ms），进入RUNNING状态
-10:32:15.523 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
-10:32:15.839 [WARN ] [FSM] 网络连接超时（123654ms），进入RUNNING状态
-10:32:15.843 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
-10:32:15.159 [WARN ] [FSM] 网络连接超时（123974ms），进入RUNNING状态
-10:32:15.163 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
-10:32:16.488 [WARN ] [FSM] 网络连接超时（124294ms），进入RUNNING状态
-10:32:16.492 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
-10:32:16.810 [WARN ] [FSM] 网络连接超时（124625ms），进入RUNNING状态
-10:32:16.814 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
-10:32:16.129 [WARN ] [FSM] 网络连接超时（124944ms），进入RUNNING状态
-10:32:16.133 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
-10:32:16.449 [WARN ] [FSM] 网络连接超时（125264ms），进入RUNNING状态
-10:32:16.453 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
-10:32:17.769 [WARN ] [FSM] 网络连接超时（125584ms），进入RUNNING状态
-10:32:17.773 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
-10:32:17.089 [WARN ] [FSM] 网络连接超时（125904ms），进入RUNNING状态
-10:32:17.093 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
-10:32:17.409 [WARN ] [FSM] 网络连接超时（126224ms），进入RUNNING状态
-10:32:17.413 [INFO ] [FSM] 事件 running 在状态 NETWORKING 中未定义转换
+[00:00:19] [INFO ] [FSM] 看门狗已启用, 超时时间: 120000 ms
+[00:00:19] [INFO ] [MAIN] 开始启动系统...
+[00:00:19] [INFO ] [FSM] 启动阶段完成, 发布boot_complete事件
+[00:00:19] [INFO ] [FSM] 退出启动状态
+[00:00:19] [INFO ] [FSM] 进入初始化状态, 开始模块初始化
+[00:00:19] [INFO ] [FSM] 执行系统初始化任务
+[00:00:19] [INFO ] [LED] LED控制器已初始化, 引脚: [12, 13]
+[00:00:19] [INFO ] [FSM] LED状态更新为: blink (状态: INIT)
+[00:00:21] [INFO ] [FSM] 初始化阶段完成, 发布init_complete事件
+[00:00:21] [INFO ] [FSM] 退出初始化状态
+[00:00:21] [INFO ] [FSM] 进入NETWORKING状态, 启动网络连接
+[00:00:21] [INFO ] [FSM] 启动网络连接过程
+[00:00:21] [INFO ] [FSM] 网络管理器状态: NetworkManager
+[00:00:21] [INFO ] [NET] 当前状态: DISCONNECTED
+[00:00:21] [INFO ] [NET] 扫描WiFi网络...
+[00:00:23] [INFO ] [NET] 发现24个网络,配置3个
+[00:00:23] [INFO ] [NET] WiFi连接命令已发送, 等待连接建立...
+[00:00:25] [INFO ] [NET] WiFi连接成功: CMCC-pdRG
+[00:00:25] [INFO ] [NET] 开始NTP同步...
+[00:00:25] [INFO ] [NET] NTP同步成功
+[00:00:25] [INFO ] [NET] 开始MQTT连接, WiFi状态: True
+[00:00:44] [ERROR] [MQTT] MQTT连接异常: [Errno 113] ECONNABORTED
+[00:00:44] [ERROR] [NET] MQTT初始化失败
+[00:00:44] [INFO ] [FSM] 网络连接流程已启动
+[00:00:44] [INFO ] [FSM] LED状态更新为: pulse (状态: NETWORKING)
+[00:00:44] [WARN ] [MAIN] 主循环执行超时: 22985ms > 50ms
+[00:00:44] [INFO ] [FSM] 网络状态变化: connecting (参数: {'state': 'connecting'})
+[00:00:44] [INFO ] [FSM] NETWORKING状态收到外部事件: wifi.state_change
+[00:00:44] [INFO ] [FSM] NETWORKING状态收到外部事件: wifi.state_change
+[00:00:44] [INFO ] [FSM] NTP状态变化: started
+[00:00:44] [INFO ] [FSM] NETWORKING状态收到外部事件: ntp.state_change
+[00:00:44] [INFO ] [FSM] NTP状态变化: success
+[00:00:44] [INFO ] [FSM] NETWORKING状态收到外部事件: ntp.state_change
+[00:00:44] [WARN ] [MAIN] 主循环执行超时: 52ms > 50ms
+[00:00:44] [INFO ] [FSM] NETWORKING状态收到外部事件: mqtt.state_change
+[00:00:44] [INFO ] [FSM] 事件 mqtt_disconnected 在状态 NETWORKING 中未定义转换
+[00:00:44] [INFO ] [FSM] NETWORKING状态收到外部事件: mqtt.state_change
+[00:00:51] [WARN ] [NET] 连接超时(30038ms)
+[00:00:51] [INFO ] [NET] 连接失败, 2秒后重试 (第1/5次)
+[00:00:51] [WARN ] [NET] 连接超时(30088ms)
+[00:00:51] [INFO ] [NET] 连接失败, 2秒后重试 (第2/5次)
+[00:00:51] [WARN ] [NET] 连接超时(30138ms)
+[00:00:51] [INFO ] [NET] 连接失败, 2秒后重试 (第3/5次)
+[00:00:51] [WARN ] [NET] 连接超时(30188ms)
+[00:00:51] [INFO ] [NET] 连接失败, 2秒后重试 (第4/5次)
+[00:00:51] [WARN ] [NET] 连接超时(30239ms)
+[00:00:51] [INFO ] [NET] 连接失败, 2秒后重试 (第5/5次)
+[00:00:51] [WARN ] [NET] 连接超时(30289ms)
+[00:00:51] [ERROR] [NET] 达到最大重试次数, 断开连接
+[00:00:51] [INFO ] [NET] 所有网络已断开
+[00:00:51] [INFO ] [FSM] 网络状态变化: disconnected (参数: {'state': 'disconnected'})
+[00:00:51] [ERROR] [EVENTBUS] 函数_execute_event异常: 'NameError' object isn't callable
+[00:00:51] [INFO ] [FSM] 退出NETWORKING状态
+[00:00:51] [WARN ] [FSM] 进入WARNING状态, 系统出现警告
+[00:00:51] [INFO ] [FSM] LED状态更新为: blink (状态: WARNING)
+[00:00:51] [INFO ] [FSM] WARNING状态收到外部事件: wifi.state_change
+[00:00:51] [INFO ] [FSM] 事件 mqtt_disconnected 在状态 WARNING 中未定义转换
+[00:00:51] [INFO ] [FSM] WARNING状态收到外部事件: mqtt.state_change
+[00:00:51] [WARN ] [MAIN] 主循环执行超时: 62ms > 50ms
+

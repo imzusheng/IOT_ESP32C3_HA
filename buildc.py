@@ -10,7 +10,7 @@ MicroPython 高性能构建和部署脚本 (v5.2 - 串口冲突处理增强版)
 - 串口独占检测和恢复
 
 项目架构:
-- app/  : 源代码目录 (开发代码，编译后直接上传到设备根目录)
+- app/  : 源代码目录 (开发代码, 编译后直接上传到设备根目录)
 - dist/ : 编译输出文件 (上传到设备根目录 /)
 - app/tests/: 单元测试文件 (位于 app 目录内)
 - docs/ : 项目文档
@@ -34,7 +34,7 @@ from datetime import datetime
 # Windows 代码页设置
 if sys.platform == "win32":
     try:
-        # 设置控制台输出为 UTF-8，以正确显示中文字符
+        # 设置控制台输出为 UTF-8, 以正确显示中文字符
         os.system("chcp 65001 > nul")
         os.system("set PYTHONIOENCODING=utf-8")
     except Exception as e:
@@ -92,7 +92,7 @@ EXCLUDE_PATTERNS = [
     ".git",           # Git 目录
     "docs",           # 文档目录
     "tests",          # 测试目录 (根目录下的测试文件夹)
-    "app/tests"       # 应用测试目录 (app/tests 文件夹，除非 --test 标志启用)
+    "app/tests"       # 应用测试目录 (app/tests 文件夹, 除非 --test 标志启用)
 ]
 
 # --- ESP32 设备 VID/PID 模式 ---
@@ -169,7 +169,7 @@ def print_message(message, msg_type="INFO"):
     print(f"{color}[{timestamp}] {message}{Colors.RESET}")
 
 def get_file_md5(file_path):
-    """计算文件的MD5哈希值，用于文件变更检测"""
+    """计算文件的MD5哈希值, 用于文件变更检测"""
     hash_md5 = hashlib.md5()
     try:
         with open(file_path, "rb") as f:
@@ -188,7 +188,7 @@ def load_cache(cache_file):
         with open(cache_file, "r", encoding="utf-8") as f:
             return json.load(f)
     except (json.JSONDecodeError, IOError) as e:
-        print_message(f"缓存文件损坏，将重新创建: {cache_file} - {e}", "WARNING")
+        print_message(f"缓存文件损坏, 将重新创建: {cache_file} - {e}", "WARNING")
         return {}
 
 def save_cache(cache_data, cache_file):
@@ -213,7 +213,7 @@ def should_exclude(path, exclude_patterns):
 def find_processes_using_port(port):
     """查找正在使用指定串口的 Thonny 相关进程"""
     if not PSUTIL_AVAILABLE:
-        print_message("psutil 未安装，无法检测进程占用。建议安装: pip install psutil", "WARNING")
+        print_message("psutil 未安装, 无法检测进程占用。建议安装: pip install psutil", "WARNING")
         return []
     
     blocking_processes = []
@@ -278,7 +278,7 @@ def kill_processes_using_port(port, force=False, interactive=True):
                     print_message(f"进程 {process_name} 已正常终止", "SUCCESS")
                     killed_count += 1
                 except psutil.TimeoutExpired:
-                    print_message(f"进程 {process_name} 拒绝正常终止，将强制终止", "WARNING")
+                    print_message(f"进程 {process_name} 拒绝正常终止, 将强制终止", "WARNING")
                     process.kill()
                     process.wait(timeout=PROCESS_KILL_TIMEOUT)
                     print_message(f"进程 {process_name} 已强制终止", "SUCCESS")
@@ -293,12 +293,12 @@ def kill_processes_using_port(port, force=False, interactive=True):
         except psutil.NoSuchProcess:
             print_message(f"进程 {proc['pid']} 已不存在", "INFO")
         except psutil.AccessDenied:
-            print_message(f"权限不足，无法终止进程 {proc['pid']} ({proc['name']})", "ERROR")
+            print_message(f"权限不足, 无法终止进程 {proc['pid']} ({proc['name']})", "ERROR")
         except Exception as e:
             print_message(f"终止进程 {proc['pid']} 时出错: {e}", "ERROR")
     
     if killed_count > 0:
-        print_message(f"已终止 {killed_count} 个进程，等待串口释放...", "INFO")
+        print_message(f"已终止 {killed_count} 个进程, 等待串口释放...", "INFO")
         time.sleep(2)  # 等待系统释放串口资源
         return True
     else:
@@ -319,7 +319,7 @@ def test_port_access(port, timeout=5):
         return False
 
 def release_port(port, force=False, interactive=True):
-    """释放串口，处理占用冲突"""
+    """释放串口, 处理占用冲突"""
     print_message(f"检查串口 {port} 的占用状态...", "INFO")
     
     # 首先测试串口是否可用
@@ -327,7 +327,7 @@ def release_port(port, force=False, interactive=True):
         print_message("串口可正常访问", "SUCCESS")
         return True
     
-    print_message("串口被占用，尝试释放...", "WARNING")
+    print_message("串口被占用, 尝试释放...", "WARNING")
     
     # 查找并终止占用进程
     if not kill_processes_using_port(port, force=force, interactive=interactive):
@@ -341,15 +341,15 @@ def release_port(port, force=False, interactive=True):
             return True
         time.sleep(1)
     
-    print_message("串口释放失败，可能仍被其他程序占用", "ERROR")
+    print_message("串口释放失败, 可能仍被其他程序占用", "ERROR")
     return False
 
 # ==================== 设备检测 ====================
 
 def detect_esp32_port():
-    """自动检测ESP32设备端口，每次都重新扫描"""
+    """自动检测ESP32设备端口, 每次都重新扫描"""
     if not SERIAL_AVAILABLE:
-        print_message("pyserial 未安装，无法自动检测端口。请手动指定端口。", "ERROR")
+        print_message("pyserial 未安装, 无法自动检测端口。请手动指定端口。", "ERROR")
         print_message("安装命令: pip install pyserial", "INFO")
         return None
 
@@ -372,7 +372,7 @@ def detect_esp32_port():
         selected_port = esp32_ports[0].device
         print_message(f"发现ESP32设备: {selected_port} ({esp32_ports[0].description})", "SUCCESS")
     else:
-        # 多个设备，让用户选择
+        # 多个设备, 让用户选择
         print_message(f"发现 {len(esp32_ports)} 个ESP32设备:", "INFO")
         for i, port in enumerate(esp32_ports, 1):
             print(f"  {i}. {port.device} - {port.description}")
@@ -384,7 +384,7 @@ def detect_esp32_port():
                     selected_port = esp32_ports[choice_index].device
                     break
                 else:
-                    print_message("无效的选择，请重试。", "WARNING")
+                    print_message("无效的选择, 请重试。", "WARNING")
             except (ValueError, KeyboardInterrupt):
                 print_message("操作取消。", "ERROR")
                 return None
@@ -413,7 +413,7 @@ def check_tool(executable):
 # ==================== 编译系统 ====================
 
 def compile_project(verbose=False, include_tests=False):
-    """编译项目文件从 app 到 dist，.py 文件编译为 .mpy"""
+    """编译项目文件从 app 到 dist, .py 文件编译为 .mpy"""
     if not os.path.isdir(SRC_DIR):
         print_message(f"源目录 '{SRC_DIR}' 不存在。", "ERROR")
         return False
@@ -432,7 +432,7 @@ def compile_project(verbose=False, include_tests=False):
         if 'app/tests' in current_exclude_patterns:
             current_exclude_patterns.remove('app/tests')
 
-    # 首先处理 tests 目录，如果启用测试文件
+    # 首先处理 tests 目录, 如果启用测试文件
     if include_tests and os.path.exists(TESTS_DIR):
         print_message("处理 tests 目录...", "INFO")
         tests_target_dir = Path(DIST_DIR) / "tests"
@@ -454,7 +454,7 @@ def compile_project(verbose=False, include_tests=False):
                     if verbose: print_message(f"排除文件: {src_file}", "INFO")
                     continue
                 
-                # tests 目录下的所有文件都直接复制，不编译
+                # tests 目录下的所有文件都直接复制, 不编译
                 target_file = target_dir / file
                 try:
                     shutil.copy2(src_file, target_file)
@@ -466,7 +466,7 @@ def compile_project(verbose=False, include_tests=False):
 
     # 处理其他非 tests 目录
     for root, dirs, files in os.walk(SRC_DIR, topdown=True):
-        # 跳过 tests 目录，因为已经单独处理了
+        # 跳过 tests 目录, 因为已经单独处理了
         dirs[:] = [d for d in dirs if d != 'tests' and not should_exclude(Path(root) / d, current_exclude_patterns)]
         
         rel_path = Path(root).relative_to(SRC_DIR)
@@ -512,7 +512,7 @@ def compile_project(verbose=False, include_tests=False):
 # ==================== 命令执行 ====================
 
 def execute_mpremote_command(port, *cmd_args, timeout=60, retries=1, verbose=False, safe_mode_context=False):
-    """执行 mpremote 命令并返回结果，支持重试和详细错误分析，针对安全模式优化"""
+    """执行 mpremote 命令并返回结果, 支持重试和详细错误分析, 针对安全模式优化"""
     command = [MPREMOTE_EXECUTABLE, 'connect', port, *cmd_args]
     
     if safe_mode_context:
@@ -536,7 +536,7 @@ def execute_mpremote_command(port, *cmd_args, timeout=60, retries=1, verbose=Fal
             
             if attempt < retries - 1:
                 if verbose:
-                    print_message(f"连接错误，{retry_delay}秒后重试: {result.stderr.strip()[:100]}", "WARNING")
+                    print_message(f"连接错误, {retry_delay}秒后重试: {result.stderr.strip()[:100]}", "WARNING")
                 time.sleep(retry_delay)
             else:
                 return result.returncode, result.stdout, result.stderr
@@ -544,7 +544,7 @@ def execute_mpremote_command(port, *cmd_args, timeout=60, retries=1, verbose=Fal
         except subprocess.TimeoutExpired:
             error_msg = f"命令超时 ({timeout}s): {' '.join(cmd_args)}"
             if attempt < retries - 1:
-                if verbose: print_message(f"{error_msg}，{retry_delay}秒后重试...", "WARNING")
+                if verbose: print_message(f"{error_msg}, {retry_delay}秒后重试...", "WARNING")
                 time.sleep(retry_delay)
             else:
                 print_message(error_msg, "ERROR")
@@ -553,7 +553,7 @@ def execute_mpremote_command(port, *cmd_args, timeout=60, retries=1, verbose=Fal
         except Exception as e:
             error_msg = f"命令执行异常: {e}"
             if attempt < retries - 1:
-                if verbose: print_message(f"{error_msg}，{retry_delay}秒后重试...", "WARNING")
+                if verbose: print_message(f"{error_msg}, {retry_delay}秒后重试...", "WARNING")
                 time.sleep(retry_delay)
             else:
                 print_message(error_msg, "ERROR")
@@ -609,7 +609,7 @@ print("清理完成")
         return False
 
 def upload_directory(port, dist_dir, verbose=False, force_full_upload=False):
-    """上传整个目录，支持智能同步和缓存"""
+    """上传整个目录, 支持智能同步和缓存"""
     upload_cache = {} if force_full_upload else load_cache(UPLOAD_CACHE_FILE)
     new_cache = upload_cache.copy()
     files_to_upload, dirs_to_create = [], set()
@@ -636,7 +636,7 @@ def upload_directory(port, dist_dir, verbose=False, force_full_upload=False):
             files_to_upload.append((local_file, remote_file, file_md5, cache_key))
 
     if not files_to_upload and not dirs_to_create and not force_full_upload:
-        print_message("所有文件都是最新的，无需上传", "SUCCESS")
+        print_message("所有文件都是最新的, 无需上传", "SUCCESS")
         return True
 
     # 创建目录
@@ -687,7 +687,7 @@ def start_repl(port, raw=False):
         cmd.append("--raw-paste") # A better mode for raw interaction
     
     try:
-        # 在Windows上，使用subprocess.run可能会有问题，直接启动新进程
+        # 在Windows上, 使用subprocess.run可能会有问题, 直接启动新进程
         if sys.platform == "win32":
             os.system(f"start {MPREMOTE_EXECUTABLE} connect {port} repl")
         else:
@@ -719,7 +719,7 @@ def monitor_device(port, verbose=False):
             process.terminate()
 
 def diagnose_device(port, verbose=False):
-    """诊断设备状态，特别是安全模式"""
+    """诊断设备状态, 特别是安全模式"""
     print_message("开始设备诊断...", "INFO")
     # 简单的诊断：检查设备是否能正常执行代码
     ret, out, err = execute_mpremote_command(port, "exec", "import gc; print(gc.mem_free())", retries=2)
@@ -737,7 +737,7 @@ def diagnose_device(port, verbose=False):
 # ==================== 设备连接管理 ====================
 
 def connect_to_device(port, force_release=False, interactive=True, verbose=False):
-    """连接到设备，处理串口占用问题"""
+    """连接到设备, 处理串口占用问题"""
     print_message(f"尝试连接到设备: {port}", "INFO")
     
     # 首先尝试直接连接
@@ -787,8 +787,8 @@ def main():
   python build.py -c 或 --compile      # 仅编译 app/ 目录到 dist/
   python build.py -u 或 --upload       # 仅上传到设备 (智能同步)
   python build.py -c -u 或 --compile --upload  # 编译并上传
-  python build.py -C 或 --clean        # 清理设备文件后，再执行上传
-  python build.py -f 或 --full-upload  # 强制全量上传，忽略缓存
+  python build.py -C 或 --clean        # 清理设备文件后, 再执行上传
+  python build.py -f 或 --full-upload  # 强制全量上传, 忽略缓存
   python build.py -r 或 --repl         # 启动交互式REPL
   python build.py -R 或 --raw-repl     # 启动原始REPL
   python build.py -m 或 --monitor      # 监控设备输出
@@ -810,8 +810,8 @@ def main():
     )
     
     # 操作模式
-    parser.add_argument("-c", "--compile", action="store_true", help="仅编译，不上传")
-    parser.add_argument("-u", "--upload", action="store_true", help="编译并上传 (或仅上传，如果 dist 存在)")
+    parser.add_argument("-c", "--compile", action="store_true", help="仅编译, 不上传")
+    parser.add_argument("-u", "--upload", action="store_true", help="编译并上传 (或仅上传, 如果 dist 存在)")
     parser.add_argument("-r", "--repl", action="store_true", help="启动交互式REPL")
     parser.add_argument("-R", "--raw-repl", action="store_true", help="启动原始REPL")
     parser.add_argument("-m", "--monitor", action="store_true", help="监控设备输出")
@@ -820,16 +820,16 @@ def main():
     # 构建和上传选项
     parser.add_argument("-t", "--test", action="store_true", help="编译时包含测试文件 (app/tests/)")
     parser.add_argument("-C", "--clean", action="store_true", help="上传前清空设备")
-    parser.add_argument("-f", "--full-upload", action="store_true", help="强制全量上传，忽略缓存")
+    parser.add_argument("-f", "--full-upload", action="store_true", help="强制全量上传, 忽略缓存")
     
     # 设备选项
-    parser.add_argument("-p", "--port", type=str, help="指定设备端口，跳过自动检测")
+    parser.add_argument("-p", "--port", type=str, help="指定设备端口, 跳过自动检测")
     parser.add_argument("--no-reset", action="store_true", help="上传后不自动重置设备")
     
     # 串口冲突处理选项
     parser.add_argument("--force-release", action="store_true", help="强制释放被占用的串口")
     parser.add_argument("--kill-blocking", action="store_true", help="自动终止占用串口的程序")
-    parser.add_argument("--no-interactive", action="store_true", help="非交互模式，自动处理所有冲突")
+    parser.add_argument("--no-interactive", action="store_true", help="非交互模式, 自动处理所有冲突")
     
     # 其他
     parser.add_argument("-v", "--verbose", action="store_true", help="详细输出")
@@ -852,7 +852,7 @@ def main():
 
     # 检查依赖库
     if not PSUTIL_AVAILABLE and (args.force_release or args.kill_blocking):
-        print_message("psutil 未安装，无法进行进程管理。", "ERROR")
+        print_message("psutil 未安装, 无法进行进程管理。", "ERROR")
         print_message("安装命令: pip install psutil", "INFO")
         sys.exit(1)
 
@@ -871,7 +871,7 @@ def main():
     if args.compile or args.upload:
         print_message("开始编译项目...", "HEADER")
         if not compile_project(verbose=args.verbose, include_tests=args.test):
-            print_message("编译失败，操作中止", "ERROR")
+            print_message("编译失败, 操作中止", "ERROR")
             sys.exit(1)
         if args.compile and not is_device_action:
              print_message("仅编译完成", "SUCCESS")
@@ -883,13 +883,13 @@ def main():
         if not device_port:
             sys.exit(1)
         
-        # 连接到设备，处理串口占用问题
+        # 连接到设备, 处理串口占用问题
         interactive_mode = not args.no_interactive
         force_release = args.force_release or args.kill_blocking
         
         if not connect_to_device(device_port, force_release=force_release, 
                                interactive=interactive_mode, verbose=args.verbose):
-            print_message("无法连接到设备，操作中止", "ERROR")
+            print_message("无法连接到设备, 操作中止", "ERROR")
             print_message("建议：", "INFO")
             print_message("1. 关闭Thonny或其他IDE", "INFO")
             print_message("2. 使用 --force-release 参数强制释放串口", "INFO")
@@ -917,13 +917,13 @@ def main():
             print_message("开始部署到设备...", "HEADER")
             if args.clean:
                 if not clean_device(device_port, args.verbose):
-                    print_message("设备清理失败，部署中止", "ERROR")
+                    print_message("设备清理失败, 部署中止", "ERROR")
                     sys.exit(1)
                 # 清理后强制全量上传
                 args.full_upload = True
 
             if not upload_directory(device_port, DIST_DIR, args.verbose, args.full_upload):
-                print_message("文件上传失败，部署中止", "ERROR")
+                print_message("文件上传失败, 部署中止", "ERROR")
                 sys.exit(1)
             
             print_message("部署成功！", "SUCCESS")

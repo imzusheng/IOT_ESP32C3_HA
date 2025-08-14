@@ -3,9 +3,9 @@
 通用LED预设闪烁模块 (v5.0 - 开箱即用)
 
 主要特性:
-- 开箱即用: 无需初始化，直接调用函数即可使用
+- 开箱即用: 无需初始化, 直接调用函数即可使用
 - 延迟初始化: 首次调用时自动初始化
-- 单例模式: 防止重复实例化，保证硬件控制的唯一性
+- 单例模式: 防止重复实例化, 保证硬件控制的唯一性
 - 高度统一: 所有模式均由同一逻辑驱动
 - 易于扩展: 添加新模式只需定义一个新的时间序列
 """
@@ -15,7 +15,7 @@ import utime as time
 import micropython
 from lib.logger import debug, info, warning, error
 
-# 尝试导入uasyncio，如果失败则禁用该功能
+# 尝试导入uasyncio, 如果失败则禁用该功能
 try:
     import uasyncio
     UASYNCIO_AVAILABLE = True
@@ -77,8 +77,8 @@ class _LEDPatternController:
             'sos': lambda: self._update_sequence(SOS_SEQUENCE),
         }
 
-        # 不再自动启动定时器，改为手动模式
-        info(f"LED控制器已初始化，引脚: {self.led_pins}", module="LED")
+        # 不再自动启动定时器, 改为手动模式
+        info(f"LED控制器已初始化, 引脚: {self.led_pins}", module="LED")
 
 
     def _init_leds(self) -> list:
@@ -101,7 +101,7 @@ class _LEDPatternController:
         
         # 检查是否到了更新时间
         if self._last_update_time == 0:
-            # 首次更新，立即执行
+            # 首次更新, 立即执行
             self._last_update_time = current_time
             self._update_patterns()
         else:
@@ -114,7 +114,7 @@ class _LEDPatternController:
     def play(self, pattern_id: str):
         """
         播放一个预设的闪烁模式。
-        在手动模式下，直接设置模式，无需停止/启动控制器。
+        在手动模式下, 直接设置模式, 无需停止/启动控制器。
         """
         if pattern_id not in self.patterns:
             error(f"未知的模式ID '{pattern_id}'", module="LED")
@@ -140,7 +140,7 @@ class _LEDPatternController:
             error(f"更新模式出错: {e}", module="LED")
 
     def _set_all_leds(self, value: int):
-        """辅助函数，设置所有LED的状态。"""
+        """辅助函数, 设置所有LED的状态。"""
         for led in self.leds:
             led.value(value)
 
@@ -189,7 +189,7 @@ def play(pattern_id: str):
     首次调用时会自动初始化LED控制器。
     
     Args:
-        pattern_id (str): 模式ID，支持 'off', 'blink', 'pulse', 'cruise', 'sos'
+        pattern_id (str): 模式ID, 支持 'off', 'blink', 'pulse', 'cruise', 'sos'
     
     Example:
         from hw.led import play
@@ -214,7 +214,7 @@ def cleanup():
 def process_led_updates():
     """
     手动处理LED更新 - 由主循环调用
-    使用diff时间实现精确的时间控制，避免硬件定时器调度问题
+    使用diff时间实现精确的时间控制, 避免硬件定时器调度问题
     
     Example:
         from hw.led import process_led_updates

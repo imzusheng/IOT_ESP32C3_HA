@@ -2,7 +2,7 @@
 
 ## 概述
 
-网络模块 (`app/net/`) 提供了统一的网络连接管理功能，包括WiFi连接、NTP时间同步和MQTT通信。模块采用简化的架构设计，提供可靠的连接管理和错误恢复机制。
+网络模块 (`app/net/`) 提供了统一的网络连接管理功能, 包括WiFi连接、NTP时间同步和MQTT通信。模块采用简化的架构设计, 提供可靠的连接管理和错误恢复机制。
 
 ## 模块结构
 
@@ -19,7 +19,7 @@ app/net/
 
 ### 1. 统一连接流程
 - **连接顺序**: WiFi → NTP → MQTT
-- **依赖关系**: MQTT依赖于WiFi，NTP依赖于WiFi
+- **依赖关系**: MQTT依赖于WiFi, NTP依赖于WiFi
 - **优雅降级**: NTP失败不影响MQTT连接
 
 ### 2. 指数退避重连机制
@@ -36,7 +36,7 @@ app/net/
 
 ### NetworkManager (网络统一控制器) - index.py
 
-**功能**: 管理所有网络连接的统一控制器，包含完整的状态机功能，是外部主要交互点。
+**功能**: 管理所有网络连接的统一控制器, 包含完整的状态机功能, 是外部主要交互点。
 
 **初始化**:
 ```python
@@ -108,7 +108,7 @@ config = {
 
 ### WifiManager (WiFi管理器) - wifi.py
 
-**注意**: 通常不直接使用，通过NetworkManager间接操作。
+**注意**: 通常不直接使用, 通过NetworkManager间接操作。
 
 **主要方法** (如果需要直接使用):
 - `connect(ssid, password)`: 连接WiFi
@@ -117,7 +117,7 @@ config = {
 
 ### NtpManager (NTP时间同步管理器) - ntp.py
 
-**注意**: 通常不直接使用，通过NetworkManager间接操作。
+**注意**: 通常不直接使用, 通过NetworkManager间接操作。
 
 **主要方法** (如果需要直接使用):
 - `sync_time()`: 同步时间
@@ -125,7 +125,7 @@ config = {
 
 ### MqttController (MQTT控制器) - mqtt.py
 
-**注意**: 通常不直接使用，通过NetworkManager间接操作。
+**注意**: 通常不直接使用, 通过NetworkManager间接操作。
 
 **主要方法** (如果需要直接使用):
 - `connect()`: 连接MQTT

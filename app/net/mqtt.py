@@ -1,5 +1,5 @@
 # app/net/mqtt.py
-# 简化版MQTT控制器，只提供基本的MQTT操作功能
+# 简化版MQTT控制器, 只提供基本的MQTT操作功能
 from lib.lock.umqtt import MQTTClient
 import machine
 import utime as time

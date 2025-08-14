@@ -1,7 +1,7 @@
 # app/fsm/core.py
 """
 函数式状态机核心实现
-使用函数和字典替代类继承，简化状态机架构，提高稳定性
+使用函数和字典替代类继承, 简化状态机架构, 提高稳定性
 """
 
 import utime as time
@@ -22,7 +22,7 @@ from .context import (
 class FunctionalStateMachine:
     """
     函数式状态机类
-    采用函数和字典查找替代类继承，彻底简化架构
+    采用函数和字典查找替代类继承, 彻底简化架构
     """
     
     def __init__(self, event_bus, config, 
@@ -180,26 +180,26 @@ class FunctionalStateMachine:
         state = kwargs.get('state', 'unknown')
         info("网络状态变化: {} (参数: {})", state, kwargs, module="FSM")
         
-        # 网络状态变化时，根据当前状态决定是否需要重新连接
+        # 网络状态变化时, 根据当前状态决定是否需要重新连接
         current_state = self.context['current_state']
         if state == 'disconnected' and current_state in [STATE_RUNNING, STATE_NETWORKING]:
-            warn("网络断开，重新连接", module="FSM")
+            warn("网络断开, 重新连接", module="FSM")
             self._handle_internal_event('networking')
     
     def _handle_internal_event(self, event):
-        """处理内部事件，执行状态转换"""
+        """处理内部事件, 执行状态转换"""
         current_state = self.context['current_state']
         next_state = get_next_state(current_state, event)
         
         if next_state is not None and next_state != current_state:
             self._enter_state(next_state)
         else:
-            # 事件未触发状态转换，记录调试信息
+            # 事件未触发状态转换, 记录调试信息
             if next_state is None:
                 info("事件 {} 在状态 {} 中未定义转换", event, get_state_name(current_state), module="FSM")
     
     def update(self):
-        """更新状态机，处理定时任务等"""
+        """更新状态机, 处理定时任务等"""
         try:
             # 喂看门狗
             feed_watchdog(self.context)
@@ -253,7 +253,7 @@ class FunctionalStateMachine:
     def increase_error_count(self):
         """增加错误计数"""
         if increase_error_count(self.context):
-            # 达到最大错误数，进入安全模式
+            # 达到最大错误数, 进入安全模式
             self._handle_internal_event('safe_mode')
     
     def reset_error_count(self):
@@ -265,7 +265,7 @@ class FunctionalStateMachine:
         feed_watchdog(self.context)
 
 
-# 为了保持兼容性，创建别名
+# 为了保持兼容性, 创建别名
 StateMachine = FunctionalStateMachine
 
 # 全局状态机实例

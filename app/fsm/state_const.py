@@ -1,7 +1,7 @@
 # app/fsm/state_const.py
 """
 状态常量定义模块 - 合并版本
-整合所有状态相关的定义，简化导入路径
+整合所有状态相关的定义, 简化导入路径
 """
 
 # 状态常量 - 使用整数常量提高性能
@@ -74,7 +74,7 @@ STATE_TRANSITIONS = {
         'error': STATE_ERROR,
         'safe_mode': STATE_SAFE_MODE
     },
-    STATE_SHUTDOWN: {}  # 终止状态，无转换
+    STATE_SHUTDOWN: {}  # 终止状态, 无转换
 }
 
 # LED模式映射

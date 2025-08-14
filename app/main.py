@@ -36,7 +36,7 @@ class MainController:
         try:
             main_loop_delay = self.config.get('system', {}).get('main_loop_delay', 50) 
             
-            # 持续运行，直到收到关机信号
+            # 持续运行, 直到收到关机信号
             last_stats_time = time.ticks_ms()
             
             while self.state_machine.get_current_state() != "SHUTDOWN":
@@ -64,21 +64,21 @@ class MainController:
                           self.state_machine.get_current_state(), module="Main")
                     last_stats_time = current_time
                 
-                # 计算任务执行时间，确保固定循环周期
+                # 计算任务执行时间, 确保固定循环周期
                 elapsed_time = time.ticks_diff(time.ticks_ms(), loop_start_time)
                 if elapsed_time < main_loop_delay:
-                    # 如果任务执行时间小于设定周期，休眠剩余时间
+                    # 如果任务执行时间小于设定周期, 休眠剩余时间
                     remaining_time = main_loop_delay - elapsed_time
                     time.sleep_ms(remaining_time)
                 else:
-                    # 如果任务执行时间超过设定周期，记录警告
+                    # 如果任务执行时间超过设定周期, 记录警告
                     warn("主循环执行超时: {}ms > {}ms", elapsed_time, main_loop_delay, module="Main")
             
-            # 如果到达这里，说明系统进入了SHUTDOWN状态
+            # 如果到达这里, 说明系统进入了SHUTDOWN状态
             info("系统已进入关机状态", module="Main")
             
         except KeyboardInterrupt:
-            info("用户中断，正在关闭", module="Main")
+            info("用户中断, 正在关闭", module="Main")
             self.cleanup()
         except Exception as e:
             error(f"致命错误: {e}", module="Main")

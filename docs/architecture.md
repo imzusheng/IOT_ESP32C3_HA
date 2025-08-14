@@ -2,13 +2,13 @@
 
 ## 概述
 
-本文档描述了 ESP32-C3 IoT 设备的软件架构，该架构已完成重构，采用事件驱动设计、模块化和依赖注入模式。重构后的架构显著提高了代码的可维护性、可测试性和可扩展性，特别适合资源受限的ESP32-C3环境。
+本文档描述了 ESP32-C3 IoT 设备的软件架构, 该架构已完成重构, 采用事件驱动设计、模块化和依赖注入模式。重构后的架构显著提高了代码的可维护性、可测试性和可扩展性, 特别适合资源受限的ESP32-C3环境。
 
 ## 设计原则
 
-1. **模块化**：系统被分解为独立的模块，每个模块负责特定的功能。
-2. **事件驱动**：模块之间通过事件总线进行通信，减少直接依赖。
-3. **依赖注入**：通过 main.py 作为依赖注入容器，管理所有模块的创建和依赖关系。
+1. **模块化**：系统被分解为独立的模块, 每个模块负责特定的功能。
+2. **事件驱动**：模块之间通过事件总线进行通信, 减少直接依赖。
+3. **依赖注入**：通过 main.py 作为依赖注入容器, 管理所有模块的创建和依赖关系。
 4. **资源管理**：使用对象池和静态缓存来优化内存使用和性能。
 5. **内存优化**：针对ESP32-C3的264KB内存限制进行专门优化。
 6. **错误恢复**：多层次的错误处理和自动恢复机制。
@@ -72,7 +72,7 @@ graph TD
     Bus -.->|"subscribes"| FSM
     Bus -.->|"subscribes"| Sensor
     Bus -.->|"subscribes"| Led
-    %% 日志系统独立，不再通过事件总线
+    %% 日志系统独立, 不再通过事件总线
 ```
 
 ## 模块说明
@@ -80,21 +80,21 @@ graph TD
 ### 应用层
 
 #### MainController (app/main.py)
-- **职责**：主控制器，负责系统初始化与事件订阅管理，是依赖注入容器的核心实现。
+- **职责**：主控制器, 负责系统初始化与事件订阅管理, 是依赖注入容器的核心实现。
 - **功能**：
   - 初始化核心服务（EventBus、ObjectPool、StaticCache、Logger）
   - 初始化模块控制器（WiFi、MQTT、LED、Sensor）
   - 创建并启动 SystemFSM 状态机
   - 统一订阅与处理系统级事件（WiFi/MQTT/NTP/系统告警）
-  - 统一日志输出与串口信息打印，便于调试与追踪
+  - 统一日志输出与串口信息打印, 便于调试与追踪
 - **事件订阅（NTP相关）**：
   - EVENT.NTP_SYNC_STARTED → 打印同步开始日志
   - EVENT.NTP_SYNC_SUCCESS → 打印成功信息并输出当前时间
   - EVENT.NTP_SYNC_FAILED → 打印失败原因与重试次数
-  - EVENT.TIME_UPDATED → 处理时间更新事件，兼容携带 timestamp 的载荷
+  - EVENT.TIME_UPDATED → 处理时间更新事件, 兼容携带 timestamp 的载荷
 
 #### SystemFSM (app/fsm.py)
-- **职责**：系统状态机，负责协调所有模块的初始化和运行。
+- **职责**：系统状态机, 负责协调所有模块的初始化和运行。
 - **状态**：
   - `BOOT`: 启动状态
   - `INIT`: 初始化状态
@@ -116,14 +116,14 @@ graph TD
 ### 系统服务层
 
 #### app/lib/event_bus/events_const.py
-- **职责**：定义统一的事件名称常量，替代原有的优先级系统。
+- **职责**：定义统一的事件名称常量, 替代原有的优先级系统。
 - **功能**：
   - 提供项目中所有事件的集中定义
   - 避免事件名称字符串散落在代码中
   - 订阅前必须从EVENTS常量中获取事件名称
 
 #### app/lib/event_bus/core.py
-- **职责**：简化的事件总线，实现基础的发布订阅模式。
+- **职责**：简化的事件总线, 实现基础的发布订阅模式。
 - **接口**：
   - `subscribe(event_name, callback)`: 订阅事件
   - `publish(event_name, *args, **kwargs)`: 发布事件
@@ -133,23 +133,23 @@ graph TD
   - `has_subscribers(event_name)`: 检查是否有订阅者
   - `get_stats()`: 获取统计信息
 - **功能**：
-  - 统一1000ms节流时长，避免强耦合
-  - 移除优先级系统，采用FIFO队列
+  - 统一1000ms节流时长, 避免强耦合
+  - 移除优先级系统, 采用FIFO队列
   - 强制回调签名为 callback(event_name, *args, **kwargs)
   - 每30秒自动输出统计日志
-  - 基础错误处理，只记录错误和警告
+  - 基础错误处理, 只记录错误和警告
 
 #### app/lib/logger.py
-- **职责**：独立的日志系统，不再通过事件总线管理。
+- **职责**：独立的日志系统, 不再通过事件总线管理。
 - **接口**：
-  - 各模块直接调用logger，不经过事件总线
+  - 各模块直接调用logger, 不经过事件总线
 - **功能**：
   - 提供标准的日志输出
   - 支持不同级别的日志
   - 移除与事件总线的耦合
 
 #### app/lib/object_pool.py
-- **职责**：对象池管理器，实现多个命名对象池。
+- **职责**：对象池管理器, 实现多个命名对象池。
 - **接口**：
   - `add_pool(name, object_factory, size)`: 添加对象池
   - `acquire(pool_name)`: 从指定池中获取对象
@@ -162,7 +162,7 @@ graph TD
   - 智能内存分配
 
 #### app/lib/static_cache.py
-- **职责**：静态缓存系统，提供防抖写入和自动保存功能。
+- **职责**：静态缓存系统, 提供防抖写入和自动保存功能。
 - **接口**：
   - `get(key, default=None)`: 获取值
   - `set(key, value)`: 设置值（防抖写入）
@@ -181,7 +181,7 @@ graph TD
   - `connect(self)`: 开始连接
   - `disconnect(self)`: 断开连接
   - `update(self)`: 在主循环中调用以更新状态
-  - `_try_ntp_sync(self)`: WiFi连接成功后自动执行NTP时间同步，发布NTP与TIME_UPDATED事件
+  - `_try_ntp_sync(self)`: WiFi连接成功后自动执行NTP时间同步, 发布NTP与TIME_UPDATED事件
 - **功能**：
   - 非阻塞连接与自动重连
   - 信号强度排序
@@ -190,7 +190,7 @@ graph TD
   - TIME_UPDATED 事件包含 timestamp 载荷
 
 #### app/net/mqtt.py
-- **职责**：MQTT控制器，管理连接、订阅与消息发布。
+- **职责**：MQTT控制器, 管理连接、订阅与消息发布。
 - **接口**：
   - `connect(self)`: 连接到MQTT服务器
   - `publish(self, topic, payload)`: 发布消息
@@ -217,8 +217,8 @@ graph TD
 
 ## 初始化顺序
 
-1. **boot.py**：平台相关启动，执行最小化硬件初始化
-2. **main.py (MainController)**：系统主入口，作为依赖注入容器
+1. **boot.py**：平台相关启动, 执行最小化硬件初始化
+2. **main.py (MainController)**：系统主入口, 作为依赖注入容器
    - 加载配置
    - 初始化核心服务（EventBus, ObjectPool, StaticCache, Logger）
    - 初始化模块控制器（WiFi, MQTT, LED, Sensor）
@@ -234,27 +234,27 @@ graph TD
 
 ### 系统启动流程（含NTP与时间更新）
 1. `main.py` 发布 `EVENT.SYSTEM_BOOT`
-2. `SystemFSM` 接收事件，进入 `STATE_BOOT` 状态
-3. `SystemFSM` 初始化WiFi，进入 `STATE_WIFI_CONNECTING` 状态
-4. WiFi连接成功，发布 `EVENT.WIFI_CONNECTED`
+2. `SystemFSM` 接收事件, 进入 `STATE_BOOT` 状态
+3. `SystemFSM` 初始化WiFi, 进入 `STATE_WIFI_CONNECTING` 状态
+4. WiFi连接成功, 发布 `EVENT.WIFI_CONNECTED`
 5. WifiManager 自动执行 `_try_ntp_sync()` 并发布：
    - `EVENT.NTP_SYNC_STARTED`
    - 成功：`EVENT.NTP_SYNC_SUCCESS` → 随后发布 `EVENT.TIME_UPDATED`（携带 `timestamp` 载荷）
    - 失败：`EVENT.NTP_SYNC_FAILED`（可按配置重试）
 6. MainController 订阅上述事件并统一记录日志与串口输出
-7. `SystemFSM` 初始化MQTT，进入 `STATE_MQTT_CONNECTING` 状态
-8. MQTT连接成功，发布 `EVENT.MQTT_CONNECTED`
-9. `SystemFSM` 初始化硬件模块，进入 `STATE_RUNNING` 状态
+7. `SystemFSM` 初始化MQTT, 进入 `STATE_MQTT_CONNECTING` 状态
+8. MQTT连接成功, 发布 `EVENT.MQTT_CONNECTED`
+9. `SystemFSM` 初始化硬件模块, 进入 `STATE_RUNNING` 状态
 
 ### 错误处理流程
-1. 网络模块检测到错误，发布相应的错误事件
-2. `SystemFSM` 接收错误事件，进入 `STATE_RECONNECTING` 状态
+1. 网络模块检测到错误, 发布相应的错误事件
+2. `SystemFSM` 接收错误事件, 进入 `STATE_RECONNECTING` 状态
 3. `SystemFSM` 执行重连策略
-4. 重连成功或失败后，根据结果转换到相应状态
+4. 重连成功或失败后, 根据结果转换到相应状态
 
 ## 事件载荷约定
-- `EVENT.TIME_UPDATED`：携带 `timestamp`（秒级Unix时间戳）关键字参数，订阅方应优先按新签名处理：`callback(event_name, timestamp=None, **kwargs)`。
-- 事件总线回调签名兼容策略：优先 `callback(event_name, *args, **kwargs)`，若不兼容自动降级为 `callback(*args, **kwargs)`，再降级为 `callback()`。
+- `EVENT.TIME_UPDATED`：携带 `timestamp`（秒级Unix时间戳）关键字参数, 订阅方应优先按新签名处理：`callback(event_name, timestamp=None, **kwargs)`。
+- 事件总线回调签名兼容策略：优先 `callback(event_name, *args, **kwargs)`, 若不兼容自动降级为 `callback(*args, **kwargs)`, 再降级为 `callback()`。
 
 ## 资源管理
 
@@ -328,7 +328,7 @@ IOT_ESP32C3/
 
 ## 总结
 
-ESP32-C3 IoT 设备的软件架构已完成重构，采用事件驱动和模块化设计，通过依赖注入、对象池、事件总线等模式优化了资源管理和代码组织。这种架构显著提高了系统的可维护性、可测试性和可扩展性，特别适合资源受限的ESP32-C3嵌入式环境。
+ESP32-C3 IoT 设备的软件架构已完成重构, 采用事件驱动和模块化设计, 通过依赖注入、对象池、事件总线等模式优化了资源管理和代码组织。这种架构显著提高了系统的可维护性、可测试性和可扩展性, 特别适合资源受限的ESP32-C3嵌入式环境。
 
 ### 重构改进点
 
