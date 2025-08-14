@@ -1,7 +1,7 @@
 # app/net/ntp.py
 # 简化版NTP时间同步管理器，只提供基本的NTP操作功能
 import utime as time
-from lib.logger import get_global_logger
+from lib.logger import debug, info, warning, error
 
 try:
     import ntptime
@@ -23,7 +23,7 @@ class NtpManager:
         :param config: NTP配置字典-可选
         """
         self.config = config or {}
-        self.logger = get_global_logger()
+        # 移除logger实例，直接使用全局日志函数
         self._ntp_synced = False
     
     def sync_time(self):

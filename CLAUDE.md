@@ -156,9 +156,11 @@ pytest app/tests/ --cov=app
 - **接口**: `get_config(section, key, default)`
 
 ### 11. 日志系统 (Logger) - `app/lib/logger.py`
-- **功能**: 统一的日志管理和错误处理
-- **特性**: 独立工作、内存优化、MQTT集成
-- **级别**: DEBUG, INFO, WARNING, ERROR, CRITICAL
+- **功能**: 极简日志系统，专为ESP32-C3嵌入式环境设计
+- **特性**: 零配置、拿来即用、固定格式、颜色支持、内存优化
+- **级别**: DEBUG, INFO, WARNING, ERROR
+- **使用**: 直接导入 `debug`, `info`, `warning`, `error` 函数即可使用
+- **颜色支持**: ERROR级别显示为红色，WARNING级别显示为橙黄色
 
 ### 12. 主控制器 (MainController) - `app/main.py`
 - **功能**: 依赖注入容器和系统启动
@@ -221,7 +223,6 @@ object_pool.add_pool("system_events", lambda: {"event": "", "state": ""}, 5)
 - **wifi**: WiFi网络配置和多网络支持
 - **daemon**: 系统守护进程配置（LED引脚、监控间隔等）
 - **system**: 系统行为配置（调试模式、主循环延迟等）
-- **logging**: 日志系统配置（级别、颜色、缓存等）
 - **device**: 设备信息配置（名称、位置、版本等）
 
 ### 配置访问接口
@@ -316,3 +317,4 @@ class MyModule:
 - **事件总线**: EventBus 已简化为单队列模式，集成错误断路器机制
 - **网络管理**: 使用统一的 NetworkManager 管理所有网络连接
 - **配置系统**: 配置集中在 `config.py` 中，支持运行时验证和默认值
+- **日志系统**: 已重构为极简日志系统，直接导入全局函数使用，支持颜色输出

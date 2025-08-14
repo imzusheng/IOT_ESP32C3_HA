@@ -3,7 +3,7 @@
 from lib.lock.umqtt import MQTTClient
 import utime as time
 import machine
-from lib.logger import get_global_logger
+from lib.logger import debug, info, warning, error
 from lib.lock.event_bus import EVENTS
 
 class MqttController:
@@ -23,7 +23,7 @@ class MqttController:
         :param config: MQTT配置字典（可选）
         """
         self.config = config or {}
-        self.logger = get_global_logger()
+        # 移除logger实例，直接使用全局日志函数
         self.client = None
         self._is_connected = False
         self.last_ping_time = 0
@@ -46,7 +46,7 @@ class MqttController:
             )
             self.client.set_callback(self._mqtt_callback)
         except Exception as e:
-            self.logger.error(f"创建MQTT客户端失败: {e}", module="MQTT")
+            error(f"创建MQTT客户端失败: {e}", module="MQTT")
 
     def _mqtt_callback(self, topic, msg):
         """
@@ -56,14 +56,14 @@ class MqttController:
         try:
             topic_str = topic.decode('utf-8')
             msg_str = msg.decode('utf-8')
-            self.logger.info("收到消息: 主题='{}', 消息='{}'", topic_str, msg_str, module="MQTT")
+            info("收到消息: 主题='{}', 消息='{}'", topic_str, msg_str, module="MQTT")
             
             # 通过消息回调函数通知上层（fsm.py）
             if self._message_callback:
                 self._message_callback(topic_str, msg_str)
             
         except Exception as e:
-            self.logger.error("处理MQTT消息失败: {}", e, module="MQTT")
+            error("处理MQTT消息失败: {}", e, module="MQTT")
     
     # set_event_bus方法已移除，所有事件发布通过fsm.py统一处理
     
@@ -90,17 +90,17 @@ class MqttController:
         Returns:
             bool: 连接成功返回True，失败返回False
         """
-        self.logger.info("MQTT控制器connect()被调用", module="MQTT")
-        self.logger.debug("[MQTT-DEBUG] MQTT连接流程开始", module="MQTT")
+        info("MQTT控制器connect()被调用", module="MQTT")
+        debug("[MQTT-DEBUG] MQTT连接流程开始", module="MQTT")
         
         if self._is_connected:
-            self.logger.info("MQTT已连接，跳过连接", module="MQTT")
-            self.logger.debug("[MQTT-DEBUG] MQTT连接状态检查：已连接，跳过连接流程", module="MQTT")
+            info("MQTT已连接，跳过连接", module="MQTT")
+            debug("[MQTT-DEBUG] MQTT连接状态检查：已连接，跳过连接流程", module="MQTT")
             return False
             
         if not self.client:
-            self.logger.error("MQTT客户端未初始化", module="MQTT")
-            self.logger.debug("[MQTT-DEBUG] MQTT客户端为None，可能原因：配置错误、初始化失败", module="MQTT")
+            error("MQTT客户端未初始化", module="MQTT")
+            debug("[MQTT-DEBUG] MQTT客户端为None，可能原因：配置错误、初始化失败", module="MQTT")
             return False
 
         try:
@@ -108,36 +108,36 @@ class MqttController:
             port = self.config.get('port', 1883)
             user = self.config.get('user', 'N/A')
             
-            self.logger.info("MQTT配置: broker={}, port={}, user={}", 
+            info("MQTT配置: broker={}, port={}, user={}", 
                            broker, port, user, module="MQTT")
-            self.logger.debug("[MQTT-DEBUG] MQTT连接参数 - Broker: {}, Port: {}, User: {}, Keepalive: {}s", 
+            debug("[MQTT-DEBUG] MQTT连接参数 - Broker: {}, Port: {}, User: {}, Keepalive: {}s", 
                              broker, port, user, self.config.get('keepalive', 60), module="MQTT")
             
             # 使用同步连接（MicroPython umqtt 不支持异步连接）
-            self.logger.info("开始MQTT连接到 {}:{}", broker, port, module="MQTT")
+            info("开始MQTT连接到 {}:{}", broker, port, module="MQTT")
             self.client.connect()
-            self.logger.info("MQTT连接命令执行完成", module="MQTT")
-            self.logger.debug("[MQTT-DEBUG] MQTT连接命令已发送，开始验证连接状态", module="MQTT")
+            info("MQTT连接命令执行完成", module="MQTT")
+            debug("[MQTT-DEBUG] MQTT连接命令已发送，开始验证连接状态", module="MQTT")
             
             # 验证连接是否真正建立
-            self.logger.info("验证MQTT连接状态...", module="MQTT")
+            info("验证MQTT连接状态...", module="MQTT")
             if self.client.is_connected():
                 self._is_connected = True
-                self.logger.info("MQTT连接验证成功", module="MQTT")
-                self.logger.debug("[MQTT-DEBUG] MQTT连接验证成功，连接状态已更新", module="MQTT")
+                info("MQTT连接验证成功", module="MQTT")
+                debug("[MQTT-DEBUG] MQTT连接验证成功，连接状态已更新", module="MQTT")
                 # 通过回调函数报告连接成功
                 if self._state_callback:
                     self._state_callback('connected')
                 return True
             else:
                 self._is_connected = False
-                self.logger.error("MQTT连接验证失败", module="MQTT")
-                self.logger.debug("[MQTT-DEBUG] MQTT连接验证失败，可能原因：服务器未启动、网络不通、认证失败", module="MQTT")
+                error("MQTT连接验证失败", module="MQTT")
+                debug("[MQTT-DEBUG] MQTT连接验证失败，可能原因：服务器未启动、网络不通、认证失败", module="MQTT")
                 return False
             
         except Exception as e:
-            self.logger.error("MQTT连接异常: {}", e, module="MQTT")
-            self.logger.debug("[MQTT-DEBUG] MQTT连接异常详情 - 错误类型: {}, 错误信息: {}", type(e).__name__, str(e), module="MQTT")
+            error("MQTT连接异常: {}", e, module="MQTT")
+            debug("[MQTT-DEBUG] MQTT连接异常详情 - 错误类型: {}, 错误信息: {}", type(e).__name__, str(e), module="MQTT")
             self._is_connected = False
             # 通过回调函数报告连接失败
             if self._state_callback:
@@ -159,7 +159,7 @@ class MqttController:
             try:
                 self.client.disconnect()
             except Exception as e:
-                self.logger.error("MQTT断开失败: {}", e, module="MQTT")
+                error("MQTT断开失败: {}", e, module="MQTT")
                 return False
         
         self._is_connected = False
@@ -189,7 +189,7 @@ class MqttController:
             self.client.publish(topic, msg, retain, qos)
             return True
         except Exception as e:
-            self.logger.error("MQTT发布失败: {}", e, module="NET")
+            error("MQTT发布失败: {}", e, module="NET")
             return False
 
     def subscribe(self, topic, qos=0):
@@ -210,7 +210,7 @@ class MqttController:
             self.client.subscribe(topic, qos)
             return True
         except Exception as e:
-            self.logger.error("MQTT订阅失败: {}", e, module="NET")
+            error("MQTT订阅失败: {}", e, module="NET")
             return False
 
     def loop(self):
@@ -234,27 +234,27 @@ class MqttController:
                 if actual_connected and not self._is_connected:
                     # 连接恢复
                     self._is_connected = True
-                    self.logger.info("MQTT连接恢复", module="MQTT")
-                    self.logger.debug("[MQTT-DEBUG] MQTT连接状态变化：断开 -> 连接，触发连接恢复流程", module="MQTT")
+                    info("MQTT连接恢复", module="MQTT")
+                    debug("[MQTT-DEBUG] MQTT连接状态变化：断开 -> 连接，触发连接恢复流程", module="MQTT")
                     # 通过回调函数报告连接成功
                     if self._state_callback:
                         self._state_callback('connected')
                     # 自动订阅配置的主题
                     subscribe_topics = self.config.get('subscribe_topics', [])
-                    self.logger.debug("[MQTT-DEBUG] 连接恢复后重新订阅{}个主题", len(subscribe_topics), module="MQTT")
+                    debug("[MQTT-DEBUG] 连接恢复后重新订阅{}个主题", len(subscribe_topics), module="MQTT")
                     for topic in subscribe_topics:
-                        self.logger.debug("[MQTT-DEBUG] 重新订阅主题: {}", topic, module="MQTT")
+                        debug("[MQTT-DEBUG] 重新订阅主题: {}", topic, module="MQTT")
                         self.subscribe(topic)
                 elif not actual_connected and self._is_connected:
                     # 连接丢失
                     self._is_connected = False
-                    self.logger.debug("[MQTT-DEBUG] MQTT连接状态变化：连接 -> 断开，触发连接丢失流程", module="MQTT")
+                    debug("[MQTT-DEBUG] MQTT连接状态变化：连接 -> 断开，触发连接丢失流程", module="MQTT")
                     # 通过回调函数报告连接断开
                     if self._state_callback:
                         self._state_callback('disconnected')
             except Exception as e:
                 # 检查连接状态时出错，认为连接已断开
-                self.logger.debug("[MQTT-DEBUG] MQTT连接状态检查异常: {}，假定连接已断开", e, module="MQTT")
+                debug("[MQTT-DEBUG] MQTT连接状态检查异常: {}，假定连接已断开", e, module="MQTT")
                 if self._is_connected:
                     self._is_connected = False
                     # 通过回调函数报告连接断开
@@ -268,12 +268,12 @@ class MqttController:
                 time_since_ping = time.ticks_diff(current_time, self.last_ping_time)
                 
                 if time_since_ping > keepalive_ms / 2:
-                    self.logger.debug("[MQTT-DEBUG] 发送MQTT心跳包，距离上次心跳: {}ms", time_since_ping, module="MQTT")
+                    debug("[MQTT-DEBUG] 发送MQTT心跳包，距离上次心跳: {}ms", time_since_ping, module="MQTT")
                     self.client.ping()
                     self.last_ping_time = current_time
 
         except Exception as e:
-            self.logger.error("MQTT循环错误: {}", e, module="NET")
-            self.logger.debug("[MQTT-DEBUG] MQTT循环异常详情 - 错误类型: {}, 连接状态: {}", 
+            error("MQTT循环错误: {}", e, module="NET")
+            debug("[MQTT-DEBUG] MQTT循环异常详情 - 错误类型: {}, 连接状态: {}", 
                              type(e).__name__, self._is_connected, module="MQTT")
             self._is_connected = False

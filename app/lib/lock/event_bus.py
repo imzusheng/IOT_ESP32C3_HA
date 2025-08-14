@@ -6,8 +6,28 @@
 import gc
 import time
 
-from lib.logger import safe_log, _log
+from lib.logger import debug, info, warning, error
 from machine import Timer
+
+# 简单的安全日志装饰器
+def safe_log(level='error'):
+    """装饰器：包装目标函数，自动捕获并安全记录异常"""
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                if level == 'error':
+                    error(f"函数{func.__name__}异常: {e}", module="EventBus")
+                elif level == 'warning':
+                    warning(f"函数{func.__name__}异常: {e}", module="EventBus")
+                elif level == 'info':
+                    info(f"函数{func.__name__}异常: {e}", module="EventBus")
+                else:
+                    debug(f"函数{func.__name__}异常: {e}", module="EventBus")
+                return None
+        return wrapper
+    return decorator
 
 # 配置类 - 集中化配置管理
 class EventBusConfig:
@@ -155,12 +175,12 @@ class EventBus:
                     mode=Timer.PERIODIC, 
                     callback=self._timer_callback
                 )
-                _log('info', "EventBus定时器已启动 - 周期={}ms", EventBusConfig.TIMER_TICK_MS, module="EventBus")
+                info("EventBus定时器已启动 - 周期={}ms", EventBusConfig.TIMER_TICK_MS, module="EventBus")
             except Exception as e:
-                _log('error', "定时器启动失败: {}", str(e), module="EventBus")
+                error("定时器启动失败: {}", str(e), module="EventBus")
                 self._timer = None
         else:
-            _log('warning', "Timer模块不可用, EventBus将无法自动处理事件", module="EventBus")
+            warning("Timer模块不可用, EventBus将无法自动处理事件", module="EventBus")
 
     @safe_log('error')
     def _timer_callback(self, timer):
@@ -171,7 +191,7 @@ class EventBus:
             if current_time - self._last_error_time > EventBusConfig.RECOVERY_TIME:
                 self._circuit_breaker_open = False
                 self._consecutive_errors = 0
-                _log('info', "断路器已恢复, 重新开始处理事件", module="EventBus")
+                info("断路器已恢复, 重新开始处理事件", module="EventBus")
             else:
                 return  # 断路器开启, 跳过处理
         
@@ -204,40 +224,40 @@ class EventBus:
         self._consecutive_errors += 1
         self._last_error_time = time.time()
         
-        _log('error', "定时器处理异常: {}", str(error), module="EventBus")
+        error("定时器处理异常: {}", str(error), module="EventBus")
         
         # 检查是否需要开启断路器
         if self._consecutive_errors >= EventBusConfig.ERROR_THRESHOLD:
             self._circuit_breaker_open = True
-            _log('warning', "连续错误达到阈值({}), 断路器已开启", EventBusConfig.ERROR_THRESHOLD, module="EventBus")
+            warning("连续错误达到阈值({}), 断路器已开启", EventBusConfig.ERROR_THRESHOLD, module="EventBus")
 
     @safe_log('error')
     def _execute_event(self, event_item):
         """执行事件"""
         event_name, args, kwargs = event_item
         
-        _log('debug', "执行事件: {} (参数: {}, {})", event_name, args, kwargs, module="EventBus")
+        debug("执行事件: {} (参数: {}, {})", event_name, args, kwargs, module="EventBus")
         
         if event_name not in self.subscribers:
-            _log('warning', "事件 {} 没有订阅者", event_name, module="EventBus")
+            warning("事件 {} 没有订阅者", event_name, module="EventBus")
             return
         
         # 复制订阅者列表避免迭代时修改
         callbacks = self.subscribers[event_name][:]
-        _log('debug', "事件 {} 有 {} 个订阅者", event_name, len(callbacks), module="EventBus")
+        debug("事件 {} 有 {} 个订阅者", event_name, len(callbacks), module="EventBus")
         
         for callback in callbacks:
             try:
-                _log('debug', "调用回调: {} -> {}", event_name, getattr(callback, '__name__', 'unknown'), module="EventBus")
+                debug("调用回调: {} -> {}", event_name, getattr(callback, '__name__', 'unknown'), module="EventBus")
                 callback(event_name, *args, **kwargs)
-                _log('debug', "回调执行成功: {} -> {}", event_name, getattr(callback, '__name__', 'unknown'), module="EventBus")
+                debug("回调执行成功: {} -> {}", event_name, getattr(callback, '__name__', 'unknown'), module="EventBus")
             except Exception as e:
                 self._handle_callback_error(event_name, callback, e)
 
     def _handle_callback_error(self, event_name, callback, error):
         """处理回调错误"""
         self._error_count += 1
-        _log('error', "回调失败: {} - {}", event_name, str(error), module="EventBus")
+        error("回调失败: {} - {}", event_name, str(error), module="EventBus")
         
         # 发布系统错误事件
         if event_name != EVENTS['SYSTEM_STATE_CHANGE']:
@@ -303,7 +323,7 @@ class EventBus:
             self.subscribers[event_name] = []
         if callback not in self.subscribers[event_name]:
             self.subscribers[event_name].append(callback)
-            _log('info', "订阅事件: {} -> {}个回调", event_name, len(self.subscribers[event_name]), module="EventBus")
+            info("订阅事件: {} -> {}个回调", event_name, len(self.subscribers[event_name]), module="EventBus")
 
     def unsubscribe(self, event_name, callback):
         """取消订阅"""
@@ -320,21 +340,21 @@ class EventBus:
         """发布事件"""
         # 检查是否有订阅者
         if not self.has_subscribers(event_name):
-            _log('debug', "发布事件 {} (无订阅者)", event_name, module="EventBus")
+            debug("发布事件 {} (无订阅者)", event_name, module="EventBus")
             return True
         
         # 断路器开启时拒绝新事件
         if self._circuit_breaker_open:
-            _log('warning', "断路器开启, 丢弃事件: {}", event_name, module="EventBus")
+            warning("断路器开启, 丢弃事件: {}", event_name, module="EventBus")
             return False
         
         # 入队事件
         event_item = (event_name, args, kwargs)
         success = self.event_queue.enqueue(event_item)
         if success:
-            _log('debug', "事件已入队: {} (参数: {}, {})", event_name, args, kwargs, module="EventBus")
+            debug("事件已入队: {} (参数: {}, {})", event_name, args, kwargs, module="EventBus")
         else:
-            _log('error', "事件入队失败: {}", event_name, module="EventBus")
+            error("事件入队失败: {}", event_name, module="EventBus")
         return success
 
     def has_subscribers(self, event_name):
@@ -359,7 +379,7 @@ class EventBus:
     def _print_stats(self):
         """输出统计信息"""
         stats = self.get_stats()
-        _log('info', "EventBus: 事件={}, 订阅者={}, 队列={}/{} ({}%), 已处理={}, 错误={}, 状态={}, 断路器={}", 
+        info("EventBus: 事件={}, 订阅者={}, 队列={}/{} ({}%), 已处理={}, 错误={}, 状态={}, 断路器={}", 
              stats['event_types'],
              stats['total_subscribers'], 
              stats['total_length'],
@@ -381,7 +401,7 @@ class EventBus:
                 pass
             finally:
                 self._timer = None
-                _log('info', "EventBus定时器已停止", module="EventBus")
+                info("EventBus定时器已停止", module="EventBus")
         
         self.event_queue.clear()
         self.subscribers.clear()
@@ -407,7 +427,7 @@ class EventBus:
                 pass
             finally:
                 self._timer = None
-                _log('info', "EventBus定时器已停止", module="EventBus")
+                info("EventBus定时器已停止", module="EventBus")
 
     @safe_log('error')
     def start_timer(self):

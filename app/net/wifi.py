@@ -1,7 +1,7 @@
 # app/net/wifi.py
 # 简化版WiFi管理器，只提供基本的WiFi操作功能
 import network
-from lib.logger import get_global_logger
+from lib.logger import debug, info, warning, error
 
 class WifiManager:
     """
@@ -19,12 +19,12 @@ class WifiManager:
         :param config: WiFi配置字典（可选）
         """
         self.config = config or {}
-        self.logger = get_global_logger()
+        # 移除logger实例，直接使用全局日志函数
         self.wlan = network.WLAN(network.STA_IF)
         
         # 激活WLAN接口
         if not self.wlan.active():
-            self.logger.info("激活WLAN接口", module="WiFi")
+            info("激活WLAN接口", module="WiFi")
             self.wlan.active(True)
 
     def scan_networks(self):
@@ -56,7 +56,7 @@ class WifiManager:
             return networks
             
         except OSError as e:
-            self.logger.error("WiFi扫描失败: {}", e, module="NET")
+            error("WiFi扫描失败: {}", e, module="NET")
             return []
 
     def connect(self, ssid, password):
@@ -74,7 +74,7 @@ class WifiManager:
             self.wlan.connect(ssid, password)
             return True
         except Exception as e:
-            self.logger.error("WiFi连接失败: {}", e, module="NET")
+            error("WiFi连接失败: {}", e, module="NET")
             return False
 
     def disconnect(self):
@@ -89,7 +89,7 @@ class WifiManager:
                 self.wlan.disconnect()
             return True
         except Exception as e:
-            self.logger.error("WiFi断开失败: {}", e, module="NET")
+            error("WiFi断开失败: {}", e, module="NET")
             return False
     
     def get_is_connected(self):

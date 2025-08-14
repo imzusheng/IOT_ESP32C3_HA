@@ -15,7 +15,7 @@ ESP32-C3传感器管理器 (重构版本)
 
 import utime as time
 from lib.object_pool import get_object_pool_manager
-from lib.logger import get_global_logger
+from lib.logger import debug, info, warning, error
 from lib.lock.event_bus import EVENTS
 import gc
 
@@ -27,7 +27,7 @@ class SensorManager:
     def __init__(self, event_bus):
         self.event_bus = event_bus
         self.object_pool = get_object_pool_manager()
-        self.logger = get_global_logger()
+        # 移除logger实例，直接使用全局日志函数
         self.sensors = {}
         self.sensor_data = {}
         self.last_read_time = {}
@@ -38,7 +38,7 @@ class SensorManager:
         self.last_publish_time = {}   # 存储上次发布时间
         
         # 初始化logger
-        self.logger = get_global_logger()
+        # 移除logger实例，直接使用全局日志函数
         self.min_publish_interval = 2000  # 最小发布间隔2秒
         self.data_change_threshold = 0.1  # 数据变化阈值10%
         
@@ -102,9 +102,9 @@ class SensorManager:
                 self._read_internal_temperature,
                 interval=5000  # 5秒间隔
             )
-            self.logger.info("内部温度传感器已初始化", module="Sensor")
+            info("内部温度传感器已初始化", module="Sensor")
         except Exception as e:
-            self.logger.error("初始化内部温度传感器失败: {}", e, module="Sensor")
+            error("初始化内部温度传感器失败: {}", e, module="Sensor")
     
     def add_sensor(self, sensor_id, read_func, interval=1000, enabled=True):
         """
@@ -167,11 +167,11 @@ class SensorManager:
                     self.last_publish_time[sensor_id] = time.ticks_ms()
                 else:
                     # 数据无显著变化或发布频率过高，跳过发布
-                    self.logger.debug("传感器{}数据无显著变化，跳过发布", sensor_id, module="Sensor")
+                    debug("传感器{}数据无显著变化，跳过发布", sensor_id, module="Sensor")
             
             return value
         except Exception as e:
-            self.logger.error("读取传感器{}失败: {}", sensor_id, e, module="Sensor")
+            error("读取传感器{}失败: {}", sensor_id, e, module="Sensor")
             return None
     
     def get_sensor_data(self, sensor_id):
@@ -213,7 +213,7 @@ class SensorManager:
             from lib.helpers import get_temperature
             return get_temperature()
         except Exception as e:
-            self.logger.error("内部温度读取错误: {}", e, module="Sensor")
+            error("内部温度读取错误: {}", e, module="Sensor")
             return None
 
 class ExternalSensorManager:
@@ -235,16 +235,16 @@ class ExternalSensorManager:
         self.last_publish_time = {}   # 存储上次发布时间
         
         # 初始化logger
-        self.logger = get_global_logger()
+        # 移除logger实例，直接使用全局日志函数
     
     def init_i2c(self, scl_pin, sda_pin, freq=400000):
         """初始化I2C总线"""
         try:
             self.i2c = self.machine.I2C(0, scl=self.machine.Pin(scl_pin), sda=self.machine.Pin(sda_pin), freq=freq)
-            self.logger.info("I2C已初始化: SCL={}, SDA={}", scl_pin, sda_pin, module="Sensor")
+            info("I2C已初始化: SCL={}, SDA={}", scl_pin, sda_pin, module="Sensor")
             return True
         except Exception as e:
-            self.logger.error("I2C初始化失败: {}", e, module="Sensor")
+            error("I2C初始化失败: {}", e, module="Sensor")
             return False
     
     def init_spi(self, sck_pin, mosi_pin, miso_pin, cs_pin, freq=1000000):
@@ -257,10 +257,10 @@ class ExternalSensorManager:
                                  freq=freq)
             self.cs_pin = self.machine.Pin(cs_pin, self.machine.Pin.OUT)
             self.cs_pin.value(1)  # CS默认高电平
-            self.logger.info("SPI已初始化: SCK={}, MOSI={}, MISO={}, CS={}", sck_pin, mosi_pin, miso_pin, cs_pin, module="Sensor")
+            info("SPI已初始化: SCK={}, MOSI={}, MISO={}, CS={}", sck_pin, mosi_pin, miso_pin, cs_pin, module="Sensor")
             return True
         except Exception as e:
-            self.logger.error("SPI初始化失败: {}", e, module="Sensor")
+            error("SPI初始化失败: {}", e, module="Sensor")
             return False
     
     def add_dht_sensor(self, sensor_id, pin, sensor_type='DHT11'):
@@ -284,13 +284,13 @@ class ExternalSensorManager:
                 'read_func': self._read_dht_sensor
             }
             
-            self.logger.info("DHT{}传感器已添加到引脚{}", sensor_type, pin, module="Sensor")
+            info("DHT{}传感器已添加到引脚{}", sensor_type, pin, module="Sensor")
             return True
         except ImportError:
-            self.logger.warning("DHT库不可用", module="Sensor")
+            warning("DHT库不可用", module="Sensor")
             return False
         except Exception as e:
-            self.logger.error("添加DHT传感器失败: {}", e, module="Sensor")
+            error("添加DHT传感器失败: {}", e, module="Sensor")
             return False
     
     def _read_dht_sensor(self, sensor):
@@ -305,7 +305,7 @@ class ExternalSensorManager:
                 'humidity': humidity
             }
         except Exception as e:
-            self.logger.error("DHT读取错误: {}", e, module="Sensor")
+            error("DHT读取错误: {}", e, module="Sensor")
             return None
     
     def add_bmp280_sensor(self, sensor_id, i2c_addr=0x76):
@@ -314,7 +314,7 @@ class ExternalSensorManager:
         需要安装bmp280库
         """
         if not self.i2c:
-            self.logger.warning("I2C未初始化", module="Sensor")
+            warning("I2C未初始化", module="Sensor")
             return False
         
         try:
@@ -328,13 +328,13 @@ class ExternalSensorManager:
                 'read_func': self._read_bmp280_sensor
             }
             
-            self.logger.info("BMP280传感器已添加到地址0x{:02x}", i2c_addr, module="Sensor")
+            info("BMP280传感器已添加到地址0x{:02x}", i2c_addr, module="Sensor")
             return True
         except ImportError:
-            self.logger.warning("BMP280库不可用", module="Sensor")
+            warning("BMP280库不可用", module="Sensor")
             return False
         except Exception as e:
-            self.logger.error("添加BMP280传感器失败: {}", e, module="Sensor")
+            error("添加BMP280传感器失败: {}", e, module="Sensor")
             return False
     
     def _read_bmp280_sensor(self, sensor):
@@ -349,7 +349,7 @@ class ExternalSensorManager:
                 'altitude': self._calculate_altitude(pressure)
             }
         except Exception as e:
-            self.logger.error("BMP280读取错误: {}", e, module="Sensor")
+            error("BMP280读取错误: {}", e, module="Sensor")
             return None
     
     def _calculate_altitude(self, pressure):
@@ -381,11 +381,11 @@ class ExternalSensorManager:
                     self.last_publish_time[sensor_id] = time.ticks_ms()
                 else:
                     # 数据无显著变化或发布频率过高，跳过发布
-                    self.logger.debug("外部传感器{}数据无显著变化，跳过发布", sensor_id, module="Sensor")
+                    debug("外部传感器{}数据无显著变化，跳过发布", sensor_id, module="Sensor")
             
             return data
         except Exception as e:
-            self.logger.error("读取外部传感器{}失败: {}", sensor_id, e, module="Sensor")
+            error("读取外部传感器{}失败: {}", sensor_id, e, module="Sensor")
             return None
     
     def get_external_sensors(self):

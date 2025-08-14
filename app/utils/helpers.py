@@ -19,7 +19,7 @@ import gc
 import utime as time
 import machine
 import sys
-from lib.logger import get_global_logger
+from lib.logger import debug, info, warning, error
 
 def check_memory():
     """
@@ -48,8 +48,7 @@ def check_memory():
             'total_kb': mem_total // 1024
         }
     except Exception as e:
-        logger = get_global_logger()
-        logger.error(f"内存检查失败: {e}", module="Utils")
+        error(f"内存检查失败: {e}", module="Utils")
         return {
             'free': 0,
             'allocated': 0,
@@ -81,8 +80,7 @@ def get_formatted_time():
         
         return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
     except Exception as e:
-        logger = get_global_logger()
-        logger.error(f"时间格式化失败: {e}", module="Utils")
+        error(f"时间格式化失败: {e}", module="Utils")
         return "00:00:00"
 
 def get_uptime():
@@ -112,13 +110,11 @@ def safe_reboot():
     安全重启设备
     """
     try:
-        logger = get_global_logger()
-        logger.info("系统重启中...", module="Utils")
+        info("系统重启中...", module="Utils")
         time.sleep_ms(100)  # 给日志输出一些时间
         machine.reset()
     except Exception as e:
-        logger = get_global_logger()
-        logger.error(f"安全重启失败: {e}", module="Utils")
+        error(f"安全重启失败: {e}", module="Utils")
         # 尝试直接重启
         machine.reset()
 
@@ -135,8 +131,7 @@ def get_device_info():
             'unique_id': machine.unique_id().hex() if hasattr(machine, 'unique_id') else 'unknown'
         }
     except Exception as e:
-        logger = get_global_logger()
-        logger.error(f"设备信息获取失败: {e}", module="Utils")
+        error(f"设备信息获取失败: {e}", module="Utils")
         return {
             'machine': '未知',
             'platform': '未知平台',
@@ -289,18 +284,16 @@ def emergency_cleanup():
     执行深度的垃圾回收以释放内存。
     """
     try:
-        logger = get_global_logger()
-        logger.info("执行紧急垃圾回收...", module="Utils")
+        info("执行紧急垃圾回收...", module="Utils")
         
         # 深度垃圾回收
         for _ in range(3):
             gc.collect()
             time.sleep_ms(50)
             
-        logger.info("紧急垃圾回收完成", module="Utils")
+        info("紧急垃圾回收完成", module="Utils")
     except Exception as e:
-        logger = get_global_logger()
-        logger.error(f"紧急垃圾回收失败: {e}", module="Utils")
+        error(f"紧急垃圾回收失败: {e}", module="Utils")
 
 # 模块初始化
 # Helper module loaded

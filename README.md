@@ -8,7 +8,7 @@
 - machine 模块
   - 支持:['__class__', '__name__', 'ADC', 'ADCBlock', 'DEEPSLEEP', 'DEEPSLEEP_RESET', 'EXT0_WAKE', 'EXT1_WAKE', 'HARD_RESET', 'I2C', 'I2S', 'PIN_WAKE', 'PWM', 'PWRON_RESET', 'Pin', 'RTC', 'SDCard', 'SLEEP', 'SOFT_RESET', 'SPI', 'Signal', 'SoftI2C', 'SoftSPI', 'TIMER_WAKE', 'TOUCHPAD_WAKE', 'Timer', 'UART', 'ULP_WAKE', 'WDT', 'WDT_RESET', '__dict__', 'bitstream', 'bootloader', 'deepsleep', 'dht_readinto', 'disable_irq', 'enable_irq', 'freq', 'idle', 'lightsleep', 'mem16', 'mem32', 'mem8', 'reset', 'reset_cause', 'sleep', 'soft_reset', 'time_pulse_us', 'unique_id', 'wake_reason']
   - machine.ADC:['__class__', '__name__', 'read', 'ATTN_0DB', 'ATTN_11DB', 'ATTN_2_5DB', 'ATTN_6DB', 'WIDTH_12BIT', '__bases__', '__dict__', 'atten', 'block', 'init', 'read_u16', 'read_uv', 'width']
-- 
+- 在开发过程中 MQTT 服务器失败为正常现象, 只需要代码中做好异常处理即可
 
 ## 📋 项目概述
 
@@ -118,8 +118,9 @@ IOT_ESP32C3/
 
 #### 11. 日志系统 (Logger)
 - **位置**: [`app/lib/logger.py`](app/lib/logger.py)
-- **功能**: 统一的日志管理和错误处理
-- **特性**: 事件驱动、内存优化、MQTT集成
+- **功能**: 极简日志系统，专为ESP32-C3嵌入式环境设计
+- **特性**: 零配置、拿来即用、固定格式、颜色支持、内存优化
+- **使用**: 直接导入 `debug`, `info`, `warning`, `error` 函数即可使用
 
 #### 12. 配置管理 (Config)
 - **位置**: [`app/config.py`](app/config.py)
@@ -497,11 +498,18 @@ LED指示 → 日志记录 → MQTT发送
 
 ## 📝 版本信息
 
-- **当前版本**: 2.1.0 (事件总线升级版)
+- **当前版本**: 2.2.0 (日志系统重构版)
 - **架构版本**: 事件驱动架构 v2.0 (计时器队列驱动)
 - **国际化版本**: 中文本地化 v1.0 (✅ 已完成)
-- **最后更新**: 2025-08-10
+- **最后更新**: 2025-08-14
 - **维护者**: ESP32C3 开发团队
+
+### 版本 2.2.0 更新内容
+- **日志系统重构**: 简化为极简日志系统，移除复杂配置和初始化
+- **使用简化**: 直接导入全局日志函数即可使用，无需手动初始化
+- **颜色支持**: 为ERROR和WARNING级别添加ANSI颜色支持，提高可读性
+- **内存优化**: 减少日志系统内存占用，适合ESP32-C3的264KB内存限制
+- **架构简化**: 移除事件总线依赖，日志系统独立工作
 
 ### 版本 2.1.0 更新内容
 - **事件总线升级**: 从 micropython.schedule 升级为硬件计时器驱动的循环队列系统
@@ -535,8 +543,8 @@ LED指示 → 日志记录 → MQTT发送
 
 ---
 
-**最后更新**: 2025-08-10  
-**版本**: 2.1.0 (事件总线升级版)  
+**最后更新**: 2025-08-14  
+**版本**: 2.2.0 (日志系统重构版)  
 **架构**: 事件驱动架构 v2.0 (计时器队列驱动)  
 **国际化**: 中文本地化完成 ✅  
 **维护者**: ESP32C3 开发团队

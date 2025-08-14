@@ -18,7 +18,7 @@
 import utime as time
 import machine
 import micropython
-from lib.logger import get_global_logger
+from lib.logger import debug, info, warning, error
 
 class DebounceTimer:
     """
@@ -75,8 +75,7 @@ class PeriodicTimer:
                 self.last_run = current_time
                 return True
             except Exception as e:
-                logger = get_global_logger()
-                logger.error(f"回调执行失败: {e}", module="Timer")
+                error(f"回调执行失败: {e}", module="Timer")
                 return False
         return False
     
@@ -172,8 +171,7 @@ class HardwareTimerManager:
         """
         timer_id = self.get_available_timer()
         if timer_id is None:
-            logger = get_global_logger()
-            logger.warning("没有可用的硬件定时器", module="Timer")
+            warning("没有可用的硬件定时器", module="Timer")
             return None
         
         try:
@@ -185,8 +183,7 @@ class HardwareTimerManager:
             
             return timer
         except Exception as e:
-            logger = get_global_logger()
-            logger.error(f"创建硬件定时器{timer_id}失败: {e}", module="Timer")
+            error(f"创建硬件定时器{timer_id}失败: {e}", module="Timer")
             return None
     
     def release_timer(self, timer):
@@ -204,8 +201,7 @@ class HardwareTimerManager:
                     del self.timers[timer_id]
                     self.used_ids.remove(timer_id)
                 except Exception as e:
-                    logger = get_global_logger()
-                    logger.error(f"释放定时器{timer_id}失败: {e}", module="Timer")
+                    error(f"释放定时器{timer_id}失败: {e}", module="Timer")
     
     def cleanup(self):
         """清理所有定时器"""
@@ -314,8 +310,7 @@ def profile_time(name="未命名"):
             # 每10次测量输出一次统计信息
             if len(profiler.measurements) % 10 == 0:
                 stats = profiler.get_stats()
-                logger = get_global_logger()
-                logger.info(f"{name}: avg={stats['average']:.1f}ms, "
+                info(f"{name}: avg={stats['average']:.1f}ms, "
                           f"min={stats['min']:.1f}ms, max={stats['max']:.1f}ms, "
                           f"count={stats['count']}", module="Profiler")
             

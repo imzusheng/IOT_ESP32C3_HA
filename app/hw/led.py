@@ -11,7 +11,7 @@
 import machine
 import utime as time
 import micropython
-from lib.logger import get_global_logger
+from lib.logger import debug, info, warning, error
 
 # 尝试导入uasyncio，如果失败则禁用该功能
 try:
@@ -58,17 +58,17 @@ class LEDPatternController:
             return
 
         # 初始化logger
-        self.logger = get_global_logger()
+        # 移除logger实例，直接使用全局日志函数
         
         if not led_pins:
-            self.logger.error("首次实例化时必须提供至少一个LED引脚", module="LED")
+            error("首次实例化时必须提供至少一个LED引脚", module="LED")
             return
 
         self.led_pins = led_pins
         self.leds = self._init_leds()
 
         if not self.leds:
-            self.logger.error("没有有效的LED被初始化", module="LED")
+            error("没有有效的LED被初始化", module="LED")
             return
 
         # 模式和状态变量
@@ -92,7 +92,7 @@ class LEDPatternController:
         self._start_controller()
 
         self._initialized = True
-        self.logger.info(f"控制器已初始化，引脚: {self.led_pins}", module="LED")
+        info(f"控制器已初始化，引脚: {self.led_pins}", module="LED")
 
 
     def _init_leds(self) -> list:
@@ -102,7 +102,7 @@ class LEDPatternController:
             try:
                 leds.append(machine.Pin(pin, machine.Pin.OUT, value=0))
             except Exception as e:
-                self.logger.error(f"初始化引脚{pin}的LED失败: {e}", module="LED")
+                error(f"初始化引脚{pin}的LED失败: {e}", module="LED")
                 leds.append(None)
         return [led for led in leds if led is not None]
 
@@ -112,7 +112,7 @@ class LEDPatternController:
             return
         if UASYNCIO_AVAILABLE and self._start_uasyncio_task():
             return
-        self.logger.warning("无法启动控制器，模式将不会运行", module="LED")
+        warning("无法启动控制器，模式将不会运行", module="LED")
 
     def _start_hardware_timer(self) -> bool:
         """尝试启动一个硬件定时器。"""
@@ -132,7 +132,7 @@ class LEDPatternController:
             self.uasyncio_task = uasyncio.create_task(self._uasyncio_loop())
             return True
         except Exception as e:
-            self.logger.error(f"启动uasyncio任务失败: {e}", module="LED")
+            error(f"启动uasyncio任务失败: {e}", module="LED")
             return False
 
     async def _uasyncio_loop(self):
@@ -151,14 +151,14 @@ class LEDPatternController:
             except Exception as e:
                 # 如果调度失败（例如队列满），立即清除标志，等待下次尝试
                 self._is_update_scheduled = False
-                self.logger.error(f"调度失败: {e}", module="LED")
+                error(f"调度失败: {e}", module="LED")
 
     def _scheduled_update(self, _):
         """被调度执行的更新函数，保证不在中断上下文中运行。"""
         try:
             self._update_patterns()
         except Exception as e:
-            self.logger.error(f"调度更新出错: {e}", module="LED")
+            error(f"调度更新出错: {e}", module="LED")
         finally:
             # 清除调度中的标记，允许下一次调度
             self._is_update_scheduled = False
@@ -169,7 +169,7 @@ class LEDPatternController:
         通过停止和重启定时器来确保状态切换的原子性。
         """
         if pattern_id not in self.patterns:
-            self.logger.error(f"未知的模式ID '{pattern_id}'", module="LED")
+            error(f"未知的模式ID '{pattern_id}'", module="LED")
             return
 
         # 修复: 停止控制器以避免并发问题
@@ -204,7 +204,7 @@ class LEDPatternController:
             if handler:
                 handler()
         except Exception as e:
-            self.logger.error(f"更新模式出错: {e}", module="LED")
+            error(f"更新模式出错: {e}", module="LED")
 
     def _set_all_leds(self, value: int):
         """辅助函数，设置所有LED的状态。"""
@@ -236,7 +236,7 @@ class LEDPatternController:
             self.uasyncio_task.cancel()
             self.uasyncio_task = None
         self._set_all_leds(0)
-        self.logger.info("控制器已清理", module="LED")
+        info("控制器已清理", module="LED")
 
 # 模块初始化
 # LED pattern module loaded

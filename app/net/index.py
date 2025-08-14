@@ -1,6 +1,6 @@
 # app/net/index.py
 # 网络统一控制器 - 使用状态机封装内部流程
-from lib.logger import get_global_logger
+from lib.logger import debug, info, warning, error
 from lib.lock.event_bus import EVENTS
 from .wifi import WifiManager
 from .ntp import NtpManager
@@ -30,7 +30,7 @@ class NetworkManager:
         """
         self.event_bus = event_bus
         self.config = config
-        self.logger = get_global_logger()
+        # 移除logger实例，直接使用全局日志函数
         
         # 初始化各个网络组件
         self.wifi = WifiManager(config.get('wifi', {}))
@@ -51,7 +51,7 @@ class NetworkManager:
         # 订阅系统事件
         self._setup_event_subscriptions()
         
-        self.logger.info("网络管理器已初始化（使用状态机）", module="NET")
+        info("网络管理器已初始化（使用状态机）", module="NET")
     
     def _setup_event_subscriptions(self):
         """设置事件订阅"""
@@ -67,10 +67,10 @@ class NetworkManager:
             info: 附加信息
         """
         if state == 'networking':
-            self.logger.info("系统进入网络状态，开始连接流程", module="NET")
+            info("系统进入网络状态，开始连接流程", module="NET")
             self.connect()
         elif state == 'shutdown':
-            self.logger.info("系统关闭，断开网络连接", module="NET")
+            info("系统关闭，断开网络连接", module="NET")
             self.disconnect()
     
     def connect(self):
@@ -80,10 +80,10 @@ class NetworkManager:
         内部状态机会自动处理 WiFi→NTP→MQTT 的完整流程
         外部只需调用此方法即可
         """
-        self.logger.info("NetworkManager.connect() 被调用", module="NET")
-        self.logger.info("当前网络状态: {}", self.fsm.get_status(), module="NET")
+        info("NetworkManager.connect() 被调用", module="NET")
+        info("当前网络状态: {}", self.fsm.get_status(), module="NET")
         self.fsm.connect()
-        self.logger.info("网络连接流程已启动", module="NET")
+        info("网络连接流程已启动", module="NET")
     
     def disconnect(self):
         """
@@ -120,7 +120,7 @@ class NetworkManager:
         重置失败计数器
         """
         # 状态机内部管理重试计数，这里提供兼容性接口
-        self.logger.info("重置网络失败计数器（状态机内部管理）", module="NET")
+        info("重置网络失败计数器（状态机内部管理）", module="NET")
         self.fsm.disconnect()
         self.fsm.connect()
     
@@ -169,7 +169,7 @@ class NetworkManager:
             bool: 发布成功返回True
         """
         if not self.is_connected():
-            self.logger.warning("网络未连接，无法发布MQTT消息", module="NET")
+            warning("网络未连接，无法发布MQTT消息", module="NET")
             return False
             
         return self.mqtt.publish(topic, message, retain, qos)
@@ -186,7 +186,7 @@ class NetworkManager:
             bool: 订阅成功返回True
         """
         if not self.is_connected():
-            self.logger.warning("网络未连接，无法订阅MQTT主题", module="NET")
+            warning("网络未连接，无法订阅MQTT主题", module="NET")
             return False
             
         return self.mqtt.subscribe(topic, qos)
