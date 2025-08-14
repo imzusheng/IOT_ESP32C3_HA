@@ -53,6 +53,10 @@ class MainController:
                 # 喂看门狗
                 self.state_machine.feed_watchdog()
                 
+                # 处理LED更新
+                from hw.led import process_led_updates
+                process_led_updates()
+                
                 # 定期输出调试信息
                 current_time = time.ticks_ms()
                 if time.ticks_diff(current_time, last_stats_time) >= 10000:

@@ -185,6 +185,9 @@ class NetworkManager:
         while time.ticks_diff(time.ticks_ms(), start_time) < 10000:
             if self.wifi.get_is_connected():
                 info("WiFi连接成功: {}", ssid, module="NET")
+                # 立即更新本地状态
+                self.wifi_connected = True
+                # 发布状态变化事件
                 self.event_bus.publish(EVENTS['WIFI_STATE_CHANGE'], 
                                      state="connected", ssid=ssid)
                 self._sync_ntp()  # 同步时间
