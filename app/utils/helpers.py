@@ -277,6 +277,26 @@ class Throttle:
         """
         return self.time_until_next_trigger() == 0
 
+def get_temperature():
+    """
+    读取ESP32-C3内部温度传感器
+    返回摄氏度温度值
+    """
+    try:
+        # ESP32-C3内部温度传感器
+        sensor_temp = machine.ADC(4)  # ADC4连接内部温度传感器
+        raw_value = sensor_temp.read()
+        
+        # 转换为摄氏度（根据ESP32-C3技术文档）
+        # 转换公式可能需要根据具体硬件调整
+        voltage = raw_value / 4095.0 * 3.3  # 转换为电压
+        temp_c = (voltage - 0.5) * 100.0  # 转换为摄氏度
+        
+        return round(temp_c, 1)
+    except Exception as e:
+        error(f"温度读取失败: {e}", module="Utils")
+        return None
+
 def emergency_cleanup():
     """执行紧急垃圾回收清理
     

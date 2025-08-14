@@ -210,7 +210,7 @@ class SensorManager:
     def _read_internal_temperature(self):
         """读取ESP32-C3内部温度"""
         try:
-            from lib.helpers import get_temperature
+            from utils.helpers import get_temperature
             return get_temperature()
         except Exception as e:
             error("内部温度读取错误: {}", e, module="Sensor")

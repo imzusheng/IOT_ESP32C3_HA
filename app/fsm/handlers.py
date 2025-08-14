@@ -389,7 +389,7 @@ def _emergency_cleanup(context):
     try:
         # 深度垃圾回收
         info("执行深度垃圾回收", module="FSM")
-        from lib.helpers import emergency_cleanup
+        from utils.helpers import emergency_cleanup
         emergency_cleanup()
         
 
