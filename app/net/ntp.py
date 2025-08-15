@@ -25,8 +25,6 @@ class NtpManager:
         self.config = config or {}
         # 移除logger实例, 直接使用全局日志函数
         self._ntp_synced = False
-        self._last_sync_time = 0
-        self._sync_duration = 0
     
     def sync_time(self):
         """
@@ -36,7 +34,6 @@ class NtpManager:
             bool: 同步成功返回True, 失败返回False
         """
         if ntptime is None:
-            warning("NTP模块不可用", module="NET")
             return False
         
         # 通过配置允许自定义NTP服务器, 默认使用阿里云NTP池
@@ -51,21 +48,17 @@ class NtpManager:
             # 某些端口的ntptime不支持设置host, 忽略
             pass
         
-        start_time = time.ticks_ms()
         
         try:
             # 只尝试一次, 让外部的NetworkManager处理重试和退避
             ntptime.settime()
             # 成功
             self._ntp_synced = True
-            self._last_sync_time = time.ticks_ms()
-            self._sync_duration = time.ticks_diff(time.ticks_ms(), start_time)
+            timestamp = time.time()
             
-            info("NTP时间同步成功，耗时: {}ms", self._sync_duration, module="NET")
             return True
             
         except Exception as e:
-            debug("NTP时间同步失败: {}", e, module="NET")
             # 直接返回失败, 让外部的NetworkManager处理重试
             return False
     

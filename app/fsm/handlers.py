@@ -27,6 +27,7 @@ def boot_state_handler(event, context):
         info("状态: {} ,退出启动状态", event, module="FSM")
         return None
 
+
     # 处理其他事件(如 mqtt.state_change)
     elif isinstance(event, str) and "." in event:
         # 外部事件, 不处理, 只记录日志
@@ -86,53 +87,31 @@ def networking_state_handler(event, context):
         )
 
         if elapsed > timeout:
-            # 检查完整连接状态
+            # 检查WiFi是否已连接
             network_manager = context.get("network_manager")
             wifi_connected = False
-            mqtt_connected = False
-            require_mqtt = (
-                context["config"].get("network", {}).get("require_mqtt", True)
-            )
-
             if network_manager:
                 try:
-                    wifi_connected = network_manager.is_wifi_connected()
-                    mqtt_connected = network_manager.is_mqtt_connected()
+                    status = network_manager.get_status()
+                    wifi_connected = status.get('wifi_connected', False)
                 except Exception as e:
                     error("获取网络状态失败: {}", e, module="FSM")
                     wifi_connected = False
-                    mqtt_connected = False
-
-            if wifi_connected and (mqtt_connected or not require_mqtt):
-                # 根据配置决定是否要求MQTT连接
-                if require_mqtt:
-                    info("网络连接完全成功，进入RUNNING状态", module="FSM")
-                else:
-                    info("WiFi连接成功，MQTT连接非必需，进入RUNNING状态", module="FSM")
-                return "running"
-            elif wifi_connected and not mqtt_connected and require_mqtt:
-                # WiFi连接成功但MQTT失败，且配置要求MQTT连接，继续尝试
+            
+            if wifi_connected:
                 warning(
-                    "网络连接超时({}ms),WiFi已连接但MQTT失败，继续尝试MQTT连接",
+                    "网络连接超时({}ms),WiFi已连接但MQTT可能失败,进入RUNNING状态",
                     elapsed,
                     module="FSM",
                 )
-                # 重置超时时间，给MQTT重连更多时间（最多再等30秒）
-                max_additional_wait = 30000
-                if elapsed < timeout + max_additional_wait:
-                    context["networking_start_time"] = time.ticks_ms() - timeout
-                    return None  # 保持NETWORKING状态
-                else:
-                    error("MQTT连接重试超时，WiFi已连接但MQTT不可用", module="FSM")
-                    return "error"  # 超过最大等待时间，进入ERROR状态
+                return "running"  # WiFi已连接，进入RUNNING状态
             else:
-                # WiFi连接失败，进入ERROR状态
                 error(
                     "网络连接完全超时({}ms),WiFi连接失败,进入ERROR状态",
                     elapsed,
                     module="FSM",
                 )
-                return "error"
+                return "error"  # WiFi连接失败，进入ERROR状态
 
     elif event == "wifi_connected":
         # WiFi连接成功, 网络服务已经启动, 等待MQTT连接
@@ -142,14 +121,6 @@ def networking_state_handler(event, context):
         # MQTT连接成功, 转换到RUNNING状态
         info("MQTT连接成功, 转换到RUNNING状态", module="FSM")
         return "running"
-
-    elif event == "system.state_change":
-        # 处理网络状态变化事件
-        network_manager = context.get("network_manager")
-        if network_manager and hasattr(network_manager, "state"):
-            if network_manager.state == "fully_connected":
-                info("网络完全连接成功，进入RUNNING状态", module="FSM")
-                return "running"
 
     elif event == "exit":
         info("退出NETWORKING状态", module="FSM")
