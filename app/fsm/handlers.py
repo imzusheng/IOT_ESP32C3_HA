@@ -81,9 +81,9 @@ def networking_state_handler(event, context):
         elapsed = time.ticks_diff(
             time.ticks_ms(), context.get("networking_start_time", 0)
         )
-        # 减少超时时间到45秒,避免过长等待
+        # 减少超时时间到20秒,避免过长等待
         timeout = (
-            context["config"].get("network", {}).get("connection_timeout", 45) * 1000
+            context["config"].get("network", {}).get("connection_timeout", 20) * 1000
         )
 
         if elapsed > timeout:
@@ -91,8 +91,12 @@ def networking_state_handler(event, context):
             network_manager = context.get("network_manager")
             wifi_connected = False
             if network_manager:
-                status = network_manager.get_status()
-                wifi_connected = status.get('wifi_connected', False)
+                try:
+                    status = network_manager.get_status()
+                    wifi_connected = status.get('wifi_connected', False)
+                except Exception as e:
+                    error("获取网络状态失败: {}", e, module="FSM")
+                    wifi_connected = False
             
             if wifi_connected:
                 warning(
@@ -100,13 +104,14 @@ def networking_state_handler(event, context):
                     elapsed,
                     module="FSM",
                 )
+                return "running"  # WiFi已连接，进入RUNNING状态
             else:
-                warning(
-                    "网络连接完全超时({}ms),WiFi连接失败,进入RUNNING状态",
+                error(
+                    "网络连接完全超时({}ms),WiFi连接失败,进入ERROR状态",
                     elapsed,
                     module="FSM",
                 )
-            return "running"  # 超时后进入RUNNING状态, 让系统继续运行
+                return "error"  # WiFi连接失败，进入ERROR状态
 
     elif event == "wifi_connected":
         # WiFi连接成功, 网络服务已经启动, 等待MQTT连接

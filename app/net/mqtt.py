@@ -28,6 +28,11 @@ class MqttController:
 
         # 根据配置初始化MQTT客户端
         try:
+            # 检查必需的配置项
+            if not self.config.get('broker'):
+                warning("MQTT配置缺少broker地址, MQTT功能将不可用", module="MQTT")
+                return
+                
             self.client = MQTTClient(
                 client_id="esp32c3_" + str(machine.unique_id())[-6:] if hasattr(machine, 'unique_id') else "esp32c3_device",
                 server=self.config['broker'],
@@ -66,7 +71,7 @@ class MqttController:
             return True
             
         if not self.client:
-            error("MQTT客户端未初始化", module="MQTT")
+            warning("MQTT客户端未初始化或配置不完整", module="MQTT")
             return False
 
         try:
@@ -172,3 +177,11 @@ class MqttController:
         except Exception as e:
             error("MQTT订阅失败: {}", e, module="MQTT")
             return False
+
+    def check_msg(self):
+        """检查是否有新消息"""
+        if self._is_connected and self.client:
+            try:
+                self.client.check_msg()
+            except Exception as e:
+                error("检查MQTT消息失败: {}", e, module="MQTT")

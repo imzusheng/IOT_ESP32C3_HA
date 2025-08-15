@@ -1,7 +1,7 @@
 # app/net/wifi.py
 # 简化版WiFi管理器, 只提供基本的WiFi操作功能
 import network
-from lib.logger import error
+from lib.logger import debug, info, warning, error
 
 class WifiManager:
     """

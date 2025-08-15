@@ -1,67 +1,47 @@
 >>> %Run -c $EDITOR_CONTENT
 
 MPY: soft reboot
-[00:00:13] [INFO ] [MAIN] EventBus 事件总线初始化...
-[00:00:13] [INFO ] [MAIN] NetworkManager 网络管理器初始化...
-[00:00:13] [INFO ] [MAIN] FSM 状态机初始化...
-[00:00:13] [INFO ] [FSM] 看门狗已启用, 超时时间: 120000 ms
-[00:00:13] [INFO ] [MAIN] 启动系统...
-[00:00:13] [INFO ] [FSM] 状态: update ,启动阶段完成, 发布boot_complete事件
-[00:00:13] [INFO ] [FSM] 状态: exit ,退出启动状态
-[00:00:13] [INFO ] [FSM] 状态: enter ,进入模块初始化...
-[00:00:13] [INFO ] [FSM] 执行系统初始化任务
-[00:00:13] [INFO ] [LED] LED控制器已初始化, 引脚: [12, 13]
-[00:00:13] [INFO ] [FSM] LED状态更新为: blink (状态: INIT)
-[00:00:15] [INFO ] [FSM] 状态: update ,初始化阶段完成, 发布init_complete事件
-[00:00:15] [INFO ] [FSM] 状态: exit ,退出初始化状态
-[00:00:15] [INFO ] [FSM] 进入NETWORKING状态, 启动网络连接
-[00:00:15] [INFO ] [FSM] 启动网络连接...
-[00:00:15] [INFO ] [NET] 当前状态: DISCONNECTED
-[00:00:15] [INFO ] [NET] 扫描WiFi网络...
-[00:00:18] [INFO ] [NET] 发现25个网络,配置3个
-[00:00:18] [INFO ] [NET] WiFi连接命令已发送, 等待连接建立...
-[00:00:20] [INFO ] [NET] WiFi连接成功: CMCC-pdRG
-[00:00:20] [INFO ] [NET] 开始NTP同步...
-[00:00:20] [INFO ] [NET] NTP同步成功
-[00:00:20] [INFO ] [NET] 开始MQTT连接, WiFi状态: True
-[00:00:38] [ERROR] [MQTT] MQTT连接异常: [Errno 113] ECONNABORTED
-[00:00:38] [ERROR] [NET] MQTT初始化失败
-[00:00:38] [INFO ] [FSM] LED状态更新为: pulse (状态: NETWORKING)
-[00:00:38] [WARN ] [MAIN] 主循环执行超时: 22967ms > 50ms
-[00:00:38] [INFO ] [FSM] 网络状态变化: connecting (参数: {'state': 'connecting'})
-[00:00:38] [INFO ] [FSM] NETWORKING状态收到外部事件: wifi.state_change
-[00:00:38] [INFO ] [FSM] NETWORKING状态收到外部事件: wifi.state_change
-[00:00:38] [INFO ] [FSM] NTP状态变化: started
-[00:00:38] [INFO ] [FSM] NETWORKING状态收到外部事件: ntp.state_change
-[00:00:38] [INFO ] [FSM] NTP状态变化: success
-[00:00:38] [INFO ] [FSM] NETWORKING状态收到外部事件: ntp.state_change
-[00:00:38] [INFO ] [NET] 网络连接完成 (仅WiFi, MQTT连接失败)
-[00:00:38] [WARN ] [MAIN] 主循环执行超时: 61ms > 50ms
-[00:00:38] [INFO ] [FSM] NETWORKING状态收到外部事件: mqtt.state_change
-[00:00:38] [INFO ] [FSM] 事件 mqtt_disconnected 在状态 NETWORKING 中未定义转换
-[00:00:38] [INFO ] [FSM] NETWORKING状态收到外部事件: mqtt.state_change
-[00:00:38] [INFO ] [FSM] 网络状态变化: connected (参数: {'state': 'connected'})
-[00:01:15] [WARN ] [FSM] 网络连接超时(60019ms), 但可能部分连接已建立, 进入RUNNING状态
-[00:01:15] [INFO ] [FSM] 退出NETWORKING状态
-[00:01:15] [INFO ] [FSM] 进入RUNNING状态, 网络连接已完成, 系统正常运行中
-[00:01:15] [INFO ] [FSM] 网络服务已集成到连接流程中, 无需额外启动
-[00:01:15] [INFO ] [FSM] LED状态更新为: cruise (状态: RUNNING)
-[00:01:15] [INFO ] [FSM] 系统正常运行中 - 运行时间: 0秒
-[00:01:15] [INFO ] [FSM] RUNNING - 网络状态: {'state': 'CONNECTED', 'retry_count': 0, 'full_connectivity': False, 'mqtt_connected': False, 'wifi_connected': True, 'network_available': True}
-[00:01:15] [INFO ] [FSM] RUNNING - 内存使用: 36.5% (空闲: 97KB)
-[00:01:45] [INFO ] [FSM] 系统正常运行中 - 运行时间: 30秒
-[00:01:45] [INFO ] [FSM] RUNNING - 网络状态: {'state': 'CONNECTED', 'retry_count': 0, 'full_connectivity': False, 'mqtt_connected': False, 'wifi_connected': True, 'network_available': True}
-[00:01:45] [INFO ] [FSM] RUNNING - 内存使用: 36.5% (空闲: 97KB)
-[00:02:15] [INFO ] [FSM] 系统正常运行中 - 运行时间: 60秒
-[00:02:15] [INFO ] [FSM] RUNNING - 网络状态: {'state': 'CONNECTED', 'retry_count': 0, 'full_connectivity': False, 'mqtt_connected': False, 'wifi_connected': True, 'network_available': True}
-[00:02:15] [INFO ] [FSM] RUNNING - 内存使用: 36.5% (空闲: 97KB)
-[00:02:45] [INFO ] [FSM] 系统正常运行中 - 运行时间: 90秒
-[00:02:45] [INFO ] [FSM] RUNNING - 网络状态: {'state': 'CONNECTED', 'retry_count': 0, 'full_connectivity': False, 'mqtt_connected': False, 'wifi_connected': True, 'network_available': True}
-[00:02:45] [INFO ] [FSM] RUNNING - 内存使用: 36.5% (空闲: 97KB)
-[00:03:15] [INFO ] [FSM] 系统正常运行中 - 运行时间: 120秒
-[00:03:15] [INFO ] [FSM] RUNNING - 网络状态: {'state': 'CONNECTED', 'retry_count': 0, 'full_connectivity': False, 'mqtt_connected': False, 'wifi_connected': True, 'network_available': True}
-[00:03:15] [INFO ] [FSM] RUNNING - 内存使用: 36.5% (空闲: 97KB)
-[00:03:45] [INFO ] [FSM] 系统正常运行中 - 运行时间: 150秒
-[00:03:45] [INFO ] [FSM] RUNNING - 网络状态: {'state': 'CONNECTED', 'retry_count': 0, 'full_connectivity': False, 'mqtt_connected': False, 'wifi_connected': True, 'network_available': True}
-[00:03:45] [INFO ] [FSM] RUNNING - 内存使用: 36.5% (空闲: 97KB)
+[00:00:12] [INFO ] [MAIN] EventBus 事件总线初始化...
+[00:00:12] [INFO ] [MAIN] NetworkManager 网络管理器初始化...
+[00:00:12] [INFO ] [NET] 网络管理器初始化完成
+[00:00:12] [INFO ] [MAIN] FSM 状态机初始化...
+[00:00:12] [INFO ] [FSM] 看门狗已启用, 超时时间: 120000 ms
+[00:00:12] [INFO ] [MAIN] 启动系统...
+[00:00:12] [INFO ] [FSM] 状态: update ,启动阶段完成, 发布boot_complete事件
+[00:00:12] [INFO ] [FSM] 状态: exit ,退出启动状态
+[00:00:12] [INFO ] [FSM] 状态: enter ,进入模块初始化...
+[00:00:12] [INFO ] [FSM] 执行系统初始化任务
+[00:00:12] [INFO ] [LED] LED控制器已初始化, 引脚: [12, 13]
+[00:00:12] [INFO ] [FSM] LED状态更新为: blink (状态: INIT)
+[00:00:14] [INFO ] [FSM] 状态: update ,初始化阶段完成, 发布init_complete事件
+[00:00:14] [INFO ] [FSM] 状态: exit ,退出初始化状态
+[00:00:14] [INFO ] [FSM] 进入NETWORKING状态, 启动网络连接
+[00:00:14] [INFO ] [FSM] 启动网络连接...
+[00:00:14] [INFO ] [NET] 启动网络连接
+[00:00:14] [INFO ] [NET] 连接WiFi...
+[00:00:17] [INFO ] [NET] 找到 19 个可用WiFi网络
+[00:00:17] [INFO ] [NET] 选择最优网络: leju_software (信号强度: -39dBm)
+[00:00:17] [INFO ] [NET] 尝试连接WiFi: leju_software (RSSI: -39)
+[00:00:18] [INFO ] [NET] WiFi连接成功: leju_software
+[00:00:18] [INFO ] [NET] 同步NTP时间...
+[00:00:18] [INFO ] [NET] 连接MQTT...
+[00:00:18] [ERROR] [MQTT] MQTT连接网络错误 [-202]: -202
+[00:00:18] [ERROR] [NET] 网络连接失败: MQTT连接失败
+[00:00:18] [ERROR] [NET] 连接失败，重试次数: 1/3
+[00:00:18] [INFO ] [NET] 1秒后重试连接
+[00:00:18] [INFO ] [FSM] LED状态更新为: pulse (状态: NETWORKING)
+[00:00:18] [WARN ] [MAIN] 主循环执行严重超时: 3917ms > 50ms
+[00:00:19] [INFO ] [NET] 执行延迟重试连接
+[00:00:19] [INFO ] [NET] 连接WiFi...
+[00:00:22] [INFO ] [NET] 找到 21 个可用WiFi网络
+[00:00:22] [INFO ] [NET] 选择最优网络: leju_software (信号强度: -34dBm)
+[00:00:22] [INFO ] [NET] 尝试连接WiFi: leju_software (RSSI: -34)
+[00:00:22] [INFO ] [NET] WiFi连接成功: leju_software
+[00:00:22] [INFO ] [NET] 同步NTP时间...
+[00:00:23] [INFO ] [NET] 连接MQTT...
+[00:00:25] [ERROR] [MQTT] MQTT连接网络错误 [-202]: -202
+[00:00:25] [ERROR] [NET] 网络连接失败: MQTT连接失败
+[00:00:25] [ERROR] [NET] 连接失败，重试次数: 2/3
+[00:00:25] [INFO ] [NET] 2秒后重试连接
+[00:00:25] [WARN ] [MAIN] 主循环执行严重超时: 5858ms > 50ms
 

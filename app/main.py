@@ -21,7 +21,8 @@ class MainController:
         self.event_bus = EventBus()
 
         info("NetworkManager 网络管理器初始化...", module="Main")
-        self.network_manager = NetworkManager(self.event_bus)
+        # 传递全局配置到 NetworkManager，确保 WiFi/MQTT/NTP 使用正确配置
+        self.network_manager = NetworkManager(self.event_bus, self.config)
 
         info("FSM 状态机初始化...", module="Main")
         self.state_machine = create_state_machine(
@@ -34,7 +35,7 @@ class MainController:
         """启动系统 - 基于diff时间的主循环"""
         info("启动系统...", module="Main")
         try:
-            main_loop_delay = self.config.get('system', {}).get('main_loop_delay', 100)  # 增加到100ms,减少超时警告 
+            main_loop_delay = self.config.get('system', {}).get('main_loop_delay', 100)  # 设置为100ms,减少超时警告 
             
             # 持续运行, 直到收到关机信号
             last_stats_time = time.ticks_ms()

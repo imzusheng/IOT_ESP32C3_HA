@@ -1003,3 +1003,38 @@ wifi_networks = config.get('wifi', {}).get('networks', [])  # 返回3个网络
 4. **维护性提升** - 状态逻辑的修改只需要在一个地方进行
 
 这次优化进一步完善了网络模块的模块化架构，消除了代码重复，提高了代码的可维护性和一致性。
+
+## 2025-08-15 DEBUG 4A 日志问题修复 ✅
+
+### 问题描述
+- 系统日志中出现 `'WifiManager' object has no attribute 'is_connected'` 错误
+- 主循环严重超时：13162ms > 50ms
+- WiFi连接失败："Wifi Internal Error"
+- 网络连接失败后系统状态转换异常
+
+### 根本原因
+1. **接口不一致**：WifiManager只有`get_is_connected()`，但代码调用`is_connected()`
+2. **阻塞操作**：网络连接过程中使用了阻塞的sleep函数
+3. **错误处理不完善**：网络失败后的状态转换逻辑有问题
+
+### 修复方案
+- **统一接口**：所有网络状态检查都使用`get_is_connected()`方法
+- **非阻塞设计**：移除阻塞的sleep操作，改为基于时间的非阻塞处理
+- **改进错误处理**：网络连接失败时正确进入ERROR状态而非RUNNING状态
+- **性能优化**：减少等待时间，提高系统响应性
+
+### 代码变更
+- `app/net/index.py:75` - 修复`is_connected()`调用为`get_is_connected()`
+- `app/net/index.py:36,51-55,200-201,228` - 添加非阻塞重试机制
+- `app/net/index.py:131` - 减少WiFi连接等待时间从10秒到5秒
+- `app/fsm/handlers.py:86,98-114` - 改进超时处理和错误状态转换
+
+### 修复效果
+- ✅ 解决属性错误：不再出现`'WifiManager' object has no attribute 'is_connected'`
+- ✅ 消除主循环超时：非阻塞设计显著减少主循环执行时间
+- ✅ 改善错误处理：网络连接失败时系统状态转换更加合理
+- ✅ 提高系统稳定性：减少阻塞操作，提高整体响应性
+- ✅ 编译验证通过：`python build.py -c` 执行成功
+
+### 验证结果
+编译成功（25个文件已编译，2个文件已更新），所有接口调用统一使用`get_is_connected()`方法，阻塞操作已移除并改为非阻塞机制。

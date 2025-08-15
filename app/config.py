@@ -38,21 +38,20 @@ CONFIG = {
         "main_loop_delay": 50
     },
     "wifi": {
-        # 描述: WiFi网络名称(SSID)
-        # 影响: 设备将连接到指定的WiFi网络
-        # 建议: 使用2.4GHz频段的WiFi网络
-        "ssid": "Your_WiFi_Name",
-
-        # 描述: WiFi密码
-        # 影响: 用于连接WiFi网络的认证
-        # 建议: 使用强密码保护网络安全
-        "password": "Your_WiFi_Password"
+        # 描述: 可用的WiFi网络列表
+        # 影响: 设备将按信号强度自动选择最佳网络连接
+        # 建议: 配置多个网络以提高连接成功率
+        "networks": [
+            {"ssid": "zsm60p", "password": "25845600"},
+            {"ssid": "leju_software", "password": "leju123456"},
+            {"ssid": "CMCC-pdRG", "password": "7k77ed5p"}
+        ]
     },
     "mqtt": {
         # 描述: MQTT服务器地址
         # 影响: 设备将连接到指定的MQTT服务器
         # 建议: 使用稳定的MQTT服务器地址
-        "broker": "mqtt.example.com",
+        "broker": "192.168.3.15",
 
         # 描述: MQTT服务器端口
         # 影响: MQTT服务器的连接端口
