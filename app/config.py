@@ -20,16 +20,14 @@ CONFIG = {
         # 影响: 这是一个容错机制, 避免因为瞬时或小概率的错误导致系统频繁重启。
         # 建议: 5-20 次。
         "max_error_count": 10,
-
         # 描述: 看门狗定时器(WDT)的超时时间, 单位为毫秒。
         # 影响: 如果主程序在指定时间内没有"喂狗"(feed), 看门狗将强制重启设备。这是防止固件死锁或主循环卡死的最后防线。
         # 建议: 60000-300000 毫秒, 必须远大于主循环的正常执行时间。
         "wdt_timeout": 120000,
-
         # 描述: 是否启用硬件看门狗。
         # 影响: 生产环境中强烈建议启用, 以保证设备在无人值守的情况下能从未知错误中自愈。开发调试时可关闭。
         # 建议: 生产环境 `True`, 开发环境 `False`。
-        "wdt_enabled": True
+        "wdt_enabled": True,
     },
     "system": {
         # 描述: 主循环(main loop)的延迟时间, 单位为毫秒。
@@ -44,50 +42,56 @@ CONFIG = {
         "networks": [
             {"ssid": "zsm60p", "password": "25845600"},
             {"ssid": "leju_software", "password": "leju123456"},
-            {"ssid": "CMCC-pdRG", "password": "7k77ed5p"}
+            {"ssid": "CMCC-pdRG", "password": "7k77ed5p"},
         ]
     },
     "mqtt": {
         # 描述: MQTT服务器地址
         # 影响: 设备将连接到指定的MQTT服务器
         # 建议: 使用稳定的MQTT服务器地址
-        "broker": "192.168.3.15",
-
+        "broker": "192.168.1.2",
         # 描述: MQTT服务器端口
         # 影响: MQTT服务器的连接端口
         # 建议: 默认1883，SSL连接使用8883
         "port": 1883,
-
         # 描述: MQTT用户名
         # 影响: MQTT服务器的认证用户名
         "user": "",
-
         # 描述: MQTT密码
         # 影响: MQTT服务器的认证密码
         "password": "",
-
         # 描述: MQTT保持连接时间
         # 影响: 客户端与服务器之间的心跳间隔
         # 建议: 60-120秒
-        "keepalive": 60
+        "keepalive": 60,
     },
     "ntp": {
         # 描述: NTP服务器地址
         # 影响: 设备将从此服务器同步时间
         # 建议: 使用可靠的NTP服务器
         "server": "pool.ntp.org",
-
         # 描述: NTP同步超时时间
         # 影响: 等待NTP响应的最长时间
         # 建议: 5-10秒
-        "timeout": 5000
-    }
+        "timeout": 5000,
+    },
+    "network": {
+        # 描述: 网络连接超时时间
+        # 影响: NETWORKING状态的最大等待时间
+        # 建议: 30-60秒，给MQTT重连足够时间
+        "connection_timeout": 45,
+        # 描述: 是否要求MQTT连接成功才进入RUNNING状态
+        # 影响: 设置为True时，MQTT连接失败会保持在NETWORKING状态继续尝试
+        # 建议: 生产环境建议True，开发环境可设为False
+        "require_mqtt": True,
+    },
 }
 
 
 # =============================================================================
 # 配置访问接口
 # =============================================================================
+
 
 def get_config(section: str = None, key: str = None, default=None):
     """
@@ -110,6 +114,7 @@ def get_config(section: str = None, key: str = None, default=None):
         return section_data
 
     return section_data.get(key, default)
+
 
 # =============================================================================
 # 初始化

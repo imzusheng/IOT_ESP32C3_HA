@@ -16,15 +16,16 @@ class MqttController:
     - 基本的连接状态检查
     """
     
-    def __init__(self, config=None):
+    def __init__(self, config=None, event_bus=None):
         """
         初始化MQTT控制器
         :param config: MQTT配置字典
+        :param event_bus: 事件总线实例
         """
         self.config = config or {}
         self.client = None
         self._is_connected = False
-        self.event_bus = EventBus()
+        self.event_bus = event_bus
 
         # 根据配置初始化MQTT客户端
         try:
@@ -43,7 +44,7 @@ class MqttController:
             )
             self.client.set_callback(self._mqtt_callback)
         except Exception as e:
-            error(f"创建MQTT客户端失败: {e}", module="MQTT")
+            debug(f"创建MQTT客户端失败: {e}", module="MQTT")
 
     def _mqtt_callback(self, topic, msg):
         """MQTT消息回调函数"""
@@ -52,13 +53,15 @@ class MqttController:
             msg_str = msg.decode('utf-8')
             debug(f"收到MQTT消息: 主题={topic_str}, 消息={msg_str}", module="MQTT")
 
-            self.event_bus.publish(EVENTS['MQTT_MESSAGE'], {
-                'topic': topic_str,
-                'message': msg_str,
-                'timestamp': time.ticks_ms()
-            })
+            # 只有在event_bus存在时才发布事件
+            if self.event_bus:
+                self.event_bus.publish(EVENTS['MQTT_MESSAGE'], {
+                    'topic': topic_str,
+                    'message': msg_str,
+                    'timestamp': time.ticks_ms()
+                })
         except Exception as e:
-            error("处理MQTT消息失败: {}", e, module="MQTT")
+            debug("处理MQTT消息失败: {}", e, module="MQTT")
     
     def connect(self):
         """
@@ -97,18 +100,19 @@ class MqttController:
                     return False
             
         except OSError as e:
+            # 只记录debug级别的日志，让上层决定是否记录错误
             if e.errno == 113:  # ECONNABORTED
-                error("MQTT连接被拒绝: 服务器{}:{}不可达或拒绝连接", 
+                debug("MQTT连接被拒绝: 服务器{}:{}不可达或拒绝连接", 
                      self.config['broker'], self.config.get('port', 1883), module="MQTT")
             elif e.errno == 110:  # ETIMEDOUT
-                error("MQTT连接超时: 服务器{}:{}无响应", 
+                debug("MQTT连接超时: 服务器{}:{}无响应", 
                      self.config['broker'], self.config.get('port', 1883), module="MQTT")
             else:
-                error("MQTT连接网络错误 [{}]: {}", e.errno, e, module="MQTT")
+                debug("MQTT连接网络错误 [{}]: {}", e.errno, e, module="MQTT")
             self._is_connected = False
             return False
         except Exception as e:
-            error("MQTT连接异常: {}", e, module="MQTT")
+            debug("MQTT连接异常: {}", e, module="MQTT")
             self._is_connected = False
             return False
 
@@ -127,7 +131,7 @@ class MqttController:
             try:
                 self.client.disconnect()
             except Exception as e:
-                error("MQTT断开失败: {}", e, module="MQTT")
+                debug("MQTT断开失败: {}", e, module="MQTT")
                 return False
         
         self._is_connected = False
@@ -153,7 +157,7 @@ class MqttController:
             self.client.publish(topic, msg, retain, qos)
             return True
         except Exception as e:
-            error("MQTT发布失败: {}", e, module="MQTT")
+            debug("MQTT发布失败: {}", e, module="MQTT")
             return False
 
     def subscribe(self, topic, qos=0):
@@ -175,7 +179,7 @@ class MqttController:
             self.client.subscribe(topic, qos)
             return True
         except Exception as e:
-            error("MQTT订阅失败: {}", e, module="MQTT")
+            debug("MQTT订阅失败: {}", e, module="MQTT")
             return False
 
     def check_msg(self):
@@ -184,4 +188,4 @@ class MqttController:
             try:
                 self.client.check_msg()
             except Exception as e:
-                error("检查MQTT消息失败: {}", e, module="MQTT")
+                debug("检查MQTT消息失败: {}", e, module="MQTT")
