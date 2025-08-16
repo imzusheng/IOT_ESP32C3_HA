@@ -19,11 +19,12 @@ ERROR = 3
 LOG_LEVEL = INFO
 
 # ANSI颜色代码
-COLOR_RED = '\033[1;31m'
-COLOR_ORANGE = '\033[1;33m'
-COLOR_JADE = '\033[1;32m'  # 翠绿色
-COLOR_INDIGO = '\033[1;34m'  # 靛蓝色
-COLOR_RESET = '\033[0m'
+COLOR_RED = "\033[1;31m"
+COLOR_ORANGE = "\033[1;33m"
+COLOR_JADE = "\033[1;32m"  # 翠绿色
+COLOR_INDIGO = "\033[1;34m"  # 靛蓝色
+COLOR_RESET = "\033[0m"
+
 
 def _get_timestamp():
     """获取简化的时间戳"""
@@ -36,20 +37,21 @@ def _get_timestamp():
     except:
         return "00:00:00"
 
+
 def _log(level, level_name, msg, *args, module=None):
     """核心日志函数"""
     if level < LOG_LEVEL:
         return
-    
+
     # 格式化消息
     try:
         formatted_msg = msg.format(*args) if args else msg
     except:
         formatted_msg = msg
-    
+
     # 构建日志前缀
     timestamp = _get_timestamp()
-    
+
     # 根据级别添加颜色
     if level == ERROR:
         colored_level_name = f"{COLOR_RED}{level_name}{COLOR_RESET}"
@@ -57,7 +59,7 @@ def _log(level, level_name, msg, *args, module=None):
         colored_level_name = f"{COLOR_ORANGE}{level_name}{COLOR_RESET}"
     else:
         colored_level_name = level_name
-    
+
     if module:
         # 为特定模块设置颜色
         module_name = module.upper()
@@ -67,30 +69,35 @@ def _log(level, level_name, msg, *args, module=None):
             colored_module = f"{COLOR_INDIGO}{module_name}{COLOR_RESET}"
         else:
             colored_module = module_name
-        
+
         prefix = f"[{timestamp}] [{colored_level_name}] [{colored_module}]"
     else:
         prefix = f"[{timestamp}] [{colored_level_name}]"
-    
+
     # 直接输出
     print(f"{prefix} {formatted_msg}")
+
 
 # 全局日志函数
 def debug(msg, *args, module=None):
     """调试日志"""
     _log(DEBUG, "DEBUG", msg, *args, module=module)
 
+
 def info(msg, *args, module=None):
     """信息日志"""
     _log(INFO, "INFO ", msg, *args, module=module)
+
 
 def warning(msg, *args, module=None):
     """警告日志"""
     _log(WARNING, "WARN ", msg, *args, module=module)
 
+
 def error(msg, *args, module=None):
     """错误日志"""
     _log(ERROR, "ERROR", msg, *args, module=module)
+
 
 # 便捷别名
 warn = warning

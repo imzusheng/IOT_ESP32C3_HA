@@ -5,11 +5,11 @@
 import sys
 
 CRITICAL = 50
-ERROR    = 40
-WARNING  = 30
-INFO     = 20
-DEBUG    = 10
-NOTSET   = 0
+ERROR = 40
+WARNING = 30
+INFO = 20
+DEBUG = 10
+NOTSET = 0
 
 _level_dict = {
     CRITICAL: "CRIT",
@@ -20,6 +20,7 @@ _level_dict = {
 }
 
 _stream = sys.stderr
+
 
 class Logger:
 
@@ -74,6 +75,7 @@ class Logger:
 _level = INFO
 _loggers = {}
 
+
 def getLogger(name):
     if name in _loggers:
         return _loggers[name]
@@ -81,11 +83,14 @@ def getLogger(name):
     _loggers[name] = l
     return l
 
+
 def info(msg, *args):
     getLogger(None).info(msg, *args)
 
+
 def debug(msg, *args):
     getLogger(None).debug(msg, *args)
+
 
 def basicConfig(level=INFO, filename=None, stream=None, format=None):
     global _level, _stream

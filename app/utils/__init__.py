@@ -11,17 +11,17 @@ from .timers import (
     TimeProfiler,
     TimeProfilerContext,
     profile_time,
-    get_hardware_timer_manager
+    get_hardware_timer_manager,
 )
 from .helpers import Throttle
 
 __all__ = [
-    'DebounceTimer',
-    'PeriodicTimer', 
-    'TimeoutTimer',
-    'TimeProfiler',
-    'TimeProfilerContext',
-    'profile_time',
-    'get_hardware_timer_manager',
-    'Throttle'
+    "DebounceTimer",
+    "PeriodicTimer",
+    "TimeoutTimer",
+    "TimeProfiler",
+    "TimeProfilerContext",
+    "profile_time",
+    "get_hardware_timer_manager",
+    "Throttle",
 ]

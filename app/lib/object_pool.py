@@ -1,13 +1,14 @@
 # app/lib/object_pool.py
 # 暂时废弃,  请勿使用
 
+
 class ObjectPool:
     """
     对象池 (重构版本)
-    
+
     一个简单的对象池实现, 用于高效的对象复用和内存管理。
     减少频繁的对象创建和销毁, 降低垃圾回收压力。
-    
+
     特性:
     - 预分配对象
     - 对象复用
@@ -15,6 +16,7 @@ class ObjectPool:
     - 使用统计
     - 线程安全设计
     """
+
     def __init__(self, object_factory, size):
         self._factory = object_factory
         self._pool = [self._factory() for _ in range(size)]
@@ -39,7 +41,7 @@ class ObjectPool:
             if self._in_use[idx]:
                 self._in_use[idx] = False
                 # 可选：重置对象状态
-                if hasattr(obj, 'reset'):
+                if hasattr(obj, "reset"):
                     obj.reset()
             else:
                 # 静默处理重复释放
@@ -55,10 +57,10 @@ class ObjectPool:
 class ObjectPoolManager:
     """
     对象池管理器 (单例模式)
-    
+
     管理多个命名对象池的管理器, 提供统一的接口来创建、
     使用和释放对象池。是事件驱动架构的内存优化核心组件。
-    
+
     特性:
     - 多对象池管理
     - 自动对象归属跟踪
@@ -67,14 +69,15 @@ class ObjectPoolManager:
     - 内存使用统计
     - 单例模式, 全局唯一实例
     """
+
     _instance = None
     _initialized = False
-    
+
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(ObjectPoolManager, cls).__new__(cls)
         return cls._instance
-    
+
     def __init__(self):
         if not ObjectPoolManager._initialized:
             self._pools = {}
@@ -147,14 +150,16 @@ class ObjectPoolManager:
             # 静默处理不存在的池
             pass
 
+
 def get_object_pool_manager():
     """
     获取全局对象池管理器实例
-    
+
     Returns:
         ObjectPoolManager: 全局唯一的对象池管理器实例
     """
     return ObjectPoolManager()
+
 
 # 使用示例:
 #

@@ -4,14 +4,15 @@
 import ujson
 import utime as time
 
+
 class StaticCache:
     """
     静态缓存系统 (重构版本)
-    
+
     一个支持持久化和去抖写入的静态缓存。
     适用于需要频繁更新但只需偶尔写入闪存的配置或状态。
     是事件驱动架构的持久化存储组件。
-    
+
     特性:
     - 防抖写入机制 (避免频繁Flash写入)
     - 自动保存功能 (定时持久化)
@@ -20,7 +21,8 @@ class StaticCache:
     - 状态持久化 (JSON格式存储)
     - 系统状态快照支持
     """
-    def __init__(self, file_path='cache.json', write_debounce_ms=5000):
+
+    def __init__(self, file_path="cache.json", write_debounce_ms=5000):
         """
         :param file_path: 缓存文件的路径
         :param write_debounce_ms: 写入去抖的毫秒数
@@ -30,7 +32,7 @@ class StaticCache:
         self._cache = {}
         self._dirty = False
         self._last_write_time = 0
-        
+
         self.load()
 
     def get(self, key, default=None):
@@ -53,11 +55,11 @@ class StaticCache:
             self._cache[key] = value
             self._dirty = True
             # loop() 方法会处理实际的写入操作
-            
+
     def load(self):
         """从闪存加载缓存文件。"""
         try:
-            with open(self._file_path, 'r') as f:
+            with open(self._file_path, "r") as f:
                 self._cache = ujson.load(f)
                 # Cache loaded silently
         except (OSError, ValueError):
@@ -72,7 +74,7 @@ class StaticCache:
         """
         if self._dirty or force:
             try:
-                with open(self._file_path, 'w') as f:
+                with open(self._file_path, "w") as f:
                     ujson.dump(self._cache, f)
                 self._dirty = False
                 self._last_write_time = time.ticks_ms()
@@ -86,8 +88,13 @@ class StaticCache:
         应该在主循环中定期调用此方法。
         它会检查是否需要执行去抖写入。
         """
-        if self._dirty and time.ticks_diff(time.ticks_ms(), self._last_write_time) > self._debounce_ms:
+        if (
+            self._dirty
+            and time.ticks_diff(time.ticks_ms(), self._last_write_time)
+            > self._debounce_ms
+        ):
             self.save()
+
 
 # 使用示例:
 #

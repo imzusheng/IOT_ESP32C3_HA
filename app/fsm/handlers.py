@@ -27,7 +27,6 @@ def boot_state_handler(event, context):
         info("状态: {} ,退出启动状态", event, module="FSM")
         return None
 
-
     # 处理其他事件(如 mqtt.state_change)
     elif isinstance(event, str) and "." in event:
         # 外部事件, 不处理, 只记录日志
@@ -69,14 +68,6 @@ def networking_state_handler(event, context):
         return None
 
     elif event == "update":
-        # 在NETWORKING状态下, 定期调用网络管理器的loop方法来处理连接状态
-        network_manager = context.get("network_manager")
-        if network_manager and hasattr(network_manager, "loop"):
-            try:
-                network_manager.loop()
-            except Exception as e:
-                error("网络状态更新失败: {}", e, module="FSM")
-
         # 检查连接超时 - 优化超时策略
         elapsed = time.ticks_diff(
             time.ticks_ms(), context.get("networking_start_time", 0)
@@ -87,31 +78,30 @@ def networking_state_handler(event, context):
         )
 
         if elapsed > timeout:
-            # 检查WiFi是否已连接
+            # 检查网络是否已连接
             network_manager = context.get("network_manager")
-            wifi_connected = False
+            network_connected = False
             if network_manager:
                 try:
-                    status = network_manager.get_status()
-                    wifi_connected = status.get('wifi_connected', False)
+                    network_connected = network_manager.is_connected()
                 except Exception as e:
                     error("获取网络状态失败: {}", e, module="FSM")
-                    wifi_connected = False
-            
-            if wifi_connected:
+                    network_connected = False
+
+            if network_connected:
                 warning(
-                    "网络连接超时({}ms),WiFi已连接但MQTT可能失败,进入RUNNING状态",
+                    "网络连接超时({}ms),网络已连接但MQTT可能失败,进入RUNNING状态",
                     elapsed,
                     module="FSM",
                 )
-                return "running"  # WiFi已连接，进入RUNNING状态
+                return "running"  # 网络已连接，进入RUNNING状态
             else:
                 error(
-                    "网络连接完全超时({}ms),WiFi连接失败,进入ERROR状态",
+                    "网络连接完全超时({}ms),网络连接失败,进入ERROR状态",
                     elapsed,
                     module="FSM",
                 )
-                return "error"  # WiFi连接失败，进入ERROR状态
+                return "error"  # 网络连接失败，进入ERROR状态
 
     elif event == "wifi_connected":
         # WiFi连接成功, 网络服务已经启动, 等待MQTT连接
@@ -143,25 +133,26 @@ def running_state_handler(event, context):
         context["last_health_check_time"] = 0
         context["mqtt_connect_scheduled"] = False
 
-        _start_network_services(context)
+        # 运行状态无需额外启动网络服务
         return None
 
     elif event == "update":
         current_time = time.ticks_ms()
         _periodic_maintenance(context, current_time)
 
-        # 在RUNNING状态下, 也需要定期调用网络管理器来维护连接
-        network_manager = context.get("network_manager")
-        if network_manager and hasattr(network_manager, "loop"):
-            try:
-                network_manager.loop()
-            except Exception as e:
-                error("RUNNING状态网络维护失败: {}", e, module="FSM")
+        # 注意：RUNNING状态的网络维护由_periodic_maintenance统一处理，避免重复调用
 
-    elif event == "wifi_disconnected" or event == "mqtt_disconnected":
-        # 网络连接断开, 转换到NETWORKING状态重新连接
-        warning("网络连接断开, 转换到NETWORKING状态", module="FSM")
+    elif event == "wifi_disconnected":
+        # WiFi连接断开, 转换到NETWORKING状态重新连接
+        warning("WiFi连接断开, 转换到NETWORKING状态", module="FSM")
         return "networking"
+
+    elif event == "mqtt_disconnected":
+        # MQTT连接断开, 但WiFi保持连接, 只记录日志不转换状态
+        warning("MQTT连接断开, 保持WiFi连接, 尝试重新连接MQTT", module="FSM")
+        # 尝试重新连接MQTT, 但不转换状态
+        _try_reconnect_mqtt(context)
+        return None
 
     elif event == "exit":
         info("退出RUNNING状态", module="FSM")
@@ -384,12 +375,6 @@ def _start_network_connection(context):
         )
 
 
-def _start_network_services(context):
-    """启动网络服务"""
-    # 网络服务已在NetworkManager.connect()中统一启动, 无需额外调用
-    info("网络服务已集成到连接流程中, 无需额外启动", module="FSM")
-
-
 def _periodic_maintenance(context, current_time):
     """定期维护任务"""
     # 每30秒输出一次运行状态日志
@@ -472,16 +457,16 @@ def _check_system_health(context):
                 warning_msg=f"高内存使用: {mem_percent:.1f}%",
             )
 
-        # 检查网络状态一致性
+        # 检查网络状态
         network_manager = context.get("network_manager")
-        if network_manager and hasattr(network_manager, "check_consistency"):
-            consistency_ok = network_manager.check_consistency()
-            if not consistency_ok:
-                warning("网络状态不一致", module="FSM")
+        if network_manager and hasattr(network_manager, "is_connected"):
+            network_connected = network_manager.is_connected()
+            if not network_connected:
+                warning("网络连接已断开", module="FSM")
                 context["event_bus"].publish(
                     EVENTS["SYSTEM_STATE_CHANGE"],
                     state="warning",
-                    warning_msg="网络状态不一致",
+                    warning_msg="网络连接已断开",
                 )
 
     except Exception as e:
@@ -509,6 +494,28 @@ def _emergency_cleanup(context):
     except Exception as e:
         # 即使在安全模式下, 清理失败也不应该导致系统崩溃
         info("安全模式紧急清理部分失败(继续运行): {}", e, module="FSM")
+
+
+def _try_reconnect_mqtt(context):
+    """尝试重新连接MQTT，不影响WiFi连接"""
+    try:
+        network_manager = context.get("network_manager")
+        if not network_manager:
+            return
+
+        # 检查网络管理器是否有MQTT重连功能
+        if hasattr(network_manager, "reconnect_mqtt"):
+            info("调用网络管理器的MQTT重连功能", module="FSM")
+            network_manager.reconnect_mqtt()
+        elif hasattr(network_manager, "loop"):
+            info("通过loop()方法让网络管理器处理MQTT重连", module="FSM")
+            # 网络管理器会在loop中处理MQTT重连
+            pass
+        else:
+            warning("网络管理器不支持MQTT重连", module="FSM")
+
+    except Exception as e:
+        error("MQTT重连尝试失败: {}", e, module="FSM")
 
 
 def _perform_shutdown_cleanup(context):

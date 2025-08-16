@@ -106,13 +106,14 @@ pytest app/tests/ --cov=app
   - LED状态同步
 - **状态处理**: 每个状态有独立的enter/exit/update处理函数
 
-### 3. 网络管理器 (NetworkManager) - `app/net/index.py`
-- **功能**: 统一的网络连接管理, 封装WiFi、MQTT、NTP
+### 3. 网络管理器 (NetworkManager) - `app/net/network_manager.py`
+- **功能**: 极简网络连接管理, 封装WiFi、MQTT、NTP
 - **特性**: 
-  - 统一的网络状态管理
-  - 指数退避重连策略
-  - 内存优化和连接池
-  - 集中的错误处理
+  - 极简架构，单一文件管理
+  - 异步非阻塞调用
+  - MQTT失败不影响WiFi连接
+  - 智能重连机制
+  - 事件驱动状态通知
 - **子模块**: 
   - WiFi管理器 (`app/net/wifi.py`)
   - MQTT控制器 (`app/net/mqtt.py`) 
