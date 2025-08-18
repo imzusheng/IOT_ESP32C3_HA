@@ -37,8 +37,8 @@ CONFIG = {
     },
     "wifi": {
         # 描述: 可用的WiFi网络列表
-        # 影响: 设备将按信号强度自动选择最佳网络连接
-        # 建议: 配置多个网络以提高连接成功率
+        # 影响: NetworkManager将扫描并按RSSI强度排序后依次尝试连接配置的网络
+        # 建议: 配置多个网络以提高连接成功率，系统会自动选择信号最强的可用网络
         "networks": [
             {"ssid": "zsm60p", "password": "25845600"},
             {"ssid": "leju_software", "password": "leju123456"},

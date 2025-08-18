@@ -1,5 +1,19 @@
 # app/net/wifi.py
-# 简化版WiFi管理器, 只提供基本的WiFi操作功能
+"""
+WiFi 管理器
+职责：
+- 提供 WiFi 网络扫描与信号强度排序，供其他模块选择最优连接点
+- 提供基础的连接/断开/状态检查接口，集成到 NetworkManager 流程中
+
+设计边界：
+- 不包含复杂的多网络选择逻辑（由 NetworkManager 或配置驱动）
+- 不含重试机制（由上层 NetworkManager/FSM 统一处理）
+- 扫描结果按 RSSI 降序返回，方便其他模块按信号强度决策
+
+扩展建议：
+- 可扩展支持企业级 WiFi（WPA2-Enterprise）
+- 可集成信道质量评估与连接历史统计
+"""
 import network
 from lib.logger import debug, info, warning, error
 

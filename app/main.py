@@ -1,149 +1,240 @@
-"""main.py - 依赖注入容器和系统启动"""
+# app/main.py
+"""
+ESP32C3 IoT 设备主程序
+职责：
+- 统一完成配置加载、日志初始化、事件总线、网络管理器与状态机的装配
+- 驱动主循环：事件分发 → FSM 更新 → 网络循环 → 看门狗喂狗 → 周期性维护
+
+架构关系：
+- EventBus 作为系统消息中枢，FSM/NetworkManager/其他模块通过事件解耦
+- FSM 负责系统状态演进与容错策略，NetworkManager 负责具体联网动作
+- MainController 不直接耦合业务细节，仅协调整体生命周期
+
+维护说明：
+- 主循环默认 100ms 周期，可视需要在配置中抽象
+- 统计输出与 GC 在 30s 周期执行，避免频繁抖动
+"""
 
 import utime as time
+import gc
 import machine
-
-# 1. 导入所有类
-from config import get_config
+from lib.logger import info, warning, error, debug, setup_logger
+from lib.config import load_config
 from lib.lock.event_bus import EventBus
-from lib.logger import info, warn, debug, error
-from fsm.core import create_state_machine
-from net import NetworkManager
-from hw.led import cleanup as led_cleanup
 
 
 class MainController:
-    """主控制器 - 负责系统初始化和事件订阅"""
-
-    def __init__(self, config):
-        self.config = config
-
-        info("EventBus 事件总线初始化...", module="Main")
-        self.event_bus = EventBus()
-
-        # 初始化网络管理器
-        info("NetworkManager 网络管理器初始化...", module="Main")
-        self.network_manager = NetworkManager(self.event_bus, self.config)
-
-        info("FSM 状态机初始化...", module="Main")
-        self.state_machine = create_state_machine(
-            config=self.config,
-            event_bus=self.event_bus,
-            network_manager=self.network_manager,
-        )
-
-    def start_system(self):
-        """启动系统 - 基于diff时间的主循环"""
-        info("启动系统...", module="Main")
+    """
+    主控制器
+    统一管理系统初始化、状态机和网络连接
+    """
+    
+    def __init__(self):
+        """初始化主控制器"""
+        self.config = None
+        self.event_bus = None
+        self.state_machine = None
+        self.network_manager = None
+        
+        # 运行控制
+        self.running = False
+        self.last_loop_time = 0
+        self.loop_interval = 100  # 100ms主循环间隔
+        
+        # 性能监控
+        self.loop_count = 0
+        self.last_stats_time = 0
+        
+    def initialize(self):
+        """初始化系统"""
         try:
-            main_loop_delay = self.config.get("system", {}).get(
-                "main_loop_delay", 100
-            )  # 设置为100ms,减少超时警告
-
-            # 持续运行, 直到收到关机信号
-            last_stats_time = time.ticks_ms()
-
-            while self.state_machine.get_current_state() != "SHUTDOWN":
-
-                # 固定循环周期控制
-                loop_start_time = time.ticks_ms()
-
-                # 驱动EventBus
-                self.event_bus.process_events()
-
-                # 驱动状态机
-                self.state_machine.update()
-
-                # 喂看门狗
-                self.state_machine.feed_watchdog()
-
-                # 处理LED更新
-                from hw.led import process_led_updates
-
-                process_led_updates()
-
-                # 处理SimpleNetworkManager的循环逻辑
-                if (
-                    hasattr(self, "network_manager")
-                    and hasattr(self.network_manager, "loop")
-                    and callable(getattr(self.network_manager, "loop"))
-                ):
-                    self.network_manager.loop()
-
-                # 定期输出调试信息
-                current_time = time.ticks_ms()
-                if time.ticks_diff(current_time, last_stats_time) >= 10000:
-                    debug(
-                        "主循环运行中... 当前状态: {}",
-                        self.state_machine.get_current_state(),
-                        module="Main",
-                    )
-                    last_stats_time = current_time
-
-                # 计算任务执行时间, 确保固定循环周期
-                elapsed_time = time.ticks_diff(time.ticks_ms(), loop_start_time)
-                if elapsed_time < main_loop_delay:
-                    # 如果任务执行时间小于设定周期, 休眠剩余时间
-                    remaining_time = main_loop_delay - elapsed_time
-                    time.sleep_ms(remaining_time)
-                else:
-                    # 只有当超时严重时才记录警告(超过200ms)
-                    if elapsed_time > 200:
-                        warn(
-                            "主循环执行严重超时: {}ms > {}ms",
-                            elapsed_time,
-                            main_loop_delay,
-                            module="Main",
-                        )
-                    # 轻微超时时让出CPU时间
-                    time.sleep_ms(1)
-
-            # 如果到达这里, 说明系统进入了SHUTDOWN状态
-            info("系统已进入关机状态", module="Main")
-
+            info("=== ESP32C3系统启动 ===", module="MAIN")
+            
+            # 1. 加载配置
+            self.config = load_config()
+            info("配置加载完成", module="MAIN")
+            
+            # 2. 设置日志
+            setup_logger(self.config)
+            info("日志系统初始化完成", module="MAIN")
+            
+            # 3. 初始化事件总线
+            self.event_bus = EventBus()
+            info("事件总线初始化完成", module="MAIN")
+            
+            # 4. 初始化网络管理器
+            from net.network_manager import NetworkManager
+            self.network_manager = NetworkManager(self.config, self.event_bus)
+            info("网络管理器初始化完成", module="MAIN")
+            
+            # 5. 初始化状态机
+            from fsm.core import FSM
+            self.state_machine = FSM(
+                self.event_bus, 
+                self.config, 
+                self.network_manager
+            )
+            info("状态机初始化完成", module="MAIN")
+            
+            # 6. 初始化LED
+            self._init_led()
+            
+            info("=== 系统初始化完成 ===", module="MAIN")
+            return True
+            
+        except Exception as e:
+            error("系统初始化失败: {}", e, module="MAIN")
+            return False
+            
+    def _init_led(self):
+        """初始化LED"""
+        try:
+            from hw.led import init_led
+            init_led()
+            info("LED初始化完成", module="MAIN")
+        except Exception as e:
+            error("LED初始化失败: {}", e, module="MAIN")
+            
+    def run(self):
+        """运行主循环"""
+        if not self.initialize():
+            error("系统初始化失败，无法启动", module="MAIN")
+            return
+            
+        self.running = True
+        self.last_loop_time = time.ticks_ms()
+        
+        info("=== 进入主循环 ===", module="MAIN")
+        
+        try:
+            while self.running:
+                self._main_loop()
+                
         except KeyboardInterrupt:
-            info("用户中断, 正在关闭", module="Main")
-            self.cleanup()
+            info("收到中断信号，正在关闭系统", module="MAIN")
         except Exception as e:
-            error(f"致命错误: {e}", module="Main")
-            self.cleanup()
-            # 系统重启
-            machine.reset()
-
-    def cleanup(self):
-        """清理资源"""
+            error("主循环异常: {}", e, module="MAIN")
+        finally:
+            self._cleanup()
+            
+    def _main_loop(self):
+        """主循环逻辑"""
+        current_time = time.ticks_ms()
+        
+        # 控制循环频率
+        elapsed = time.ticks_diff(current_time, self.last_loop_time)
+        if elapsed < self.loop_interval:
+            time.sleep_ms(self.loop_interval - elapsed)
+            current_time = time.ticks_ms()
+            
+        self.last_loop_time = current_time
+        self.loop_count += 1
+        
         try:
-            info("开始清理过程", module="Main")
-
-            # 停止状态机
-            if hasattr(self, "state_machine") and self.state_machine:
-                self.state_machine.force_state("SHUTDOWN")
-
-            # 清理LED
-            led_cleanup()
-
-            # 断开网络连接
-            if hasattr(self, "network_manager") and self.network_manager:
-                self.network_manager.disconnect()
-
-            # 保存缓存
-
-            info("清理完成", module="Main")
+            # 1. 更新事件总线
+            self.event_bus.process_events()
+            
+            # 2. 更新状态机
+            self.state_machine.update()
+            
+            # 3. 更新网络管理器
+            self.network_manager.loop()
+            
+            # 4. 喂看门狗
+            self.state_machine.feed_watchdog()
+            
+            # 5. 定期垃圾回收和统计
+            self._periodic_maintenance(current_time)
+            
         except Exception as e:
-            error(f"清理失败: {e}", module="Main")
+            error("主循环执行异常: {}", e, module="MAIN")
+            
+    def _periodic_maintenance(self, current_time):
+        """定期维护任务"""
+        # 每30秒执行一次
+        if time.ticks_diff(current_time, self.last_stats_time) >= 30000:
+            self.last_stats_time = current_time
+            
+            # 垃圾回收
+            gc.collect()
+            
+            # 输出统计信息
+            free_mem = gc.mem_free()
+            state = self.state_machine.get_current_state()
+            net_status = self.network_manager.get_status()
+            
+            info("系统状态 - 状态:{}, 内存:{}KB, 循环:{}, WiFi:{}, MQTT:{}", 
+                 state, free_mem//1024, self.loop_count,
+                 net_status['wifi'], net_status['mqtt'], 
+                 module="MAIN")
+                 
+            self.loop_count = 0  # 重置循环计数
+            
+    def _cleanup(self):
+        """清理资源"""
+        info("正在清理系统资源", module="MAIN")
+        
+        try:
+            # 停止状态机
+            if self.state_machine:
+                info("停止状态机", module="MAIN")
+                
+            # 断开网络连接
+            if self.network_manager:
+                self.network_manager.disconnect()
+                info("网络连接已断开", module="MAIN")
+                
+            # 清理LED
+            try:
+                from hw.led import cleanup_led
+                cleanup_led()
+                info("LED已清理", module="MAIN")
+            except:
+                pass
+                
+            # 最终垃圾回收
+            gc.collect()
+            
+            info("系统资源清理完成", module="MAIN")
+            
+        except Exception as e:
+            error("清理资源时发生异常: {}", e, module="MAIN")
+            
+    def stop(self):
+        """停止系统"""
+        info("收到停止信号", module="MAIN")
+        self.running = False
+        
+    def get_system_info(self):
+        """获取系统信息"""
+        try:
+            return {
+                "state": self.state_machine.get_current_state() if self.state_machine else "UNKNOWN",
+                "network": self.network_manager.get_status() if self.network_manager else {},
+                "memory": gc.mem_free(),
+                "uptime": time.ticks_ms(),
+                "loop_count": self.loop_count
+            }
+        except Exception as e:
+            error("获取系统信息失败: {}", e, module="MAIN")
+            return {}
+            
+    def force_network_reconnect(self):
+        """强制网络重连"""
+        if self.network_manager:
+            return self.network_manager.force_reconnect()
+        return False
+        
+    def force_state_change(self, state_name):
+        """强制状态改变"""
+        if self.state_machine:
+            self.state_machine.force_state(state_name)
 
 
 def main():
-    """主函数 - 系统入口点"""
-
-    # 加载配置
-    config = get_config()
-
-    # 创建主控制器
-    main_controller = MainController(config)
-
-    # 启动系统
-    main_controller.start_system()
+    """主函数"""
+    controller = MainController()
+    controller.run()
 
 
 if __name__ == "__main__":

@@ -1,5 +1,18 @@
 # app/net/mqtt.py
-# 简化版MQTT控制器, 只提供基本的MQTT操作功能
+"""
+MQTT 控制器
+职责：
+- 封装 MQTTClient 的连接/断开/发布/订阅/消息处理
+- 通过事件总线上报收到的消息，供系统其他模块使用
+
+设计边界：
+- 不包含指数退避重连与复杂会话保持策略（由上层 NetworkManager/FSM 统一治理）
+- 仅做轻量的连接状态管理，避免在资源受限环境中过度占用内存
+
+扩展建议：
+- 可引入心跳/遗嘱/自动重连等策略，但需统一设计避免与FSM职责重叠
+- 可通过主题前缀/设备ID规范化上报主题
+"""
 from lib.lock.umqtt import MQTTClient
 import machine
 import utime as time

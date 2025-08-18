@@ -145,12 +145,12 @@ pytest app/tests/ --cov=app
 
 ### 6. WiFi管理器 (WifiManager) - `app/net/wifi.py`
 - **功能**: 健壮的WiFi连接管理
-- **特性**: 多网络选择、RSSI排序、自动重连、非阻塞连接
+- **特性**: 扫描与RSSI排序、连接/断开、状态检查（多网络选择由上层实现）
 - **事件**: 发布 WIFI_STATE_CHANGE 事件
 
 ### 7. MQTT控制器 (MqttController) - `app/net/mqtt.py`
 - **功能**: 高效的MQTT通信管理
-- **特性**: 指数退避重连、内存优化、心跳监控
+- **特性**: 轻量连接管理、内存优化（指数退避/心跳可在上层统一策略后引入）
 - **事件**: 发布 MQTT_STATE_CHANGE 事件
 
 ### 8. 传感器管理器 (SensorManager) - `app/hw/sensor.py`
@@ -268,7 +268,7 @@ object_pool.add_pool("system_events", lambda: {"event": "", "state": ""}, 5)
 
 ### 核心配置段
 - **mqtt**: MQTT服务器连接配置
-- **wifi**: WiFi网络配置和多网络支持
+- **wifi**: WiFi网络配置（当前为单SSID连接；多网络选择由上层实现）
 - **daemon**: 系统守护进程配置(LED引脚、监控间隔等)
 - **system**: 系统行为配置(调试模式、主循环延迟等)
 - **device**: 设备信息配置(名称、位置、版本等)

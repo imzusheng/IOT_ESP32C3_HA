@@ -1,332 +1,315 @@
 # app/fsm/core.py
 """
-函数式状态机核心实现
-使用函数和字典替代类继承, 简化状态机架构, 提高稳定性
+状态机核心实现
+简化状态模型为 5 个核心状态（BOOT/INIT/CONNECTING/RUNNING/ERROR），移除独立的 NetworkFSM 冗余
+
+职责：
+- 订阅网络/系统关键事件（WIFI_STATE_CHANGE、MQTT_STATE_CHANGE、SYSTEM_STATE_CHANGE）
+- 驱动系统从启动到运行的状态演进，并在异常时进入 ERROR 并执行重试/重启策略
+- 统一控制 LED 指示与看门狗喂狗
+
+状态与转换：
+- BOOT -> INIT -> CONNECTING -> RUNNING
+- 运行中发生断链则回到 CONNECTING；长时间连接失败进入 ERROR；超过最大错误次数重启
+
+设计边界：
+- 具体网络连接流程委托给 NetworkManager
+- 退避/重试策略可后续在 FSM 或 NetworkManager 层统一引入
 """
 
 import utime as time
+import machine
+import gc
+from lib.logger import info, warning, error, debug
 from lib.lock.event_bus import EVENTS
-from lib.logger import info, error, warning, debug
-from .state_const import (
-    STATE_BOOT,
-    STATE_NAMES,
-    STATE_TRANSITIONS,
-    get_state_name,
-    get_next_state,
-)
-from .handlers import STATE_HANDLERS
-from .context import (
-    create_fsm_context,
-    feed_watchdog,
-    update_led_for_state,
-    save_state_to_cache,
-    get_state_info as context_get_state_info,
-    increase_error_count,
-    reset_error_count,
-)
+
+# 简化的状态常量 - 合并BOOT/INIT/CONNECTING为INIT
+STATE_INIT = 0  # 合并：系统启动、初始化、网络连接
+STATE_RUNNING = 1
+STATE_ERROR = 2
+
+STATE_NAMES = {
+    STATE_INIT: "INIT",
+    STATE_RUNNING: "RUNNING", 
+    STATE_ERROR: "ERROR"
+}
+
+# 简化的状态转换表
+STATE_TRANSITIONS = {
+    STATE_INIT: {"connected": STATE_RUNNING, "timeout": STATE_ERROR, "error": STATE_ERROR},
+    STATE_RUNNING: {"disconnected": STATE_INIT, "error": STATE_ERROR},
+    STATE_ERROR: {"retry": STATE_INIT}
+}
 
 
-class FunctionalStateMachine:
+class FSM:
     """
-    函数式状态机类
-    采用函数和字典查找替代类继承, 彻底简化架构
+    状态机类
+    合并原有的FunctionalStateMachine功能，消除冗余
     """
-
-    def __init__(self, event_bus, config, network_manager=None, static_cache=None):
-        """
-        初始化函数式状态机
-        Args:
-            event_bus: 事件总线实例
-            static_cache: 静态缓存实例 (暂时禁用)
-            config: 配置字典
-            network_manager: 网络管理器实例
-        """
-        # 创建状态机上下文
-        self.context = create_fsm_context(
-            event_bus, config, network_manager=network_manager
-        )
-
+    
+    def __init__(self, event_bus, config, network_manager=None):
+        """初始化状态机"""
+        self.event_bus = event_bus
+        self.config = config
+        self.network_manager = network_manager
+        
+        # 状态数据
+        self.current_state = STATE_INIT
+        self.state_start_time = time.ticks_ms()
+        self.error_count = 0
+        self.max_errors = config.get("daemon", {}).get("max_error_count", 5)
+        
+        # 看门狗
+        self.wdt = None
+        self._init_watchdog()
+        
         # 订阅事件
         self._subscribe_events()
-
+        
         # 进入初始状态
-        self._enter_state(STATE_BOOT)
-
-    def _subscribe_events(self):
-        """订阅事件"""
-        events_to_subscribe = [
-            EVENTS["SYSTEM_STATE_CHANGE"],
-            EVENTS["SYSTEM_ERROR"],
-            EVENTS["WIFI_STATE_CHANGE"],
-            EVENTS["MQTT_STATE_CHANGE"],
-            EVENTS["NTP_STATE_CHANGE"],
-        ]
-
-        for event in events_to_subscribe:
-            self.context["event_bus"].subscribe(event, self._handle_event)
-            debug("状态机订阅事件: {}", event, module="FSM")
-
-        # 订阅网络状态变化事件
-        self.context["event_bus"].subscribe(
-            "network_state_change", self._handle_network_state_change
-        )
-        debug("状态机订阅网络状态事件: network_state_change", module="FSM")
-
-    def _enter_state(self, new_state):
-        """进入指定状态"""
-        if new_state == self.context["current_state"]:
-            return False
-
-        # 退出当前状态
-        current_state = self.context["current_state"]
-        if current_state is not None:
-            current_handler = STATE_HANDLERS.get(current_state)
-            if current_handler:
-                try:
-                    current_handler("exit", self.context)
-                except Exception as e:
-                    error(
-                        "退出状态 {} 时发生错误: {}",
-                        get_state_name(current_state),
-                        e,
-                        module="FSM",
-                    )
-
-        # 更新状态
-        self.context["previous_state"] = self.context["current_state"]
-        self.context["current_state"] = new_state
-        self.context["state_start_time"] = time.ticks_ms()
-
-        # 进入新状态
-        new_handler = STATE_HANDLERS.get(new_state)
-        if new_handler:
-            try:
-                result = new_handler("enter", self.context)
-                # 处理状态处理函数返回的事件
-                if result:
-                    self._handle_internal_event(result)
-            except Exception as e:
-                error(
-                    "进入状态 {} 时发生错误: {}",
-                    get_state_name(new_state),
-                    e,
-                    module="FSM",
-                )
-        else:
-            error("未找到状态处理函数: {}", get_state_name(new_state), module="FSM")
-
-        # 更新LED状态
-        update_led_for_state(self.context)
-
-        # 保存状态到缓存
-        save_state_to_cache(self.context)
-
-        return True
-
-    def _handle_event(self, event_name, *args, **kwargs):
-        """处理外部事件"""
+        self._enter_state(STATE_INIT)
+        
+    def _init_watchdog(self):
+        """初始化看门狗"""
         try:
-            debug(
-                "状态机收到事件: {} (参数: {}, {})",
-                event_name,
-                args,
-                kwargs,
-                module="FSM",
-            )
-
-            # 将事件转换为内部事件
-            internal_event = self._convert_external_event(event_name, *args, **kwargs)
-            debug("事件转换: {} -> {}", event_name, internal_event, module="FSM")
-
-            if internal_event:
-                # 处理状态转换
-                self._handle_internal_event(internal_event)
-
-            # 将事件传递给当前状态处理函数
-            current_state = self.context["current_state"]
-            state_handler = STATE_HANDLERS.get(current_state)
-            if state_handler:
-                try:
-                    debug(
-                        "状态 {} 处理事件 {}",
-                        get_state_name(current_state),
-                        event_name,
-                        module="FSM",
-                    )
-                    result = state_handler(event_name, self.context)
-                    if result:
-                        debug(
-                            "状态 {} 返回内部事件: {}",
-                            get_state_name(current_state),
-                            result,
-                            module="FSM",
-                        )
-                        self._handle_internal_event(result)
-                except Exception as e:
-                    error(
-                        "状态 {} 处理事件 {} 时发生错误: {}",
-                        get_state_name(current_state),
-                        event_name,
-                        e,
-                        module="FSM",
-                    )
-
+            wdt_config = self.config.get("daemon", {}).get("watchdog", {})
+            if wdt_config.get("enabled", True):
+                timeout = wdt_config.get("timeout", 120000)
+                self.wdt = machine.WDT(timeout=timeout)
+                info("看门狗已启用, 超时时间: {} ms", timeout, module="FSM")
+        except Exception as e:
+            error("启用看门狗失败: {}", e, module="FSM")
+            
+    def _subscribe_events(self):
+        """订阅必要的事件"""
+        events_to_subscribe = [
+            EVENTS["WIFI_STATE_CHANGE"],
+            EVENTS["MQTT_STATE_CHANGE"], 
+            EVENTS["SYSTEM_STATE_CHANGE"]
+        ]
+        
+        for event in events_to_subscribe:
+            self.event_bus.subscribe(event, self._handle_event)
+            debug("状态机订阅事件: {}", event, module="FSM")
+            
+    def _enter_state(self, new_state):
+        """进入新状态"""
+        old_state = self.current_state
+        self.current_state = new_state
+        self.state_start_time = time.ticks_ms()
+        
+        info("状态转换: {} -> {}", 
+             STATE_NAMES.get(old_state, "UNKNOWN"),
+             STATE_NAMES.get(new_state, "UNKNOWN"), 
+             module="FSM")
+             
+        # 执行状态进入逻辑
+        self._handle_state_enter(new_state)
+        
+        # 更新LED状态
+        self._update_led()
+        
+    def _handle_state_enter(self, state):
+        """处理状态进入逻辑"""
+        if state == STATE_INIT:
+            info("系统启动、初始化并连接网络中...", module="FSM")
+            self._init_and_connect_system()
+            
+        elif state == STATE_RUNNING:
+            info("系统正常运行", module="FSM")
+            self.error_count = 0  # 重置错误计数
+            
+        elif state == STATE_ERROR:
+            info("系统错误状态", module="FSM")
+            self.error_count += 1
+            
+    def _init_and_connect_system(self):
+        """初始化系统并启动网络连接"""
+        try:
+            # 执行基本的系统初始化
+            info("执行系统初始化任务", module="FSM")
+            
+            # 启动网络连接
+            if not self.network_manager:
+                error("网络管理器不可用", module="FSM")
+                self._transition_to_error()
+                return
+                
+            # 直接调用网络管理器的连接方法
+            success = self.network_manager.connect()
+            if not success:
+                warning("网络连接启动失败", module="FSM")
+                
+        except Exception as e:
+            error("系统初始化和网络连接失败: {}", e, module="FSM")
+            self._transition_to_error()
+            
+    def _transition_to_error(self):
+        """转换到错误状态"""
+        if self.error_count >= self.max_errors:
+            error("达到最大错误次数，系统将重启", module="FSM")
+            machine.reset()
+        else:
+            self._enter_state(STATE_ERROR)
+            
+    def _update_led(self):
+        """更新LED状态"""
+        try:
+            from hw.led import set_led_mode
+            
+            led_modes = {
+                STATE_BOOT: "on",
+                STATE_INIT: "blink", 
+                STATE_CONNECTING: "pulse",
+                STATE_RUNNING: "cruise",
+                STATE_ERROR: "blink"
+            }
+            
+            mode = led_modes.get(self.current_state, "off")
+            set_led_mode(mode)
+            
+        except Exception as e:
+            error("更新LED状态失败: {}", e, module="FSM")
+            
+    def _handle_event(self, event_name, *args, **kwargs):
+        """处理事件"""
+        try:
+            # 处理网络相关事件
+            if event_name == EVENTS["WIFI_STATE_CHANGE"]:
+                self._handle_wifi_event(*args, **kwargs)
+            elif event_name == EVENTS["MQTT_STATE_CHANGE"]:
+                self._handle_mqtt_event(*args, **kwargs)
+            elif event_name == EVENTS["SYSTEM_STATE_CHANGE"]:
+                self._handle_system_event(*args, **kwargs)
+                
         except Exception as e:
             error("处理事件 {} 时发生错误: {}", event_name, e, module="FSM")
-
-    def _convert_external_event(self, event_name, *args, **kwargs):
-        """将外部事件转换为内部事件"""
-        try:
-            if event_name == EVENTS["WIFI_STATE_CHANGE"]:
-                state = kwargs.get("state", "")
-                if state == "connected":
-                    return "wifi_connected"
-                elif state == "disconnected":
-                    return "wifi_disconnected"
-
-            elif event_name == EVENTS["MQTT_STATE_CHANGE"]:
-                state = kwargs.get("state", "")
-                if state == "connected":
-                    return "mqtt_connected"
-                elif state == "disconnected":
-                    return "mqtt_disconnected"
-
-            elif event_name == EVENTS["SYSTEM_STATE_CHANGE"]:
-                state = kwargs.get("state", "")
-                # 直接返回状态值作为内部事件
-                return state
-
-            elif event_name == EVENTS["SYSTEM_ERROR"]:
-                # 增加错误计数
-                if increase_error_count(self.context):
-                    return "safe_mode"
-                return "error"
-
-            elif event_name == EVENTS["NTP_STATE_CHANGE"]:
-                # NTP事件通常不直接触发状态转换
-                state = kwargs.get("state", "")
-                info("NTP状态变化: {}", state, module="FSM")
-                return None
-
-        except Exception as e:
-            error("转换外部事件 {} 时发生错误: {}", event_name, e, module="FSM")
-
-        return None
-
-    def _handle_network_state_change(self, event_name, *args, **kwargs):
-        """处理网络状态变化事件"""
-        state = kwargs.get("state", "unknown")
-        info("网络状态变化: {} (参数: {})", state, kwargs, module="FSM")
-
-        # 网络状态变化时, 根据当前状态决定是否需要重新连接
-        current_state = self.context["current_state"]
-        if state == "disconnected" and current_state in [
-            STATE_RUNNING,
-            STATE_NETWORKING,
-        ]:
-            warning("网络断开, 重新连接", module="FSM")
-            self._handle_internal_event("networking")
-
-    def _handle_internal_event(self, event):
-        """处理内部事件, 执行状态转换"""
-        current_state = self.context["current_state"]
-        next_state = get_next_state(current_state, event)
-
-        if next_state is not None and next_state != current_state:
-            self._enter_state(next_state)
-        else:
-            # 事件未触发状态转换, 记录调试信息
-            if next_state is None:
-                info(
-                    "事件 {} 在状态 {} 中未定义转换",
-                    event,
-                    get_state_name(current_state),
-                    module="FSM",
-                )
-
+            
+    def _handle_wifi_event(self, *args, **kwargs):
+        """处理WiFi事件"""
+        state = kwargs.get('state', 'unknown')
+        
+        if state == 'connected' and self.current_state == STATE_INIT:
+            # WiFi连接成功，检查是否完全连接
+            info("WiFi连接成功", module="FSM")
+            if self.network_manager and self.network_manager.is_connected():
+                self._enter_state(STATE_RUNNING)
+            
+        elif state == 'disconnected' and self.current_state == STATE_RUNNING:
+            # WiFi断开，需要重新连接
+            warning("WiFi连接断开，重新连接", module="FSM")
+            self._enter_state(STATE_INIT)
+            
+    def _handle_mqtt_event(self, *args, **kwargs):
+        """处理MQTT事件"""
+        state = kwargs.get('state', 'unknown')
+        
+        if state == 'connected' and self.current_state == STATE_INIT:
+            # MQTT连接成功，检查是否完全连接
+            info("MQTT连接成功", module="FSM")
+            if self.network_manager and self.network_manager.is_connected():
+                self._enter_state(STATE_RUNNING)
+            
+        elif state == 'disconnected' and self.current_state == STATE_RUNNING:
+            # MQTT断开，重新连接
+            warning("MQTT连接断开，重新连接", module="FSM")
+            self._enter_state(STATE_INIT)
+            
+    def _handle_system_event(self, *args, **kwargs):
+        """处理系统事件"""
+        state = kwargs.get('state', 'unknown')
+        
+        if state == 'running' and self.current_state == STATE_INIT:
+            # 系统报告运行状态
+            self._enter_state(STATE_RUNNING)
+            
     def update(self):
-        """更新状态机, 处理定时任务等"""
+        """状态机主循环更新"""
         try:
-            # 喂看门狗
-            feed_watchdog(self.context)
-
-            # 调用当前状态的更新处理
-            current_state = self.context["current_state"]
-            state_handler = STATE_HANDLERS.get(current_state)
-            if state_handler:
-                result = state_handler("update", self.context)
-                if result:
-                    self._handle_internal_event(result)
-
+            current_time = time.ticks_ms()
+            elapsed = time.ticks_diff(current_time, self.state_start_time)
+            
+            # 根据当前状态执行相应逻辑
+            if self.current_state == STATE_INIT:
+                # INIT状态：检查网络连接状态
+                if self.network_manager and self.network_manager.is_connected():
+                    self._enter_state(STATE_RUNNING)
+                elif elapsed >= 60000:  # 60秒超时
+                    warning("网络连接超时", module="FSM")
+                    self._transition_to_error()
+                    
+            elif self.current_state == STATE_RUNNING:
+                # 运行状态的定期检查
+                self._check_system_health()
+                
+            elif self.current_state == STATE_ERROR:
+                if elapsed >= 10000:  # 10秒后重试
+                    info("错误状态超时，尝试重新连接", module="FSM")
+                    self._enter_state(STATE_CONNECTING)
+                    
         except Exception as e:
-            error("更新状态机时发生错误: {}", e, module="FSM")
-
-    # ========== 公共接口方法(保持兼容性) ==========
-
+            error("状态机更新失败: {}", e, module="FSM")
+            
+    def _check_system_health(self):
+        """检查系统健康状态"""
+        try:
+            # 检查网络连接状态
+            if self.network_manager and hasattr(self.network_manager, 'is_connected'):
+                if not self.network_manager.is_connected():
+                    warning("网络连接丢失", module="FSM")
+                    self._enter_state(STATE_CONNECTING)
+                    return
+                    
+            # 定期垃圾回收
+            current_time = time.ticks_ms()
+            if not hasattr(self, '_last_gc_time'):
+                self._last_gc_time = current_time
+                
+            if time.ticks_diff(current_time, self._last_gc_time) >= 30000:  # 30秒
+                gc.collect()
+                self._last_gc_time = current_time
+                
+        except Exception as e:
+            error("系统健康检查失败: {}", e, module="FSM")
+            
     def get_current_state(self):
         """获取当前状态名称"""
-        return get_state_name(self.context["current_state"])
-
-    def get_state_duration(self):
-        """获取当前状态持续时间(毫秒)"""
-        return time.ticks_diff(time.ticks_ms(), self.context["state_start_time"])
-
-    def get_state_info(self):
-        """获取状态信息"""
-        return context_get_state_info(self.context)
-
-    def force_state(self, state_name):
-        """强制设置状态"""
-        # 将状态名称转换为状态ID
-        state_id = None
-        for sid, name in STATE_NAMES.items():
-            if name == state_name:
-                state_id = sid
-                break
-
-        if state_id is not None:
-            info("强制设置状态为: {}", state_name, module="FSM")
-            return self._enter_state(state_id)
-        else:
-            error("未知的状态名称: {}", state_name, module="FSM")
-            return False
-
-    def transition_to(self, new_state_name, reason=""):
-        """转换到新状态(兼容性接口)"""
-        info("请求状态转换: {} (原因: {})", new_state_name, reason, module="FSM")
-        return self.force_state(new_state_name)
-
-    def increase_error_count(self):
-        """增加错误计数"""
-        if increase_error_count(self.context):
-            # 达到最大错误数, 进入安全模式
-            self._handle_internal_event("safe_mode")
-
-    def reset_error_count(self):
-        """重置错误计数"""
-        reset_error_count(self.context)
-
+        return STATE_NAMES.get(self.current_state, "UNKNOWN")
+        
     def feed_watchdog(self):
         """喂看门狗"""
-        feed_watchdog(self.context)
+        try:
+            if self.wdt:
+                self.wdt.feed()
+        except Exception as e:
+            error("喂看门狗失败: {}", e, module="FSM")
+            
+    def force_state(self, state_name):
+        """强制设置状态"""
+        state_map = {v: k for k, v in STATE_NAMES.items()}
+        if state_name in state_map:
+            info("强制设置状态为: {}", state_name, module="FSM")
+            self._enter_state(state_map[state_name])
+        else:
+            error("未知的状态名称: {}", state_name, module="FSM")
 
 
-# 为了保持兼容性, 创建别名
-StateMachine = FunctionalStateMachine
+# 兼容性函数
+def create_state_machine(config, event_bus, network_manager=None, static_cache=None):
+    """创建状态机实例（保持兼容性）"""
+    return FSM(event_bus, config, network_manager)
 
-# 全局状态机实例
+
+# 全局实例管理（保持兼容性）
 _state_machine_instance = None
-
 
 def get_state_machine():
     """获取全局状态机实例"""
     return _state_machine_instance
 
-
-def create_state_machine(config, event_bus, network_manager=None, static_cache=None):
+def create_global_state_machine(config, event_bus, network_manager=None, static_cache=None):
     """创建全局状态机实例"""
     global _state_machine_instance
-    _state_machine_instance = FunctionalStateMachine(
-        event_bus, config, network_manager=network_manager, static_cache=static_cache
-    )
+    _state_machine_instance = FSM(event_bus, config, network_manager)
     return _state_machine_instance

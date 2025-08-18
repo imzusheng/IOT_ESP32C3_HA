@@ -17,8 +17,8 @@
 ## ✨ 主要特性
 
 - **🔄 事件驱动架构**: 基于EventBus的松耦合设计, 支持模块间通信
-- **📡 多网络WiFi支持**: 自动扫描并连接信号最强的配置网络
-- **📡 MQTT通信**: 高效的MQTT客户端, 支持指数退避重连策略和内存优化
+- **📡 WiFi连接管理**: 网络扫描、连接、状态检查和信号强度评估
+- **📡 MQTT通信**: 高效的MQTT客户端, 支持简化连接管理和内存优化
 - **📊 系统监控**: 实时监控温度、内存使用和系统健康状态
 - **🛠️ 智能错误恢复**: 分级错误处理和自动恢复机制
 - **💾 内存优化**: 对象池模式和智能垃圾回收, 适合ESP32C3的264KB内存限制
@@ -33,11 +33,11 @@
 IOT_ESP32C3/
 ├── app/                    # 开发源代码目录(编译后直接上传到设备根目录)
 │   ├── lib/               # 通用库和工具模块
-│   │   ├── event_bus.py   # 事件总线
 │   │   ├── object_pool.py # 对象池管理器(废弃,  请勿使用)
 │   │   ├── static_cache.py # 静态缓存系统(废弃,  请勿使用)
 │   │   ├── logger.py      # 日志系统
 │   │   └── lock/          # 不可编辑的外部库
+│   │       ├── event_bus.py   # 事件总线
 │   │       ├── umqtt.py   # MQTT客户端库
 │   │       └── ulogging.py # 轻量级日志库
 │   ├── hw/                # 硬件相关模块
@@ -60,7 +60,7 @@ IOT_ESP32C3/
 ### 核心架构组件
 
 #### 1. 事件总线 (EventBus)
-- **位置**: [`app/lib/event_bus.py`](app/lib/event_bus.py)
+- **位置**: [`app/lib/lock/event_bus.py`](app/lib/lock/event_bus.py)
 - **功能**: 模块间通信的核心枢纽, 支持发布-订阅模式
 - **特性**: 异步非阻塞事件处理、错误隔离、内存优化、计时器队列驱动
 - **实现**: 基于硬件计时器的循环队列系统, 避免 micropython.schedule 的 queue full 问题
@@ -71,7 +71,7 @@ IOT_ESP32C3/
 - **特性**: 减少GC压力、内存预分配、智能回收
 
 #### 3. 状态机系统 (FSM)
-- **位置**: [`app/fsm.py`](app/fsm.py)
+- **位置**: [`app/fsm/core.py`](app/fsm/core.py)
 - **功能**: 清晰的系统状态管理和转换
 - **支持状态**: BOOT → INIT → NETWORKING → RUNNING → WARNING → ERROR → SAFE_MODE → RECOVERY → SHUTDOWN
 
@@ -103,12 +103,12 @@ IOT_ESP32C3/
 #### 7. WiFi管理器 (WifiManager)
 - **位置**: [`app/net/wifi.py`](app/net/wifi.py)
 - **功能**: 健壮的WiFi连接管理
-- **特性**: 多网络选择、RSSI排序、自动重连
+- **特性**: 扫描、连接、断开、连接状态检查
 
 #### 8. MQTT控制器 (MqttController)
 - **位置**: [`app/net/mqtt.py`](app/net/mqtt.py)
 - **功能**: 高效的MQTT通信管理
-- **特性**: 指数退避重连、内存优化、心跳监控
+- **特性**: 心跳监控、内存优化
 
 ### 工具和辅助模块
 
@@ -148,7 +148,7 @@ IOT_ESP32C3/
 ## 🔄 事件驱动系统
 
 ### 事件类型定义
-- **位置**: [`app/event_const.py`](app/event_const.py)
+- **位置**: 事件常量当前由各模块内联定义，后续如抽离将放置于 `app/event_const.py`
 - **包含**: 系统事件、网络事件、传感器事件、错误事件
 
 ### 事件流程示例
@@ -189,20 +189,17 @@ WiFi连接成功 → NTP时间同步 → TIME_UPDATED事件 → 计时器队列�
     "topic": "lzs/esp32c3",         # MQTT主题
     "keepalive": 60,                # 心跳间隔(秒)
     "reconnect_delay": 5,           # 重连延迟(秒)
-    "max_retries": 3,               # 最大重试次数
-    "exponential_backoff": True,    # 启用指数退避策略
-    "max_backoff_time": 300,        # 最大退避时间(秒)
-    "backoff_multiplier": 2         # 退避倍数因子
+
+
 }
 ```
 
 #### WiFi配置
 ```python
 "wifi": {
-    "networks": [                   # WiFi网络列表
-        {"ssid": "zsm60p", "password": "25845600"},
-        {"ssid": "leju_software", "password": "leju123456"}
-    ],
+    # 说明：当前实现基于单个SSID连接；如需多网络选择，请在上层管理器中实现按RSSI或优先级选择逻辑
+    "ssid": "your-ssid",
+    "password": "your-password",
     "config": {
         "timeout": 15,              # 连接超时(秒)
         "scan_interval": 30,        # 扫描间隔(秒)
@@ -411,11 +408,10 @@ python build.py --clean-cache
 8. **主循环** → 系统稳定运行
 
 ### MQTT 重连机制
-当MQTT连接断开时, 系统采用智能的指数退避重连策略：
-- **第1轮**: 立即重试3次
-- **第2轮**: 等待5秒后重试3次
-- **第3轮**: 等待10秒后重试3次
-- **第4轮**: 等待20秒后重试3次
+当前实现采用简化的重连策略：
+- 在WiFi已连接的前提下，周期性检查MQTT连接状态
+- 断开时尝试直接重连（固定等待间隔），未实现指数退避
+- 后续可在 NetworkManager/FSM 层统一引入退避与分级重连策略
 - **第5轮**: 等待40秒后重试3次
 - **第6轮**: 等待80秒后重试3次
 - **第7轮**: 等待160秒后重试3次
@@ -465,7 +461,7 @@ python build.py --clean-cache
 ## 🌐 Web配置界面
 
 项目包含基于Web Bluetooth的配置界面：
-- **位置**: [`web/index.html`](web/index.html)
+- **状态**: 规划中（当前仓库未包含 web/index.html 文件）
 - **功能**: 蓝牙连接、WiFi配置、MQTT配置、设备配置
 - **设计**: Apple设计风格, 响应式布局
 - **浏览器要求**: 支持Web Bluetooth API的现代浏览器
@@ -474,7 +470,7 @@ python build.py --clean-cache
 
 - **内存限制**: ESP32C3只有264KB内存, 必须时刻注意内存使用
 - **文件位置**: 主要代码位于 `./app` 目录, 但上传到设备时直接位于根目录
-- **路径引用**: 设备上使用 `from lib.event_bus import EventBus` 等相对导入, MicroPython自动识别 `lib/` 目录
+- **路径引用**: 设备上使用 `from lib.lock.event_bus import EventBus` 等相对导入, MicroPython自动识别 `lib/` 目录
 - **MicroPython导入机制**: 由于`build.py`脚本会将`app/`目录下的所有文件直接上传到设备的根目录, 因此在设备上不存在`app`这个包。所有的导入都必须从根目录开始
 - **配置管理**: 所有配置项都在 `config.py` 中定义
 - **语言**: 代码注释和文档使用中文 (✅ 已完成全面中文化)
