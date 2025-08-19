@@ -217,6 +217,15 @@ class FSM:
             # WiFi断开，需要重新连接
             warning("WiFi连接断开，重新连接", module="FSM")
             self._enter_state(STATE_INIT)
+        
+        # 连接阶段发生断开/失败: 不改变状态机策略，但让LED进入SOS提示
+        elif state == 'disconnected' and self.current_state in (STATE_INIT, STATE_CONNECTING):
+            try:
+                from hw.led import set_led_mode
+                set_led_mode('sos')
+                debug("WiFi断开于连接阶段: LED进入SOS模式", module="FSM")
+            except Exception:
+                pass
             
     def _handle_mqtt_event(self, *args, **kwargs):
         """处理MQTT事件"""
@@ -232,6 +241,15 @@ class FSM:
             # MQTT断开，重新连接
             warning("MQTT连接断开，重新连接", module="FSM")
             self._enter_state(STATE_INIT)
+        
+        # 连接阶段发生断开/失败: 不改变状态机策略，但让LED进入SOS提示
+        elif state == 'disconnected' and self.current_state in (STATE_INIT, STATE_CONNECTING):
+            try:
+                from hw.led import set_led_mode
+                set_led_mode('sos')
+                debug("MQTT断开于连接阶段: LED进入SOS模式", module="FSM")
+            except Exception:
+                pass
             
     def _handle_system_event(self, *args, **kwargs):
         """处理系统事件"""
