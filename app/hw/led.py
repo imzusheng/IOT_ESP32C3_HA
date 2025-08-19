@@ -13,15 +13,7 @@
 import machine
 import utime as time
 import micropython
-from lib.logger import debug, info, warning, error
-
-# 尝试导入uasyncio, 如果失败则禁用该功能
-try:
-    import uasyncio
-
-    UASYNCIO_AVAILABLE = True
-except ImportError:
-    UASYNCIO_AVAILABLE = False
+from lib.logger import info, error
 
 # =============================================================================
 # LED配置
@@ -245,6 +237,35 @@ def process_led_updates():
     global _instance
     if _instance:
         _instance.manual_update()
+
+
+def init_led():
+    """
+    初始化LED系统。
+    为了向后兼容性而提供的函数，实际上LED会在首次调用时自动初始化。
+    
+    Example:
+        from hw.led import init_led
+        init_led()
+    """
+    # LED控制器会在首次获取实例时自动初始化
+    _get_instance()
+    info("LED系统初始化完成", module="LED")
+
+
+def set_led_mode(mode: str):
+    """
+    设置LED模式。
+    这是play函数的别名，为了向后兼容性而提供。
+    
+    Args:
+        mode (str): LED模式，支持 'off', 'blink', 'pulse', 'cruise', 'sos'
+        
+    Example:
+        from hw.led import set_led_mode
+        set_led_mode('blink')
+    """
+    play(mode)
 
 
 # LED module loaded silently

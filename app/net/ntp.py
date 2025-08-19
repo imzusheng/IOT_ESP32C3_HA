@@ -14,7 +14,7 @@ NTP 时间同步管理器
 - 同步后与 RTC/本地时区集成
 """
 import utime as time
-from lib.logger import debug, info, warning, error
+from lib.logger import info, error
 
 try:
     import ntptime

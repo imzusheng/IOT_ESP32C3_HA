@@ -19,7 +19,7 @@ import gc
 import utime as time
 import machine
 import sys
-from lib.logger import debug, info, warning, error
+from lib.logger import info, error
 
 
 def check_memory():

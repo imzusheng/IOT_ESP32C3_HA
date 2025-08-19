@@ -17,9 +17,8 @@ ESP32C3 IoT 设备主程序
 
 import utime as time
 import gc
-import machine
-from lib.logger import info, warning, error, debug, setup_logger
-from lib.config import load_config
+from lib.logger import info, warning, error, debug
+from config import get_config
 from lib.lock.event_bus import EventBus
 
 
@@ -51,12 +50,12 @@ class MainController:
             info("=== ESP32C3系统启动 ===", module="MAIN")
             
             # 1. 加载配置
-            self.config = load_config()
+            from config import get_config
+            self.config = get_config()
             info("配置加载完成", module="MAIN")
             
-            # 2. 设置日志
-            setup_logger(self.config)
-            info("日志系统初始化完成", module="MAIN")
+            # 2. 日志系统为零配置、全局可用，无需手动初始化
+            info("日志系统准备就绪", module="MAIN")
             
             # 3. 初始化事件总线
             self.event_bus = EventBus()

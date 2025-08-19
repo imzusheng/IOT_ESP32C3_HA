@@ -15,7 +15,7 @@ WiFi 管理器
 - 可集成信道质量评估与连接历史统计
 """
 import network
-from lib.logger import debug, info, warning, error
+from lib.logger import info, error, warning
 
 
 class WifiManager:
@@ -62,7 +62,7 @@ class WifiManager:
             # 检查扫描是否超时
             elapsed = time.ticks_diff(time.ticks_ms(), start_time)
             if elapsed > timeout_ms:
-                warn("WiFi扫描耗时过长: {}ms", elapsed, module="NET")
+                warning("WiFi扫描耗时过长: {}ms", elapsed, module="NET")
 
             networks = []
 

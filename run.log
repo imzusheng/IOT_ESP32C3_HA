@@ -1,69 +1,44 @@
 >>> %Run -c $EDITOR_CONTENT
 
 MPY: soft reboot
-[00:00:13] [INFO ] [MAIN] EventBus 事件总线初始化...
-[00:00:13] [INFO ] [MAIN] NetworkManager 网络管理器初始化...
-[00:00:13] [INFO ] [NET] 网络管理器初始化完成
-[00:00:13] [INFO ] [MAIN] FSM 状态机初始化...
-[00:00:13] [INFO ] [FSM] 看门狗已启用, 超时时间: 120000 ms
-[00:00:13] [INFO ] [MAIN] 启动系统...
-[00:00:13] [INFO ] [FSM] 状态: update ,启动阶段完成, 发布boot_complete事件
-[00:00:13] [INFO ] [FSM] 状态: exit ,退出启动状态
-[00:00:13] [INFO ] [FSM] 状态: enter ,进入模块初始化...
-[00:00:13] [INFO ] [FSM] 执行系统初始化任务
-[00:00:13] [INFO ] [LED] LED控制器已初始化, 引脚: [12, 13]
-[00:00:13] [INFO ] [FSM] LED状态更新为: blink (状态: INIT)
-[00:00:15] [INFO ] [FSM] 状态: update ,初始化阶段完成, 发布init_complete事件
-[00:00:15] [INFO ] [FSM] 状态: exit ,退出初始化状态
-[00:00:15] [INFO ] [FSM] 进入NETWORKING状态, 启动网络连接
-[00:00:15] [INFO ] [FSM] 启动网络连接...
-[00:00:15] [INFO ] [NET] 启动网络连接...
-[00:00:17] [INFO ] [NET] 连接WiFi: CMCC-pdRG
-[00:00:19] [INFO ] [NET] WiFi连接成功
-[00:00:19] [INFO ] [NET] 等待WiFi连接稳定...
-[00:00:21] [INFO ] [NET] WiFi连接稳定完成
-[00:00:21] [INFO ] [NET] 同步NTP时间...
-[00:00:21] [INFO ] [NET] NTP时间同步成功
-[00:00:21] [INFO ] [NET] 连接MQTT...
-[00:00:40] [ERROR] [MQTT] MQTT连接被拒绝: 服务器192.168.3.15:1883不可达或拒绝连接
-[00:00:40] [ERROR] [NET] MQTT连接失败: MQTT连接失败
-[00:00:40] [WARN ] [NET] MQTT连接失败，但WiFi连接成功，系统继续运行
-[00:00:40] [INFO ] [FSM] LED状态更新为: pulse (状态: NETWORKING)
-[00:00:40] [INFO ] [NET] 尝试重连MQTT...
-[00:00:40] [INFO ] [NET] 连接MQTT...
-[00:00:58] [ERROR] [MQTT] MQTT连接被拒绝: 服务器192.168.3.15:1883不可达或拒绝连接
-[00:00:58] [ERROR] [NET] MQTT连接失败: MQTT连接失败
-[00:00:58] [WARN ] [NET] MQTT重连失败，10秒后重试
-[00:00:58] [WARN ] [MAIN] 主循环执行严重超时: 43383ms > 50ms
-[00:00:58] [INFO ] [FSM] 退出NETWORKING状态
-[00:00:58] [INFO ] [FSM] 进入RUNNING状态, 网络连接已完成, 系统正常运行中
-[00:00:58] [INFO ] [FSM] LED状态更新为: cruise (状态: RUNNING)
-[00:00:58] [INFO ] [FSM] RUNNING状态收到外部事件: system.state_change
-[00:00:58] [INFO ] [FSM] 系统正常运行中 - 运行时间: 0秒
-[00:00:58] [INFO ] [FSM] RUNNING - 网络状态: {'state': 'connecting', 'connecting': True, 'mqtt_connected': False, 'wifi_connected': True, 'ntp_synced': True}
-[00:00:58] [INFO ] [FSM] RUNNING - 内存使用: 37.6% (空闲: 96KB)
-[00:00:58] [WARN ] [FSM] 网络连接已断开
-[00:00:58] [INFO ] [NET] 尝试重连MQTT...
-[00:00:58] [INFO ] [NET] 连接MQTT...
-[00:01:17] [ERROR] [MQTT] MQTT连接被拒绝: 服务器192.168.3.15:1883不可达或拒绝连接
-[00:01:17] [ERROR] [NET] MQTT连接失败: MQTT连接失败
-[00:01:17] [WARN ] [NET] MQTT重连失败，10秒后重试
-[00:01:17] [INFO ] [NET] 尝试重连MQTT...
-[00:01:17] [INFO ] [NET] 连接MQTT...
-[00:01:35] [ERROR] [MQTT] MQTT连接被拒绝: 服务器192.168.3.15:1883不可达或拒绝连接
-[00:01:35] [ERROR] [NET] MQTT连接失败: MQTT连接失败
-[00:01:35] [WARN ] [NET] MQTT重连失败，10秒后重试
-[00:01:35] [WARN ] [MAIN] 主循环执行严重超时: 37120ms > 50ms
-[00:01:35] [INFO ] [FSM] 退出RUNNING状态
-[00:01:35] [WARN ] [FSM] 进入WARNING状态, 系统出现警告
-[00:01:35] [INFO ] [FSM] LED状态更新为: blink (状态: WARNING)
-[00:01:35] [INFO ] [FSM] WARNING状态收到外部事件: system.state_change
-[00:01:35] [INFO ] [NET] 尝试重连MQTT...
-[00:01:35] [INFO ] [NET] 连接MQTT...
-[00:01:54] [ERROR] [MQTT] MQTT连接被拒绝: 服务器192.168.3.15:1883不可达或拒绝连接
-[00:01:54] [ERROR] [NET] MQTT连接失败: MQTT连接失败
-[00:01:54] [WARN ] [NET] MQTT重连失败，10秒后重试
-[00:01:54] [WARN ] [MAIN] 主循环执行严重超时: 18557ms > 50ms
-[00:01:54] [INFO ] [NET] 尝试重连MQTT...
-[00:01:54] [INFO ] [NET] 连接MQTT...
-
+[00:00:12] [INFO ] [MAIN] === ESP32C3系统启动 ===
+[00:00:12] [INFO ] [MAIN] 配置加载完成
+[00:00:12] [INFO ] [MAIN] 日志系统准备就绪
+[00:00:12] [INFO ] [MAIN] 事件总线初始化完成
+[00:00:12] [INFO ] [NET] 网络组件初始化完成
+[00:00:12] [INFO ] [MAIN] 网络管理器初始化完成
+[00:00:12] [INFO ] [FSM] 看门狗已启用, 超时时间: 120000 ms
+[00:00:12] [INFO ] [FSM] 状态转换: INIT -> INIT
+[00:00:12] [INFO ] [FSM] 系统启动、初始化并连接网络中...
+[00:00:12] [INFO ] [FSM] 执行系统初始化任务
+[00:00:12] [INFO ] [NET] 开始网络连接流程
+[00:00:12] [INFO ] [NET] 开始多网络WiFi连接流程，配置了3个网络
+[00:00:12] [INFO ] [NET] 扫描可用WiFi网络...
+[00:00:15] [INFO ] [NET] 扫描到14个WiFi网络
+[00:00:15] [INFO ] [NET] 匹配到1个配置的WiFi网络
+[00:00:15] [INFO ] [NET] 尝试连接WiFi: leju_software (信号强度: -30)
+[00:00:15] [INFO ] [NET] WiFi连接成功: leju_software
+[00:00:15] [INFO ] [NET] 正在同步NTP时间...
+[00:00:18] [INFO ] [NET] NTP时间同步成功
+[00:00:18] [INFO ] [NET] 正在连接MQTT...
+[00:01:19] [ERROR] [MQTT] MQTT连接被拒绝: 服务器192.168.3.15:1883不可达或拒绝连接
+[00:01:19] [WARN ] [NET] MQTT连接失败
+[00:01:19] [WARN ] [FSM] 网络连接启动失败
+[00:01:19] [ERROR] [FSM] 更新LED状态失败: name 'STATE_BOOT' isn't defined
+[00:01:19] [INFO ] [MAIN] 状态机初始化完成
+[00:01:19] [INFO ] [LED] LED控制器已初始化, 引脚: [12, 13]
+[00:01:19] [INFO ] [LED] LED系统初始化完成
+[00:01:19] [INFO ] [MAIN] LED初始化完成
+[00:01:19] [INFO ] [MAIN] === 系统初始化完成 ===
+[00:01:19] [INFO ] [MAIN] === 进入主循环 ===
+[00:01:19] [WARN ] [FSM] 网络连接超时
+[00:01:19] [INFO ] [FSM] 状态转换: INIT -> ERROR
+[00:01:19] [INFO ] [FSM] 系统错误状态
+[00:01:19] [ERROR] [FSM] 更新LED状态失败: name 'STATE_BOOT' isn't defined
+[00:01:19] [INFO ] [MAIN] 系统状态 - 状态:ERROR, 内存:110KB, 循环:1, WiFi:True, MQTT:False
+[00:01:29] [INFO ] [FSM] 错误状态超时，尝试重新连接
+[00:01:29] [INFO ] [FSM] 状态转换: ERROR -> CONNECTING
+[00:01:29] [ERROR] [FSM] 更新LED状态失败: name 'STATE_BOOT' isn't defined
+[00:01:49] [INFO ] [MAIN] 系统状态 - 状态:CONNECTING, 内存:110KB, 循环:300, WiFi:True, MQTT:False
+[00:02:19] [INFO ] [MAIN] 系统状态 - 状态:CONNECTING, 内存:110KB, 循环:300, WiFi:True, MQTT:False
+[00:02:49] [INFO ] [MAIN] 系统状态 - 状态:CONNECTING, 内存:110KB, 循环:300, WiFi:True, MQTT:False

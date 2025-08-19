@@ -18,7 +18,7 @@
 import utime as time
 import machine
 import micropython
-from lib.logger import debug, info, warning, error
+from lib.logger import info, warning, error
 
 
 class DebounceTimer:

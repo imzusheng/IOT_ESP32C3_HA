@@ -23,21 +23,24 @@ import gc
 from lib.logger import info, warning, error, debug
 from lib.lock.event_bus import EVENTS
 
-# 简化的状态常量 - 合并BOOT/INIT/CONNECTING为INIT
-STATE_INIT = 0  # 合并：系统启动、初始化、网络连接
-STATE_RUNNING = 1
-STATE_ERROR = 2
+# 状态常量定义
+STATE_INIT = 0  # 系统启动、初始化
+STATE_CONNECTING = 1  # 网络连接中
+STATE_RUNNING = 2  # 正常运行
+STATE_ERROR = 3  # 错误状态
 
 STATE_NAMES = {
     STATE_INIT: "INIT",
+    STATE_CONNECTING: "CONNECTING",
     STATE_RUNNING: "RUNNING", 
     STATE_ERROR: "ERROR"
 }
 
-# 简化的状态转换表
+# 状态转换表
 STATE_TRANSITIONS = {
-    STATE_INIT: {"connected": STATE_RUNNING, "timeout": STATE_ERROR, "error": STATE_ERROR},
-    STATE_RUNNING: {"disconnected": STATE_INIT, "error": STATE_ERROR},
+    STATE_INIT: {"connecting": STATE_CONNECTING, "timeout": STATE_ERROR, "error": STATE_ERROR},
+    STATE_CONNECTING: {"connected": STATE_RUNNING, "timeout": STATE_ERROR, "error": STATE_ERROR},
+    STATE_RUNNING: {"disconnected": STATE_CONNECTING, "error": STATE_ERROR},
     STATE_ERROR: {"retry": STATE_INIT}
 }
 
