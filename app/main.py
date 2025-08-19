@@ -40,8 +40,7 @@ class MainController:
         self.last_loop_time = 0
         self.loop_interval = 100  # 100ms主循环间隔
         
-        # 性能监控
-        self.loop_count = 0
+        # 维护任务定时
         self.last_stats_time = 0
         
     def initialize(self):
@@ -57,26 +56,26 @@ class MainController:
             # 2. 日志系统为零配置、全局可用，无需手动初始化
             info("日志系统准备就绪", module="MAIN")
             
-            # 3. 初始化事件总线
-            self.event_bus = EventBus()
-            info("事件总线初始化完成", module="MAIN")
+            # 3. 初始化LED（提前）
+            self._init_led()
             
-            # 4. 初始化网络管理器
+            # 4. 初始化事件总线
+            self.event_bus = EventBus()
+            debug("事件总线初始化完成", module="MAIN")
+            
+            # 5. 初始化网络管理器
             from net.network_manager import NetworkManager
             self.network_manager = NetworkManager(self.config, self.event_bus)
-            info("网络管理器初始化完成", module="MAIN")
+            debug("网络管理器初始化完成", module="MAIN")
             
-            # 5. 初始化状态机
+            # 6. 初始化状态机
             from fsm.core import FSM
             self.state_machine = FSM(
                 self.event_bus, 
                 self.config, 
                 self.network_manager
             )
-            info("状态机初始化完成", module="MAIN")
-            
-            # 6. 初始化LED
-            self._init_led()
+            debug("状态机初始化完成", module="MAIN")
             
             info("=== 系统初始化完成 ===", module="MAIN")
             return True
@@ -88,9 +87,11 @@ class MainController:
     def _init_led(self):
         """初始化LED"""
         try:
-            from hw.led import init_led
+            from hw.led import init_led, play
             init_led()
-            info("LED初始化完成", module="MAIN")
+            # 初始化后启动慢速闪烁，代表运行中
+            play('blink')
+            debug("LED初始化完成", module="MAIN")
         except Exception as e:
             error("LED初始化失败: {}", e, module="MAIN")
             
@@ -102,8 +103,6 @@ class MainController:
             
         self.running = True
         self.last_loop_time = time.ticks_ms()
-        
-        info("=== 进入主循环 ===", module="MAIN")
         
         try:
             while self.running:
@@ -127,7 +126,6 @@ class MainController:
             current_time = time.ticks_ms()
             
         self.last_loop_time = current_time
-        self.loop_count += 1
         
         try:
             # 1. 更新事件总线
@@ -142,7 +140,14 @@ class MainController:
             # 4. 喂看门狗
             self.state_machine.feed_watchdog()
             
-            # 5. 定期垃圾回收和统计
+            # 5. 更新LED显示
+            try:
+                from hw.led import process_led_updates
+                process_led_updates()
+            except Exception:
+                pass
+            
+            # 6. 定期垃圾回收和统计
             self._periodic_maintenance(current_time)
             
         except Exception as e:
@@ -151,23 +156,24 @@ class MainController:
     def _periodic_maintenance(self, current_time):
         """定期维护任务"""
         # 每30秒执行一次
-        if time.ticks_diff(current_time, self.last_stats_time) >= 30000:
+        if time.ticks_diff(current_time, self.last_stats_time) >= 30000 or self.last_stats_time == 0:
             self.last_stats_time = current_time
             
             # 垃圾回收
             gc.collect()
             
-            # 输出统计信息
-            free_mem = gc.mem_free()
+            # 输出统计信息（移除性能显示）
+            from utils.helpers import check_memory
+            mem = check_memory()
+            free_kb = mem.get("free_kb", gc.mem_free() // 1024)
+            percent_used = mem.get("percent", 0)
             state = self.state_machine.get_current_state()
             net_status = self.network_manager.get_status()
             
-            info("系统状态 - 状态:{}, 内存:{}KB, 循环:{}, WiFi:{}, MQTT:{}", 
-                 state, free_mem//1024, self.loop_count,
+            info("系统状态 - 状态:{}, 内存:{}KB({:.0f}%), WiFi:{}, MQTT:{}", 
+                 state, free_kb, percent_used,
                  net_status['wifi'], net_status['mqtt'], 
                  module="MAIN")
-                 
-            self.loop_count = 0  # 重置循环计数
             
     def _cleanup(self):
         """清理资源"""
@@ -211,8 +217,7 @@ class MainController:
                 "state": self.state_machine.get_current_state() if self.state_machine else "UNKNOWN",
                 "network": self.network_manager.get_status() if self.network_manager else {},
                 "memory": gc.mem_free(),
-                "uptime": time.ticks_ms(),
-                "loop_count": self.loop_count
+                "uptime": time.ticks_ms()
             }
         except Exception as e:
             error("获取系统信息失败: {}", e, module="MAIN")

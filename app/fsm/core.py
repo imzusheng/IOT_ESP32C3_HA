@@ -80,7 +80,7 @@ class FSM:
             if wdt_config.get("enabled", True):
                 timeout = wdt_config.get("timeout", 120000)
                 self.wdt = machine.WDT(timeout=timeout)
-                info("看门狗已启用, 超时时间: {} ms", timeout, module="FSM")
+                debug("看门狗已启用, 超时时间: {} ms", timeout, module="FSM")
         except Exception as e:
             error("启用看门狗失败: {}", e, module="FSM")
             
@@ -102,7 +102,7 @@ class FSM:
         self.current_state = new_state
         self.state_start_time = time.ticks_ms()
         
-        info("状态转换: {} -> {}", 
+        debug("状态转换: {} -> {}", 
              STATE_NAMES.get(old_state, "UNKNOWN"),
              STATE_NAMES.get(new_state, "UNKNOWN"), 
              module="FSM")
@@ -116,22 +116,35 @@ class FSM:
     def _handle_state_enter(self, state):
         """处理状态进入逻辑"""
         if state == STATE_INIT:
-            info("系统启动、初始化并连接网络中...", module="FSM")
+            debug("系统启动、初始化并连接网络中...", module="FSM")
             self._init_and_connect_system()
             
         elif state == STATE_RUNNING:
-            info("系统正常运行", module="FSM")
+            info("进入 RUNNING 状态", module="FSM")
             self.error_count = 0  # 重置错误计数
             
         elif state == STATE_ERROR:
             info("系统错误状态", module="FSM")
             self.error_count += 1
             
+        elif state == STATE_CONNECTING:
+            # 进入重连流程
+            info("开始网络连接流程", module="FSM")
+            try:
+                if self.network_manager:
+                    self.network_manager.connect()
+                else:
+                    error("网络管理器不可用", module="FSM")
+                    self._transition_to_error()
+            except Exception as e:
+                error("启动网络连接流程失败: {}", e, module="FSM")
+                self._transition_to_error()
+            
     def _init_and_connect_system(self):
         """初始化系统并启动网络连接"""
         try:
             # 执行基本的系统初始化
-            info("执行系统初始化任务", module="FSM")
+            debug("执行系统初始化任务", module="FSM")
             
             # 启动网络连接
             if not self.network_manager:
@@ -161,12 +174,13 @@ class FSM:
         try:
             from hw.led import set_led_mode
             
+            # 与当前简化状态模型对齐：INIT/CONNECTING/RUNNING/ERROR
             led_modes = {
-                STATE_BOOT: "on",
-                STATE_INIT: "blink", 
+                # STATE_BOOT removed as it's no longer part of the model
+                STATE_INIT: "blink",
                 STATE_CONNECTING: "pulse",
                 STATE_RUNNING: "cruise",
-                STATE_ERROR: "blink"
+                STATE_ERROR: "blink",
             }
             
             mode = led_modes.get(self.current_state, "off")
@@ -248,8 +262,14 @@ class FSM:
                 
             elif self.current_state == STATE_ERROR:
                 if elapsed >= 10000:  # 10秒后重试
-                    info("错误状态超时，尝试重新连接", module="FSM")
+                    info("错误状态超时({} ms), 尝试重新连接", elapsed, module="FSM")
                     self._enter_state(STATE_CONNECTING)
+                    
+            elif self.current_state == STATE_CONNECTING:
+                # CONNECTING态下, 若长时间未连上, 进入错误态, 交给错误态的退避/重试节奏
+                if elapsed >= 60000:  # 60秒超时
+                    warning("网络连接超时", module="FSM")
+                    self._transition_to_error()
                     
         except Exception as e:
             error("状态机更新失败: {}", e, module="FSM")
@@ -292,7 +312,7 @@ class FSM:
         """强制设置状态"""
         state_map = {v: k for k, v in STATE_NAMES.items()}
         if state_name in state_map:
-            info("强制设置状态为: {}", state_name, module="FSM")
+            debug("强制设置状态为: {}", state_name, module="FSM")
             self._enter_state(state_map[state_name])
         else:
             error("未知的状态名称: {}", state_name, module="FSM")

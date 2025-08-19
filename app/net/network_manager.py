@@ -33,7 +33,7 @@ class NetworkManager:
     
     def __init__(self, config, event_bus):
         """初始化网络管理器"""
-        self.config = config
+        self.config = config or {}
         self.event_bus = event_bus
         
         # 子配置缓存，避免硬编码与重复取值
@@ -50,6 +50,15 @@ class NetworkManager:
         self.wifi_connected = False
         self.ntp_synced = False
         self.mqtt_connected = False
+
+        # 无限退避重试策略
+        self.mqtt_base_delay = int(self.mqtt_config.get("base_delay_ms", 2000))  # 基础延迟 2秒
+        self.mqtt_last_attempt = 0
+        
+        # WiFi 无限退避重试策略
+        self.wifi_base_delay = int(self.wifi_config.get("base_delay_ms", 2000))  # 基础延迟 2秒
+        self.wifi_max_delay = int(self.wifi_config.get("max_delay_ms", 180000))  # 最大延迟 3分钟
+        self.wifi_last_attempt = 0
         
         # 初始化组件
         self._init_components()
@@ -67,7 +76,7 @@ class NetworkManager:
             self.ntp_manager = NtpManager(self.ntp_config)
             self.mqtt_controller = MqttController(self.mqtt_config, self.event_bus)
             
-            info("网络组件初始化完成", module="NET")
+            debug("网络组件初始化完成", module="NET")
             
         except Exception as e:
             error("网络组件初始化失败: {}", e, module="NET")
@@ -93,7 +102,7 @@ class NetworkManager:
             if not self._connect_mqtt():
                 return False
                 
-            info("网络连接流程启动成功", module="NET")
+            debug("网络连接流程启动成功", module="NET")
             return True
             
         except Exception as e:
@@ -104,14 +113,14 @@ class NetworkManager:
         """扫描并匹配配置的网络"""
         try:
             # 扫描可用网络
-            info("扫描可用WiFi网络...", module="NET")
+            debug("扫描可用WiFi网络...", module="NET")
             scanned_networks = self.wifi_manager.scan_networks()
             
             if not scanned_networks:
                 warning("未扫描到任何WiFi网络", module="NET")
                 return []
             
-            info("扫描到{}个WiFi网络", len(scanned_networks), module="NET")
+            debug("扫描到{}个WiFi网络", len(scanned_networks), module="NET")
             
             # 匹配配置的网络
             matched_networks = []
@@ -134,7 +143,7 @@ class NetworkManager:
             # 按RSSI降序排序（信号强度从高到低）
             matched_networks.sort(key=lambda x: x["rssi"], reverse=True)
             
-            info("匹配到{}个配置的WiFi网络", len(matched_networks), module="NET")
+            debug("匹配到{}个配置的WiFi网络", len(matched_networks), module="NET")
             for net in matched_networks:
                 debug("匹配网络: {} (RSSI: {})", net["ssid"], net["rssi"], module="NET")
             
@@ -167,22 +176,6 @@ class NetworkManager:
         except Exception as e:
             error("WiFi连接尝试异常: {}", e, module="NET")
             return False
-                
-            # 步骤2: 同步NTP
-            if not self._sync_ntp():
-                return False
-                
-            # 步骤3: 连接MQTT
-            if not self._connect_mqtt():
-                return False
-                
-            # 连接成功
-            info("网络连接流程完成", module="NET")
-            return True
-            
-        except Exception as e:
-            error("网络连接流程失败: {}", e, module="NET")
-            return False
             
     def _connect_wifi(self):
         """连接WiFi - 支持多网络选择"""
@@ -190,7 +183,19 @@ class NetworkManager:
             if self.wifi_connected and self.wifi_manager and self.wifi_manager.get_is_connected():
                 debug("WiFi已连接", module="NET")
                 return True
+
+            # 无限退避重试：使用固定延迟避免过度复杂化
+            now = time.ticks_ms()
+            delay = self.wifi_base_delay
             
+            if self.wifi_last_attempt > 0:
+                remaining = delay - time.ticks_diff(now, self.wifi_last_attempt)
+                if remaining > 0:
+                    debug("WiFi重连退避中，{} ms 后再试", remaining, module="NET")
+                    return False
+
+            info("开始WiFi连接流程", module="NET")
+
             # 获取网络配置列表
             networks = self.wifi_config.get("networks", [])
             if not networks:
@@ -203,11 +208,12 @@ class NetworkManager:
                     warning("缺少WiFi配置: networks或ssid", module="NET")
                     return False
             
-            info("开始多网络WiFi连接流程，配置了{}个网络", len(networks), module="NET")
+            debug("开始多网络WiFi连接流程，配置了{}个网络", len(networks), module="NET")
             
             # 扫描可用网络
             available_networks = self._scan_and_match_networks(networks)
             if not available_networks:
+                self.wifi_last_attempt = now
                 warning("未找到任何配置的WiFi网络", module="NET")
                 return False
             
@@ -217,20 +223,24 @@ class NetworkManager:
                 password = network["password"]
                 rssi = network.get("rssi", "未知")
                 
-                info("尝试连接WiFi: {} (信号强度: {})", ssid, rssi, module="NET")
+                debug("尝试连接WiFi: {} (信号强度: {})", ssid, rssi, module="NET")
                 
                 if self._attempt_wifi_connection(ssid, password):
                     self.wifi_connected = True
+                    self.wifi_last_attempt = 0  # 重置延迟计时
                     info("WiFi连接成功: {}", ssid, module="NET")
                     self.event_bus.publish(EVENTS["WIFI_STATE_CHANGE"], state="connected")
                     return True
                 else:
                     warning("WiFi连接失败: {}", ssid, module="NET")
             
+            # 所有网络连接失败
+            self.wifi_last_attempt = now
             warning("所有配置的WiFi网络连接均失败", module="NET")
             return False
                 
         except Exception as e:
+            self.wifi_last_attempt = time.ticks_ms()
             error("WiFi连接异常: {}", e, module="NET")
             return False
             
@@ -241,7 +251,7 @@ class NetworkManager:
                 debug("NTP已同步", module="NET")
                 return True
                 
-            info("正在同步NTP时间...", module="NET")
+            debug("正在同步NTP时间...", module="NET")
             success = self.ntp_manager.sync_time()
             
             if success:
@@ -262,26 +272,39 @@ class NetworkManager:
             if self.mqtt_connected and self.mqtt_controller and self.mqtt_controller.is_connected():
                 debug("MQTT已连接", module="NET")
                 return True
-                
-            info("正在连接MQTT...", module="NET")
-            success = self.mqtt_controller.connect()
+
+            # 无限退避重试：使用固定延迟
+            now = time.ticks_ms()
+            delay = self.mqtt_base_delay
             
-            if success:
+            if self.mqtt_last_attempt > 0:
+                remaining = delay - time.ticks_diff(now, self.mqtt_last_attempt)
+                if remaining > 0:
+                    debug("MQTT重连退避中，{} ms 后再试", remaining, module="NET")
+                    return False
+
+            info("开始MQTT连接流程", module="NET")
+            debug("正在连接MQTT...", module="NET")
+            success = self.mqtt_controller.connect()
+            self.mqtt_last_attempt = now
+            if success and self.mqtt_controller.is_connected():
                 self.mqtt_connected = True
+                self.mqtt_last_attempt = 0  # 重置延迟计时
                 info("MQTT连接成功", module="NET")
                 self.event_bus.publish(EVENTS["MQTT_STATE_CHANGE"], state="connected")
                 return True
             else:
+                self.mqtt_last_attempt = now
                 warning("MQTT连接失败", module="NET")
                 return False
-                
         except Exception as e:
+            self.mqtt_last_attempt = time.ticks_ms()
             error("MQTT连接异常: {}", e, module="NET")
             return False
             
     def disconnect(self):
         """断开所有网络连接"""
-        info("断开网络连接", module="NET")
+        debug("断开网络连接", module="NET")
         
         try:
             # 断开MQTT
@@ -350,7 +373,7 @@ class NetworkManager:
                 
             elif not self.wifi_connected and is_connected:
                 # WiFi重新连接
-                info("WiFi重新连接", module="NET")
+                debug("WiFi重新连接", module="NET")
                 self.wifi_connected = True
                 self.event_bus.publish(EVENTS["WIFI_STATE_CHANGE"], state="connected")
                 
@@ -374,7 +397,7 @@ class NetworkManager:
                 
             elif not self.mqtt_connected and is_connected:
                 # MQTT重新连接
-                info("MQTT重新连接", module="NET")
+                debug("MQTT重新连接", module="NET")
                 self.mqtt_connected = True
                 self.event_bus.publish(EVENTS["MQTT_STATE_CHANGE"], state="connected")
                 
@@ -384,6 +407,9 @@ class NetworkManager:
     def force_reconnect(self):
         """强制重新连接"""
         info("强制重新连接网络", module="NET")
+        # 重置重连计时器，允许即时重试
+        self.mqtt_last_attempt = 0
+        self.wifi_last_attempt = 0
         self.disconnect()
         time.sleep_ms(1000)  # 等待1秒
         return self.connect()

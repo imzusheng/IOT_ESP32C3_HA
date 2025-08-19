@@ -104,6 +104,16 @@ class MqttController:
                 self.config.get("port", 1883),
                 module="MQTT",
             )
+            # 设置连接超时为10秒
+            try:
+                import socket as _sock
+                _timeout_sec = 10
+                # 如果底层客户端尚未创建socket, 通过全局默认超时影响后续socket创建
+                if hasattr(_sock, "socket") and hasattr(_sock, "setdefaulttimeout"):
+                    _sock.setdefaulttimeout(_timeout_sec)
+            except Exception:
+                pass
+
             self.client.connect()
 
             # 验证连接是否建立

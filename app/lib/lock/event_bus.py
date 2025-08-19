@@ -362,10 +362,10 @@ class EventBus:
             debug("发布事件 {} (无订阅者)", event_name, module="EventBus")
             return True
 
-        # 断路器开启时拒绝新事件
+        # 断路器开启时不再丢弃新事件，改为排队等待恢复
         if self._circuit_breaker_open:
-            warning("断路器开启, 丢弃事件: {}", event_name, module="EventBus")
-            return False
+            warning("断路器开启, 事件将延迟处理: {}", event_name, module="EventBus")
+            # 继续入队，等待恢复后处理
 
         # 入队事件
         event_item = (event_name, args, kwargs)
