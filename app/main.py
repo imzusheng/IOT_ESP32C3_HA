@@ -140,6 +140,8 @@ class MainController:
             # 5. LED
             try:
                 from hw.led import process_led_updates
+                # 注: LED模块已在init_led()时启动自动更新任务
+                # 这里的手动更新在自动模式下将被忽略(空操作), 保持向后兼容
                 process_led_updates()
             except Exception:
                 pass

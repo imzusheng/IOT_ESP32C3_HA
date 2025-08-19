@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-通用LED预设闪烁模块 (v5.0 - 开箱即用)
+通用LED预设闪烁模块 (v6.0 - 硬件定时器独立驱动)
 
 主要特性:
+- 硬件定时器驱动: 完全独立于主循环和asyncio, 不会被任何代码阻塞
 - 开箱即用: 无需初始化, 直接调用函数即可使用
 - 延迟初始化: 首次调用时自动初始化
 - 单例模式: 防止重复实例化, 保证硬件控制的唯一性
@@ -12,7 +13,6 @@
 
 import machine
 import utime as time
-import micropython
 from lib.logger import info, error
 
 # =============================================================================
@@ -23,7 +23,7 @@ from lib.logger import info, error
 DEFAULT_LED_PINS = [12, 13]
 
 # 模式参数常量
-TIMER_PERIOD_MS = 100  # 调整为100ms以减少调度压力
+TIMER_PERIOD_MS = 50  # 硬件定时器周期, 50ms保证精确性
 
 # 所有模式均定义为"亮-灭"时间序列 (单位: ms)
 BLINK_SEQUENCE = [500, 500]
@@ -58,6 +58,7 @@ SOS_SEQUENCE = [
 class _LEDPatternController:
     """
     LED模式控制器的内部实现类。
+    采用硬件定时器实现完全非阻塞的LED控制。
     """
 
     def __init__(self, led_pins: list):
@@ -73,9 +74,9 @@ class _LEDPatternController:
         self.current_pattern_id = "off"
         self.pattern_state = {}
 
-        # 手动更新相关变量
-        self._last_update_time = 0
-        self._manual_mode = True  # 启用手动模式
+        # 硬件定时器相关
+        self._timer = None
+        self._timer_manager = None
 
         # 模式字典
         self.patterns = {
@@ -86,7 +87,13 @@ class _LEDPatternController:
             "sos": lambda: self._update_sequence(SOS_SEQUENCE),
         }
 
-        # 不再自动启动定时器, 改为手动模式
+        # 初始化硬件定时器
+        self._init_hardware_timer()
+        # 初始化即进入巡航模式，避免外部依赖
+        try:
+            self.play('cruise')
+        except Exception:
+            pass
         info(f"LED控制器已初始化, 引脚: {self.led_pins}", module="LED")
 
     def _init_leds(self) -> list:
@@ -100,29 +107,35 @@ class _LEDPatternController:
                 leds.append(None)
         return [led for led in leds if led is not None]
 
-    def manual_update(self):
-        """手动更新LED模式 - 由主循环调用"""
-        if not self._manual_mode:
-            return
+    def _init_hardware_timer(self):
+        """初始化硬件定时器"""
+        try:
+            from utils import get_hardware_timer_manager
+            self._timer_manager = get_hardware_timer_manager()
+            self._timer = self._timer_manager.create_timer(
+                TIMER_PERIOD_MS, self._timer_callback
+            )
+            if self._timer:
+                info("LED硬件定时器已启动", module="LED")
+            else:
+                error("LED硬件定时器创建失败", module="LED")
+        except Exception as e:
+            error(f"LED硬件定时器初始化失败: {e}", module="LED")
 
-        current_time = time.ticks_ms()
-
-        # 检查是否到了更新时间
-        if self._last_update_time == 0:
-            # 首次更新, 立即执行
-            self._last_update_time = current_time
-            self._update_patterns()
-        else:
-            # 检查时间间隔
-            elapsed = time.ticks_diff(current_time, self._last_update_time)
-            if elapsed >= TIMER_PERIOD_MS:
-                self._last_update_time = current_time
-                self._update_patterns()
+    def _timer_callback(self, timer):
+        """硬件定时器回调函数"""
+        try:
+            handler = self.patterns.get(self.current_pattern_id)
+            if handler:
+                handler()
+        except Exception as e:
+            # 静默异常, 避免影响硬件定时器
+            pass
 
     def play(self, pattern_id: str):
         """
         播放一个预设的闪烁模式。
-        在手动模式下, 直接设置模式, 无需停止/启动控制器。
+        由硬件定时器独立驱动, 不依赖任何外部循环。
         """
         if pattern_id not in self.patterns:
             error(f"未知的模式ID '{pattern_id}'", module="LED")
@@ -137,15 +150,6 @@ class _LEDPatternController:
         else:
             # 大多数模式以"亮"开始
             self._set_all_leds(1)
-
-    def _update_patterns(self, _=None):
-        """根据当前模式ID调用相应的更新函数。"""
-        try:
-            handler = self.patterns.get(self.current_pattern_id)
-            if handler:
-                handler()
-        except Exception as e:
-            error(f"更新模式出错: {e}", module="LED")
 
     def _set_all_leds(self, value: int):
         """辅助函数, 设置所有LED的状态。"""
@@ -171,6 +175,11 @@ class _LEDPatternController:
     def cleanup(self):
         """清理资源。"""
         self._set_all_leds(0)
+        if self._timer and self._timer_manager:
+            try:
+                self._timer_manager.release_timer(self._timer)
+            except Exception:
+                pass
         info("LED控制器已清理", module="LED")
 
 
@@ -227,22 +236,24 @@ def cleanup():
 
 def process_led_updates():
     """
-    手动处理LED更新 - 由主循环调用
-    使用diff时间实现精确的时间控制, 避免硬件定时器调度问题
+    手动处理LED更新 - 由主循环调用 (已弃用)
+    
+    LED现在由硬件定时器独立驱动, 此函数不再执行任何操作。
+    保留仅为向后兼容性。
 
     Example:
         from hw.led import process_led_updates
-        process_led_updates()  # 手动处理LED更新
+        process_led_updates()  # 空操作
     """
-    global _instance
-    if _instance:
-        _instance.manual_update()
+    # 空操作 - LED由硬件定时器独立驱动
+    pass
 
 
 def init_led():
     """
     初始化LED系统。
     为了向后兼容性而提供的函数，实际上LED会在首次调用时自动初始化。
+    初始化完成后, 默认启用CRUISE模式。
     
     Example:
         from hw.led import init_led
@@ -250,7 +261,9 @@ def init_led():
     """
     # LED控制器会在首次获取实例时自动初始化
     _get_instance()
-    info("LED系统初始化完成", module="LED")
+    # 默认启用CRUISE模式
+    play('cruise')
+    info("LED系统初始化完成(硬件定时器驱动, CRUISE模式)", module="LED")
 
 
 def set_led_mode(mode: str):

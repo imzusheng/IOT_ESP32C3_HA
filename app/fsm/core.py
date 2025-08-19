@@ -252,10 +252,11 @@ class FSM:
                 # INIT状态：检查网络连接状态
                 if self.network_manager and self.network_manager.is_connected():
                     self._enter_state(STATE_RUNNING)
-                elif elapsed >= 60000:  # 60秒超时
-                    warning("网络连接超时", module="FSM")
-                    self._transition_to_error()
-                    
+                else:
+                    # 取消全局60秒超时切换到ERROR，以避免与NET内部退避/重试策略冲突
+                    # 保持在 INIT，等待 NetworkManager 自行管理重连与退避
+                    pass
+                
             elif self.current_state == STATE_RUNNING:
                 # 运行状态的定期检查
                 self._check_system_health()
@@ -266,10 +267,9 @@ class FSM:
                     self._enter_state(STATE_CONNECTING)
                     
             elif self.current_state == STATE_CONNECTING:
-                # CONNECTING态下, 若长时间未连上, 进入错误态, 交给错误态的退避/重试节奏
-                if elapsed >= 60000:  # 60秒超时
-                    warning("网络连接超时", module="FSM")
-                    self._transition_to_error()
+                # 取消全局60秒超时切换到ERROR，以避免与NET内部退避/重试策略冲突
+                # 保持在 CONNECTING，由 NetworkManager 的 WiFi/MQTT 模块（各自10s超时）配合退避驱动连接流程
+                pass
                     
         except Exception as e:
             error("状态机更新失败: {}", e, module="FSM")

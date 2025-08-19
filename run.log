@@ -4,22 +4,50 @@ MPY: soft reboot
 [00:00:12] [INFO ] [MAIN] === ESP32C3系统启动 ===
 [00:00:12] [INFO ] [MAIN] 配置加载完成
 [00:00:12] [INFO ] [MAIN] 日志系统准备就绪
+[00:00:12] [INFO ] [LED] LED硬件定时器已启动
 [00:00:12] [INFO ] [LED] LED控制器已初始化, 引脚: [12, 13]
-[00:00:12] [INFO ] [LED] LED系统初始化完成
-[00:00:13] [INFO ] [NET] 开始网络连接流程
-[00:00:13] [INFO ] [NET] 开始WiFi连接流程
-[00:00:18] [INFO ] [NET] WiFi连接成功: leju_software
-[00:00:18] [INFO ] [NET] NTP时间同步成功
-[00:00:18] [INFO ] [NET] 开始MQTT连接流程
-[00:01:18] [ERROR] [MQTT] MQTT连接被拒绝: 服务器192.168.3.15:1883不可达或拒绝连接
-[00:01:18] [WARN ] [NET] MQTT连接失败
-[00:01:18] [WARN ] [FSM] 网络连接启动失败
-[00:01:18] [INFO ] [MAIN] === 系统初始化完成 ===
-[00:01:18] [WARN ] [FSM] 网络连接超时
-[00:01:18] [INFO ] [FSM] 系统错误状态
-[00:01:18] [INFO ] [MAIN] 系统状态 - 状态:ERROR, 内存:97KB(37%), WiFi:True, MQTT:False
-[00:01:28] [INFO ] [FSM] 错误状态超时(10036 ms), 尝试重新连接
-[00:01:28] [INFO ] [FSM] 开始网络连接流程
-[00:01:28] [INFO ] [NET] 开始网络连接流程
-[00:01:28] [INFO ] [NET] 开始MQTT连接流程
+[00:00:12] [INFO ] [LED] LED系统初始化完成(硬件定时器驱动, CRUISE模式)
+[00:00:12] [INFO ] [NET] 触发网络连接流程
+[00:00:12] [INFO ] [MAIN] === 系统初始化完成 ===
+[00:00:15] [INFO ] [MAIN] 系统状态 - 状态:INIT, 内存:100KB(38%), WiFi:False, MQTT:False
+[00:00:16] [INFO ] [NET] WiFi连接成功: CMCC-pdRG
+[00:00:16] [INFO ] [FSM] WiFi连接成功
+[00:00:17] [INFO ] [NET] NTP时间同步成功
+[00:00:35] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
+[00:00:56] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
+[00:00:56] [INFO ] [MAIN] 系统状态 - 状态:INIT, 内存:93KB(39%), WiFi:True, MQTT:False
+[00:01:16] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
+[00:01:37] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
+[00:01:37] [INFO ] [MAIN] 系统状态 - 状态:INIT, 内存:93KB(39%), WiFi:True, MQTT:False
+[00:01:57] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
+[00:02:18] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
+[00:02:18] [INFO ] [MAIN] 系统状态 - 状态:INIT, 内存:93KB(39%), WiFi:True, MQTT:False
+[00:02:38] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
+[00:02:59] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
+[00:02:59] [INFO ] [MAIN] 系统状态 - 状态:INIT, 内存:93KB(39%), WiFi:True, MQTT:False
+[00:03:19] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
+[00:03:40] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
+[00:03:40] [INFO ] [MAIN] 系统状态 - 状态:INIT, 内存:93KB(39%), WiFi:True, MQTT:False
+[00:04:00] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
+[00:04:21] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
+[00:04:21] [INFO ] [MAIN] 系统状态 - 状态:INIT, 内存:93KB(39%), WiFi:True, MQTT:False
+[00:04:41] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
+[00:05:02] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
+[00:05:02] [INFO ] [MAIN] 系统状态 - 状态:INIT, 内存:93KB(39%), WiFi:True, MQTT:False
+[00:05:22] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
+[00:05:43] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
+[00:05:43] [INFO ] [MAIN] 系统状态 - 状态:INIT, 内存:93KB(39%), WiFi:True, MQTT:False
+[00:06:03] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
+[00:06:24] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
+[00:06:24] [INFO ] [MAIN] 系统状态 - 状态:INIT, 内存:93KB(39%), WiFi:True, MQTT:False
+[00:06:44] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
+[00:07:05] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
+[00:07:05] [INFO ] [MAIN] 系统状态 - 状态:INIT, 内存:93KB(39%), WiFi:True, MQTT:False
+[00:07:26] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
+[00:07:46] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
+[00:07:46] [INFO ] [MAIN] 系统状态 - 状态:INIT, 内存:93KB(39%), WiFi:True, MQTT:False
+[00:08:07] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
+[00:08:27] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
+[00:08:27] [INFO ] [MAIN] 系统状态 - 状态:INIT, 内存:93KB(39%), WiFi:True, MQTT:False
+[00:08:48] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
 

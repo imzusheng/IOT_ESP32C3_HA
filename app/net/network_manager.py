@@ -11,9 +11,10 @@
 - 当 MQTT 状态变化时发布 EVENTS["MQTT_STATE_CHANGE"]，state ∈ {"connected","disconnected"}
 
 设计边界与约束：
-- 不实现指数退避与重试策略（由上层 FSM 或后续版本统一治理）
+- 不实现指数退避策略（当前仅固定基础延迟；指数退避由上层统一治理）
 - NTP 同步失败不会阻塞后续 MQTT 连接
 - WifiManager/NtpManager/MqttController 由本模块聚合管理，配置来自 app/config.py
+- 内置“连接中”防重入保护（_mqtt_connecting + MqttController._connecting），避免重复触发与重复日志
 
 扩展建议：
 - 可在不破坏接口的前提下引入退避/重试策略
@@ -25,7 +26,7 @@ import uasyncio as asyncio
 # 移除不必要的导入: network, gc
 from lib.logger import info, warning, error, debug
 from lib.lock.event_bus import EVENTS
-from lib.async_runtime import get_runtime
+from lib.async_runtime import get_async_runtime
 
 class NetworkManager:
     """
@@ -53,6 +54,9 @@ class NetworkManager:
         self.ntp_synced = False
         self.mqtt_connected = False
 
+        # 连接中状态控制，避免重复触发连接请求
+        self._mqtt_connecting = False
+
         # 无限退避重试策略
         self.mqtt_base_delay = int(self.mqtt_config.get("base_delay_ms", 2000))  # 基础延迟 2秒
         self.mqtt_last_attempt = 0
@@ -76,7 +80,7 @@ class NetworkManager:
     def _register_async_tasks(self):
         """注册异步任务到运行时"""
         try:
-            runtime = get_runtime()
+            runtime = get_async_runtime()
             # 注册 WiFi 连接任务 (每2秒检查一次)
             self._wifi_task = runtime.create_task(
                 self._wifi_connection_loop(), 
@@ -95,7 +99,7 @@ class NetworkManager:
             debug("网络管理器异步任务注册完成", module="NET")
         except Exception as e:
             error("注册异步任务失败: {}", e, module="NET")
-            
+
     def _init_components(self):
         """初始化网络组件"""
         try:
@@ -272,8 +276,13 @@ class NetworkManager:
             if not self.wifi_connected:
                 return False
                 
+            # 已连接则直接返回，避免重复触发
             if self.mqtt_connected and self.mqtt_controller and self.mqtt_controller.is_connected():
                 return True
+
+            # 如果当前已有连接尝试在进行，避免重复触发
+            if self._mqtt_connecting:
+                return False
 
             # 退避重试检查
             now = time.ticks_ms()
@@ -289,17 +298,22 @@ class NetworkManager:
                 await self._async_sync_ntp()
 
             # 异步连接MQTT
-            success = await self.mqtt_controller.connect_async()
-            self.mqtt_last_attempt = now
-            if success and self.mqtt_controller.is_connected():
-                self.mqtt_connected = True
-                self.mqtt_last_attempt = 0  # 重置延迟计时
-                info("MQTT连接成功", module="NET")
-                self.event_bus.publish(EVENTS["MQTT_STATE_CHANGE"], state="connected")
-                return True
-            else:
+            self._mqtt_connecting = True
+            try:
+                success = await self.mqtt_controller.connect_async()
                 self.mqtt_last_attempt = now
-                return False
+                if success and self.mqtt_controller.is_connected():
+                    self.mqtt_connected = True
+                    self.mqtt_last_attempt = 0  # 重置延迟计时
+                    info("MQTT连接成功", module="NET")
+                    self.event_bus.publish(EVENTS["MQTT_STATE_CHANGE"], state="connected")
+                    return True
+                else:
+                    self.mqtt_last_attempt = now
+                    return False
+            finally:
+                # 标记连接尝试结束，允许后续重试
+                self._mqtt_connecting = False
         except Exception as e:
             self.mqtt_last_attempt = time.ticks_ms()
             error("异步MQTT连接异常: {}", e, module="NET")
@@ -330,40 +344,38 @@ class NetworkManager:
         try:
             # 检查WiFi状态
             if self.wifi_manager:
-                is_connected = self.wifi_manager.get_is_connected()
+                wifi_is_connected = self.wifi_manager.get_is_connected()
                 
-                if self.wifi_connected and not is_connected:
-                    # WiFi连接丢失
+                # 仅在断开时发布事件（连接成功事件由连接流程负责）
+                if self.wifi_connected and not wifi_is_connected:
                     warning("WiFi连接丢失", module="NET")
                     self.wifi_connected = False
                     self.mqtt_connected = False  # WiFi断开时MQTT也会断开
                     self.event_bus.publish(EVENTS["WIFI_STATE_CHANGE"], state="disconnected")
-                    
-                elif not self.wifi_connected and is_connected:
-                    # WiFi重新连接
-                    debug("WiFi重新连接", module="NET")
+                elif not self.wifi_connected and wifi_is_connected:
+                    # 仅同步内部标志，事件由连接流程负责
                     self.wifi_connected = True
-                    self.event_bus.publish(EVENTS["WIFI_STATE_CHANGE"], state="connected")
             
             # 检查MQTT状态
             if self.mqtt_controller:
-                is_connected = self.mqtt_controller.is_connected()
+                mqtt_is_connected = self.mqtt_controller.is_connected()
                 
-                if self.mqtt_connected and not is_connected:
-                    # MQTT连接丢失
+                # 仅在断开时发布事件（连接成功事件由连接流程负责）
+                if self.mqtt_connected and not mqtt_is_connected:
                     warning("MQTT连接丢失", module="NET")
                     self.mqtt_connected = False
                     self.event_bus.publish(EVENTS["MQTT_STATE_CHANGE"], state="disconnected")
-                    
-                elif not self.mqtt_connected and is_connected:
-                    # MQTT重新连接
-                    debug("MQTT重新连接", module="NET")
+                elif not self.mqtt_connected and mqtt_is_connected:
+                    # 仅同步内部标志，事件由连接流程负责
                     self.mqtt_connected = True
-                    self.event_bus.publish(EVENTS["MQTT_STATE_CHANGE"], state="connected")
-                    
-                # MQTT消息处理（异步）
+                
+                # MQTT消息处理（异步），避免异常中断状态检查
                 if self.mqtt_connected:
-                    await self.mqtt_controller.check_msg_async()
+                    try:
+                        await self.mqtt_controller.check_msg_async()
+                    except Exception as _e:
+                        # 由 MqttController 内部负责标记连接状态与日志，这里避免重复日志
+                        pass
                     
         except Exception as e:
             error("异步状态检查异常: {}", e, module="NET")

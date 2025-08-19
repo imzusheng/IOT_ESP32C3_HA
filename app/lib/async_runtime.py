@@ -38,6 +38,17 @@ class AsyncRuntime:
             Task: asyncio.Task 对象
         """
         try:
+            # 同名任务幂等：若存在同名任务且未结束，先取消旧任务，避免并发重复执行
+            if name and name in self.tasks:
+                try:
+                    old_task = self.tasks.get(name)
+                    if old_task and not old_task.done():
+                        old_task.cancel()
+                        debug("取消已存在的同名异步任务以进行替换: {}", name, module="ASYNC")
+                except Exception as _e:
+                    # 取消失败不应阻断后续创建，记录告警继续
+                    warning("取消同名任务时发生异常，将继续创建新任务: {} -> {}", name, _e, module="ASYNC")
+            
             task = asyncio.create_task(coro)
             
             if name:

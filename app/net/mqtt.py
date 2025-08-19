@@ -44,6 +44,9 @@ class MqttController:
         self.client = None
         self._is_connected = False
         self.event_bus = event_bus  # 使用传入的EventBus，不创建新的
+        
+        # 并发控制：防止并发连接重入
+        self._connecting = False
 
         # 根据配置初始化MQTT客户端
         try:
@@ -174,7 +177,12 @@ class MqttController:
         if not self.client:
             warning("MQTT客户端未初始化或配置不完整", module="MQTT")
             return False
+        
+        # 避免并发重入导致重复连接与重复日志
+        if self._connecting:
+            return False
 
+        self._connecting = True
         try:
             debug(
                 "异步尝试连接MQTT服务器: {}:{}",
@@ -223,32 +231,38 @@ class MqttController:
             error("MQTT异步连接异常: {}", e, module="MQTT")
             self._is_connected = False
             return False
+        finally:
+            # 重置连接中标志，确保后续可再次尝试
+            self._connecting = False
             
     async def _async_connect_with_timeout(self):
-        """异步连接，带超时控制"""
+        """异步连接，带超时控制
+        
+        说明：
+        - 仅设置全局 socket 默认超时为 10 秒，避免长时间阻塞
+        - 直接复用 __init__ 中已创建并设置回调的 self.client，不在此处重复创建客户端
+        - 保持最小改动，避免引入新的配置键名差异
+        """
         try:
-            # 设置socket超时
+            # 设置 socket 超时（统一为 10 秒）
             try:
                 import socket as _sock
                 _timeout_sec = 10
-                if hasattr(_sock, "socket") and hasattr(_sock, "setdefaulttimeout"):
+                if hasattr(_sock, "setdefaulttimeout"):
                     _sock.setdefaulttimeout(_timeout_sec)
             except Exception:
+                # 在部分运行时环境下，可能不支持 setdefaulttimeout，这里容错处理
                 pass
-
-            # 分步骤连接，每步之间让出控制权
-            await asyncio.sleep_ms(10)  # 让出控制权
             
-            # 执行实际连接
+            # 执行连接：复用已初始化的 MQTTClient 实例
+            # self.client 已在 __init__ 中创建并设置了回调为 self._mqtt_callback
             self.client.connect()
-            
-            # 连接后短暂等待
-            await asyncio.sleep_ms(100)
-            
+            self._is_connected = True
+            debug("MQTT连接成功", module="MQTT")
             return True
-            
         except Exception as e:
-            error("异步MQTT连接步骤失败: {}", e, module="MQTT")
+            self._is_connected = False
+            error("MQTT连接失败: {}", e, module="MQTT")
             return False
             
     async def _async_verify_connection(self):
@@ -344,6 +358,8 @@ class MqttController:
                 self.client.check_msg()
             except Exception as e:
                 error("检查MQTT消息失败: {}", e, module="MQTT")
+                # 标记连接已断开，交由上层进行事件与重连处理
+                self._is_connected = False
                 
     async def check_msg_async(self):
         """异步检查是否有新消息"""
@@ -355,3 +371,5 @@ class MqttController:
                 await asyncio.sleep_ms(1)  # 处理完消息后让出控制权
             except Exception as e:
                 error("异步检查MQTT消息失败: {}", e, module="MQTT")
+                # 标记连接已断开，交由上层进行事件与重连处理
+                self._is_connected = False
