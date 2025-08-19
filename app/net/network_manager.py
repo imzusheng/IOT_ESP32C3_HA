@@ -21,9 +21,11 @@
 """
 
 import utime as time
+import uasyncio as asyncio
 # 移除不必要的导入: network, gc
 from lib.logger import info, warning, error, debug
 from lib.lock.event_bus import EVENTS
+from lib.async_runtime import get_runtime
 
 class NetworkManager:
     """
@@ -60,9 +62,40 @@ class NetworkManager:
         self.wifi_max_delay = int(self.wifi_config.get("max_delay_ms", 180000))  # 最大延迟 3分钟
         self.wifi_last_attempt = 0
         
+        # 异步任务管理
+        self._wifi_task = None
+        self._mqtt_task = None
+        self._status_check_task = None
+        
         # 初始化组件
         self._init_components()
         
+        # 注册异步任务
+        self._register_async_tasks()
+        
+    def _register_async_tasks(self):
+        """注册异步任务到运行时"""
+        try:
+            runtime = get_runtime()
+            # 注册 WiFi 连接任务 (每2秒检查一次)
+            self._wifi_task = runtime.create_task(
+                self._wifi_connection_loop(), 
+                "wifi_connection"
+            )
+            # 注册 MQTT 连接任务 (每2秒检查一次)
+            self._mqtt_task = runtime.create_task(
+                self._mqtt_connection_loop(), 
+                "mqtt_connection"
+            )
+            # 注册状态检查任务 (每500ms检查一次)
+            self._status_check_task = runtime.create_task(
+                self._status_check_loop(), 
+                "status_check"
+            )
+            debug("网络管理器异步任务注册完成", module="NET")
+        except Exception as e:
+            error("注册异步任务失败: {}", e, module="NET")
+            
     def _init_components(self):
         """初始化网络组件"""
         try:
@@ -82,45 +115,106 @@ class NetworkManager:
             error("网络组件初始化失败: {}", e, module="NET")
             raise
             
-    def connect(self):
-        """
-        启动网络连接流程
-        返回: bool - 是否成功启动连接流程
-        """
-        info("开始网络连接流程", module="NET")
-        
+    async def _wifi_connection_loop(self):
+        """WiFi 连接协程循环"""
+        while True:
+            try:
+                await self._async_connect_wifi()
+                await asyncio.sleep_ms(2000)  # 每2秒检查一次
+            except asyncio.CancelledError:
+                debug("WiFi连接任务取消", module="NET")
+                break
+            except Exception as e:
+                error("WiFi连接循环异常: {}", e, module="NET")
+                await asyncio.sleep_ms(5000)  # 异常时延长间隔
+                
+    async def _mqtt_connection_loop(self):
+        """MQTT 连接协程循环"""
+        while True:
+            try:
+                await self._async_connect_mqtt()
+                await asyncio.sleep_ms(2000)  # 每2秒检查一次
+            except asyncio.CancelledError:
+                debug("MQTT连接任务取消", module="NET")
+                break
+            except Exception as e:
+                error("MQTT连接循环异常: {}", e, module="NET")
+                await asyncio.sleep_ms(5000)  # 异常时延长间隔
+                
+    async def _status_check_loop(self):
+        """状态检查协程循环"""
+        while True:
+            try:
+                await self._async_check_status()
+                await asyncio.sleep_ms(500)  # 每500ms检查一次
+            except asyncio.CancelledError:
+                debug("状态检查任务取消", module="NET")
+                break
+            except Exception as e:
+                error("状态检查循环异常: {}", e, module="NET")
+                await asyncio.sleep_ms(1000)  # 异常时延长间隔
+             
+    async def _async_connect_wifi(self):
+        """异步 WiFi 连接方法"""
         try:
-            # 步骤1: 连接WiFi
-            if not self._connect_wifi():
-                return False
-                
-            # 步骤2: 同步NTP时间
-            if not self._sync_ntp():
-                warning("NTP同步失败，但继续连接MQTT", module="NET")
-                
-            # 步骤3: 连接MQTT
-            if not self._connect_mqtt():
-                return False
-                
-            debug("网络连接流程启动成功", module="NET")
-            return True
+            if self.wifi_connected and self.wifi_manager and self.wifi_manager.get_is_connected():
+                return True
+
+            # 退避重试检查
+            now = time.ticks_ms()
+            delay = self.wifi_base_delay
             
-        except Exception as e:
-            error("网络连接流程失败: {}", e, module="NET")
-            return False
-    
-    def _scan_and_match_networks(self, configured_networks):
-        """扫描并匹配配置的网络"""
-        try:
+            if self.wifi_last_attempt > 0:
+                remaining = delay - time.ticks_diff(now, self.wifi_last_attempt)
+                if remaining > 0:
+                    return False
+
+            # 获取网络配置列表
+            networks = self.wifi_config.get("networks", [])
+            if not networks:
+                # 兼容旧配置格式
+                ssid = self.wifi_config.get("ssid")
+                password = self.wifi_config.get("password")
+                if ssid:
+                    networks = [{"ssid": ssid, "password": password}]
+                else:
+                    return False
+            
             # 扫描可用网络
-            debug("扫描可用WiFi网络...", module="NET")
+            available_networks = await self._async_scan_and_match_networks(networks)
+            if not available_networks:
+                self.wifi_last_attempt = now
+                return False
+            
+            # 按RSSI降序尝试连接
+            for network in available_networks:
+                ssid = network["ssid"]
+                password = network["password"]
+                
+                if await self._async_attempt_wifi_connection(ssid, password):
+                    self.wifi_connected = True
+                    self.wifi_last_attempt = 0  # 重置延迟计时
+                    info("WiFi连接成功: {}", ssid, module="NET")
+                    self.event_bus.publish(EVENTS["WIFI_STATE_CHANGE"], state="connected")
+                    return True
+            
+            # 所有网络连接失败
+            self.wifi_last_attempt = now
+            return False
+                
+        except Exception as e:
+            self.wifi_last_attempt = time.ticks_ms()
+            error("异步WiFi连接异常: {}", e, module="NET")
+            return False
+            
+    async def _async_scan_and_match_networks(self, configured_networks):
+        """异步扫描并匹配配置的网络"""
+        try:
+            # 扫描可用网络 (非阻塞)
             scanned_networks = self.wifi_manager.scan_networks()
             
             if not scanned_networks:
-                warning("未扫描到任何WiFi网络", module="NET")
                 return []
-            
-            debug("扫描到{}个WiFi网络", len(scanned_networks), module="NET")
             
             # 匹配配置的网络
             matched_networks = []
@@ -140,28 +234,23 @@ class NetworkManager:
                         })
                         break
             
-            # 按RSSI降序排序（信号强度从高到低）
+            # 按RSSI降序排序
             matched_networks.sort(key=lambda x: x["rssi"], reverse=True)
-            
-            debug("匹配到{}个配置的WiFi网络", len(matched_networks), module="NET")
-            for net in matched_networks:
-                debug("匹配网络: {} (RSSI: {})", net["ssid"], net["rssi"], module="NET")
-            
             return matched_networks
             
         except Exception as e:
-            error("扫描和匹配网络失败: {}", e, module="NET")
+            error("异步扫描和匹配网络失败: {}", e, module="NET")
             return []
     
-    def _attempt_wifi_connection(self, ssid, password):
-        """尝试连接指定的WiFi网络"""
+    async def _async_attempt_wifi_connection(self, ssid, password):
+        """异步尝试连接指定的WiFi网络"""
         try:
             # 调用WiFi管理器连接
             started = self.wifi_manager.connect(ssid, password)
             if not started:
                 return False
             
-            # 等待连接结果
+            # 异步等待连接结果
             timeout_ms = int(self.wifi_config.get("connect_timeout_ms", 10000))
             poll_interval = 200
             start_ms = time.ticks_ms()
@@ -169,89 +258,59 @@ class NetworkManager:
             while not self.wifi_manager.get_is_connected():
                 if time.ticks_diff(time.ticks_ms(), start_ms) > timeout_ms:
                     break
-                time.sleep_ms(poll_interval)
+                await asyncio.sleep_ms(poll_interval)  # 非阻塞等待
             
             return self.wifi_manager.get_is_connected()
             
         except Exception as e:
-            error("WiFi连接尝试异常: {}", e, module="NET")
+            error("异步WiFi连接尝试异常: {}", e, module="NET")
             return False
             
-    def _connect_wifi(self):
-        """连接WiFi - 支持多网络选择"""
+    async def _async_connect_mqtt(self):
+        """异步 MQTT 连接方法"""
         try:
-            if self.wifi_connected and self.wifi_manager and self.wifi_manager.get_is_connected():
-                debug("WiFi已连接", module="NET")
+            if not self.wifi_connected:
+                return False
+                
+            if self.mqtt_connected and self.mqtt_controller and self.mqtt_controller.is_connected():
                 return True
 
-            # 无限退避重试：使用固定延迟避免过度复杂化
+            # 退避重试检查
             now = time.ticks_ms()
-            delay = self.wifi_base_delay
+            delay = self.mqtt_base_delay
             
-            if self.wifi_last_attempt > 0:
-                remaining = delay - time.ticks_diff(now, self.wifi_last_attempt)
+            if self.mqtt_last_attempt > 0:
+                remaining = delay - time.ticks_diff(now, self.mqtt_last_attempt)
                 if remaining > 0:
-                    debug("WiFi重连退避中，{} ms 后再试", remaining, module="NET")
                     return False
 
-            info("开始WiFi连接流程", module="NET")
+            # 先同步NTP时间
+            if not self.ntp_synced:
+                await self._async_sync_ntp()
 
-            # 获取网络配置列表
-            networks = self.wifi_config.get("networks", [])
-            if not networks:
-                # 兼容旧配置格式
-                ssid = self.wifi_config.get("ssid")
-                password = self.wifi_config.get("password")
-                if ssid:
-                    networks = [{"ssid": ssid, "password": password}]
-                else:
-                    warning("缺少WiFi配置: networks或ssid", module="NET")
-                    return False
-            
-            debug("开始多网络WiFi连接流程，配置了{}个网络", len(networks), module="NET")
-            
-            # 扫描可用网络
-            available_networks = self._scan_and_match_networks(networks)
-            if not available_networks:
-                self.wifi_last_attempt = now
-                warning("未找到任何配置的WiFi网络", module="NET")
+            # 异步连接MQTT
+            success = await self.mqtt_controller.connect_async()
+            self.mqtt_last_attempt = now
+            if success and self.mqtt_controller.is_connected():
+                self.mqtt_connected = True
+                self.mqtt_last_attempt = 0  # 重置延迟计时
+                info("MQTT连接成功", module="NET")
+                self.event_bus.publish(EVENTS["MQTT_STATE_CHANGE"], state="connected")
+                return True
+            else:
+                self.mqtt_last_attempt = now
                 return False
-            
-            # 按RSSI降序尝试连接
-            for network in available_networks:
-                ssid = network["ssid"]
-                password = network["password"]
-                rssi = network.get("rssi", "未知")
-                
-                debug("尝试连接WiFi: {} (信号强度: {})", ssid, rssi, module="NET")
-                
-                if self._attempt_wifi_connection(ssid, password):
-                    self.wifi_connected = True
-                    self.wifi_last_attempt = 0  # 重置延迟计时
-                    info("WiFi连接成功: {}", ssid, module="NET")
-                    self.event_bus.publish(EVENTS["WIFI_STATE_CHANGE"], state="connected")
-                    return True
-                else:
-                    warning("WiFi连接失败: {}", ssid, module="NET")
-            
-            # 所有网络连接失败
-            self.wifi_last_attempt = now
-            warning("所有配置的WiFi网络连接均失败", module="NET")
-            return False
-                
         except Exception as e:
-            self.wifi_last_attempt = time.ticks_ms()
-            error("WiFi连接异常: {}", e, module="NET")
+            self.mqtt_last_attempt = time.ticks_ms()
+            error("异步MQTT连接异常: {}", e, module="NET")
             return False
             
-    def _sync_ntp(self):
-        """同步NTP时间"""
+    async def _async_sync_ntp(self):
+        """异步 NTP 同步方法"""
         try:
             if self.ntp_synced:
-                debug("NTP已同步", module="NET")
                 return True
                 
-            debug("正在同步NTP时间...", module="NET")
             success = self.ntp_manager.sync_time()
             
             if success:
@@ -263,44 +322,76 @@ class NetworkManager:
                 return True  # NTP失败不阻止MQTT连接
                 
         except Exception as e:
-            error("NTP同步异常: {}", e, module="NET")
+            error("异步NTP同步异常: {}", e, module="NET")
             return True  # NTP失败不阻止MQTT连接
             
-    def _connect_mqtt(self):
-        """连接MQTT"""
+    async def _async_check_status(self):
+        """异步状态检查方法"""
         try:
-            if self.mqtt_connected and self.mqtt_controller and self.mqtt_controller.is_connected():
-                debug("MQTT已连接", module="NET")
-                return True
-
-            # 无限退避重试：使用固定延迟
-            now = time.ticks_ms()
-            delay = self.mqtt_base_delay
+            # 检查WiFi状态
+            if self.wifi_manager:
+                is_connected = self.wifi_manager.get_is_connected()
+                
+                if self.wifi_connected and not is_connected:
+                    # WiFi连接丢失
+                    warning("WiFi连接丢失", module="NET")
+                    self.wifi_connected = False
+                    self.mqtt_connected = False  # WiFi断开时MQTT也会断开
+                    self.event_bus.publish(EVENTS["WIFI_STATE_CHANGE"], state="disconnected")
+                    
+                elif not self.wifi_connected and is_connected:
+                    # WiFi重新连接
+                    debug("WiFi重新连接", module="NET")
+                    self.wifi_connected = True
+                    self.event_bus.publish(EVENTS["WIFI_STATE_CHANGE"], state="connected")
             
-            if self.mqtt_last_attempt > 0:
-                remaining = delay - time.ticks_diff(now, self.mqtt_last_attempt)
-                if remaining > 0:
-                    debug("MQTT重连退避中，{} ms 后再试", remaining, module="NET")
-                    return False
-
-            info("开始MQTT连接流程", module="NET")
-            debug("正在连接MQTT...", module="NET")
-            success = self.mqtt_controller.connect()
-            self.mqtt_last_attempt = now
-            if success and self.mqtt_controller.is_connected():
-                self.mqtt_connected = True
-                self.mqtt_last_attempt = 0  # 重置延迟计时
-                info("MQTT连接成功", module="NET")
-                self.event_bus.publish(EVENTS["MQTT_STATE_CHANGE"], state="connected")
-                return True
-            else:
-                self.mqtt_last_attempt = now
-                warning("MQTT连接失败", module="NET")
-                return False
+            # 检查MQTT状态
+            if self.mqtt_controller:
+                is_connected = self.mqtt_controller.is_connected()
+                
+                if self.mqtt_connected and not is_connected:
+                    # MQTT连接丢失
+                    warning("MQTT连接丢失", module="NET")
+                    self.mqtt_connected = False
+                    self.event_bus.publish(EVENTS["MQTT_STATE_CHANGE"], state="disconnected")
+                    
+                elif not self.mqtt_connected and is_connected:
+                    # MQTT重新连接
+                    debug("MQTT重新连接", module="NET")
+                    self.mqtt_connected = True
+                    self.event_bus.publish(EVENTS["MQTT_STATE_CHANGE"], state="connected")
+                    
+                # MQTT消息处理（异步）
+                if self.mqtt_connected:
+                    await self.mqtt_controller.check_msg_async()
+                    
         except Exception as e:
-            self.mqtt_last_attempt = time.ticks_ms()
-            error("MQTT连接异常: {}", e, module="NET")
+            error("异步状态检查异常: {}", e, module="NET")
+            
+    def connect(self):
+        """
+        启动网络连接流程 - 异步版本的同步包装
+        返回: bool - 是否成功启动连接流程
+        """
+        try:
+            # 注意：这是一个同步包装，实际连接由异步任务处理
+            # 这里只是触发连接尝试，不等待结果
+            info("触发网络连接流程", module="NET")
+            return True
+            
+        except Exception as e:
+            error("网络连接异常: {}", e, module="NET")
             return False
+    
+    # 旧的同步扫描和匹配方法已删除，使用 _async_scan_and_match_networks 替代
+    
+    # 旧的同步WiFi连接尝试方法已删除，使用 _async_attempt_wifi_connection 替代
+            
+    # 旧的同步 WiFi 连接方法已删除，使用 _async_connect_wifi 替代
+            
+    # 旧的同步 NTP 同步方法已删除，使用 _async_sync_ntp 替代
+            
+    # 旧的同步 MQTT 连接方法已删除，使用 _async_connect_mqtt 替代
             
     def disconnect(self):
         """断开所有网络连接"""
@@ -339,79 +430,18 @@ class NetworkManager:
             "mqtt": self.mqtt_connected
         }
         
-    def loop(self):
-        """网络管理器主循环"""
-        try:
-            # 检查WiFi状态
-            self._check_wifi_status()
+    # 旧的同步 loop 方法已删除，网络管理现在完全由异步任务处理
             
-            # 检查MQTT状态
-            self._check_mqtt_status()
+    # 旧的同步状态检查方法已删除，使用 _async_check_status 替代
             
-            # MQTT消息处理
-            if self.mqtt_controller and self.mqtt_connected:
-                self.mqtt_controller.check_msg()
-                
-        except Exception as e:
-            error("网络管理器循环异常: {}", e, module="NET")
-            
-    def _check_wifi_status(self):
-        """检查WiFi连接状态"""
-        try:
-            if not self.wifi_manager:
-                return
-                
-            # 使用WifiManager封装的接口检查连接状态
-            is_connected = self.wifi_manager.get_is_connected()
-            
-            if self.wifi_connected and not is_connected:
-                # WiFi连接丢失
-                warning("WiFi连接丢失", module="NET")
-                self.wifi_connected = False
-                self.mqtt_connected = False  # WiFi断开时MQTT也会断开
-                self.event_bus.publish(EVENTS["WIFI_STATE_CHANGE"], state="disconnected")
-                
-            elif not self.wifi_connected and is_connected:
-                # WiFi重新连接
-                debug("WiFi重新连接", module="NET")
-                self.wifi_connected = True
-                self.event_bus.publish(EVENTS["WIFI_STATE_CHANGE"], state="connected")
-                
-        except Exception as e:
-            error("检查WiFi状态失败: {}", e, module="NET")
-            
-    def _check_mqtt_status(self):
-        """检查MQTT连接状态"""
-        try:
-            if not self.mqtt_controller:
-                return
-                
-            # 检查MQTT连接状态
-            is_connected = self.mqtt_controller.is_connected()
-            
-            if self.mqtt_connected and not is_connected:
-                # MQTT连接丢失
-                warning("MQTT连接丢失", module="NET")
-                self.mqtt_connected = False
-                self.event_bus.publish(EVENTS["MQTT_STATE_CHANGE"], state="disconnected")
-                
-            elif not self.mqtt_connected and is_connected:
-                # MQTT重新连接
-                debug("MQTT重新连接", module="NET")
-                self.mqtt_connected = True
-                self.event_bus.publish(EVENTS["MQTT_STATE_CHANGE"], state="connected")
-                
-        except Exception as e:
-            error("检查MQTT状态失败: {}", e, module="NET")
-            
-    def force_reconnect(self):
+    async def force_reconnect(self):
         """强制重新连接"""
         info("强制重新连接网络", module="NET")
         # 重置重连计时器，允许即时重试
         self.mqtt_last_attempt = 0
         self.wifi_last_attempt = 0
         self.disconnect()
-        time.sleep_ms(1000)  # 等待1秒
+        await asyncio.sleep_ms(1000)  # 异步等待1秒
         return self.connect()
 
 

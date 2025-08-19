@@ -18,6 +18,10 @@ import machine
 import utime as time
 from lib.logger import error, warning, debug
 from lib.lock.event_bus import EventBus, EVENTS
+try:
+    import uasyncio as asyncio
+except ImportError:
+    import asyncio
 
 
 class MqttController:
@@ -158,6 +162,115 @@ class MqttController:
             self._is_connected = False
             return False
 
+    async def connect_async(self):
+        """异步连接到MQTT Broker
+        
+        Returns:
+            bool: 连接成功返回True, 失败返回False
+        """
+        if self._is_connected:
+            return True
+
+        if not self.client:
+            warning("MQTT客户端未初始化或配置不完整", module="MQTT")
+            return False
+
+        try:
+            debug(
+                "异步尝试连接MQTT服务器: {}:{}",
+                self.config["broker"],
+                self.config.get("port", 1883),
+                module="MQTT",
+            )
+            
+            # 异步连接，分步骤进行以避免长时间阻塞
+            success = await self._async_connect_with_timeout()
+            
+            if success:
+                # 验证连接是否建立
+                if await self._async_verify_connection():
+                    self._is_connected = True
+                    debug("MQTT异步连接成功", module="MQTT")
+                    return True
+                else:
+                    self._is_connected = False
+                    warning("MQTT连接状态验证失败", module="MQTT")
+                    return False
+            else:
+                self._is_connected = False
+                return False
+
+        except OSError as e:
+            if e.errno == 113:  # ECONNABORTED
+                error(
+                    "MQTT连接被拒绝: 服务器{}:{}不可达或拒绝连接",
+                    self.config["broker"],
+                    self.config.get("port", 1883),
+                    module="MQTT",
+                )
+            elif e.errno == 110:  # ETIMEDOUT
+                error(
+                    "MQTT连接超时: 服务器{}:{}无响应",
+                    self.config["broker"],
+                    self.config.get("port", 1883),
+                    module="MQTT",
+                )
+            else:
+                error("MQTT连接网络错误 [{}]: {}", e.errno, e, module="MQTT")
+            self._is_connected = False
+            return False
+        except Exception as e:
+            error("MQTT异步连接异常: {}", e, module="MQTT")
+            self._is_connected = False
+            return False
+            
+    async def _async_connect_with_timeout(self):
+        """异步连接，带超时控制"""
+        try:
+            # 设置socket超时
+            try:
+                import socket as _sock
+                _timeout_sec = 10
+                if hasattr(_sock, "socket") and hasattr(_sock, "setdefaulttimeout"):
+                    _sock.setdefaulttimeout(_timeout_sec)
+            except Exception:
+                pass
+
+            # 分步骤连接，每步之间让出控制权
+            await asyncio.sleep_ms(10)  # 让出控制权
+            
+            # 执行实际连接
+            self.client.connect()
+            
+            # 连接后短暂等待
+            await asyncio.sleep_ms(100)
+            
+            return True
+            
+        except Exception as e:
+            error("异步MQTT连接步骤失败: {}", e, module="MQTT")
+            return False
+            
+    async def _async_verify_connection(self):
+        """异步验证连接状态"""
+        try:
+            # 检查连接状态
+            if hasattr(self.client, "is_connected") and self.client.is_connected():
+                return True
+            else:
+                # 尝试ping验证
+                await asyncio.sleep_ms(10)  # 让出控制权
+                try:
+                    self.client.ping()
+                    await asyncio.sleep_ms(50)  # 等待ping响应
+                    return True
+                except:
+                    return False
+                    
+        except Exception as e:
+            error("异步验证MQTT连接失败: {}", e, module="MQTT")
+            return False
+
     def is_connected(self):
         """检查MQTT是否已连接"""
         return self._is_connected
@@ -231,3 +344,14 @@ class MqttController:
                 self.client.check_msg()
             except Exception as e:
                 error("检查MQTT消息失败: {}", e, module="MQTT")
+                
+    async def check_msg_async(self):
+        """异步检查是否有新消息"""
+        if self._is_connected and self.client:
+            try:
+                # 让出控制权，避免阻塞
+                await asyncio.sleep_ms(1)
+                self.client.check_msg()
+                await asyncio.sleep_ms(1)  # 处理完消息后让出控制权
+            except Exception as e:
+                error("异步检查MQTT消息失败: {}", e, module="MQTT")

@@ -20,6 +20,7 @@ import gc
 from lib.logger import info, warning, error, debug
 from config import get_config
 from lib.lock.event_bus import EventBus
+import uasyncio as asyncio
 
 
 class MainController:
@@ -96,60 +97,54 @@ class MainController:
             error("LED初始化失败: {}", e, module="MAIN")
             
     def run(self):
-        """运行主循环"""
+        """运行主循环(已迁移到异步, 保留入口调用)"""
         if not self.initialize():
-            error("系统初始化失败，无法启动", module="MAIN")
+            error("系统初始化失败, 无法启动", module="MAIN")
             return
-            
-        self.running = True
-        self.last_loop_time = time.ticks_ms()
-        
         try:
-            while self.running:
-                self._main_loop()
-                
-        except KeyboardInterrupt:
-            info("收到中断信号，正在关闭系统", module="MAIN")
+            asyncio.run(self.run_async())
         except Exception as e:
-            error("主循环异常: {}", e, module="MAIN")
+            error("异步运行异常: {}", e, module="MAIN")
         finally:
             self._cleanup()
-            
-    def _main_loop(self):
-        """主循环逻辑"""
+
+    async def run_async(self):
+        """异步主循环入口"""
+        self.running = True
+        self.last_loop_time = time.ticks_ms()
+        self.loop_interval = 100
+        try:
+            while self.running:
+                await self._main_loop_async()
+        except asyncio.CancelledError:
+            info("主循环任务取消", module="MAIN")
+        except Exception as e:
+            error("主循环异常: {}", e, module="MAIN")
+
+    async def _main_loop_async(self):
+        """异步主循环逻辑"""
         current_time = time.ticks_ms()
-        
-        # 控制循环频率
         elapsed = time.ticks_diff(current_time, self.last_loop_time)
         if elapsed < self.loop_interval:
-            time.sleep_ms(self.loop_interval - elapsed)
+            await asyncio.sleep_ms(self.loop_interval - elapsed)
             current_time = time.ticks_ms()
-            
         self.last_loop_time = current_time
-        
         try:
-            # 1. 更新事件总线
+            # 1. 事件总线
             self.event_bus.process_events()
-            
-            # 2. 更新状态机
+            # 2. 状态机
             self.state_machine.update()
-            
-            # 3. 更新网络管理器
-            self.network_manager.loop()
-            
+            # 3. 网络管理现在由异步任务处理，无需同步调用
             # 4. 喂看门狗
             self.state_machine.feed_watchdog()
-            
-            # 5. 更新LED显示
+            # 5. LED
             try:
                 from hw.led import process_led_updates
                 process_led_updates()
             except Exception:
                 pass
-            
-            # 6. 定期垃圾回收和统计
+            # 6. 维护
             self._periodic_maintenance(current_time)
-            
         except Exception as e:
             error("主循环执行异常: {}", e, module="MAIN")
             
@@ -223,10 +218,10 @@ class MainController:
             error("获取系统信息失败: {}", e, module="MAIN")
             return {}
             
-    def force_network_reconnect(self):
-        """强制网络重连"""
+    async def force_network_reconnect(self):
+        """强制网络重连(异步)"""
         if self.network_manager:
-            return self.network_manager.force_reconnect()
+            return await self.network_manager.force_reconnect()
         return False
         
     def force_state_change(self, state_name):
