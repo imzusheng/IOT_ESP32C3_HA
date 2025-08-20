@@ -89,7 +89,7 @@ class _LEDPatternController:
 
         # 初始化硬件定时器
         self._init_hardware_timer()
-        # 初始化即进入巡航模式，避免外部依赖
+        # 初始化即进入巡航模式, 避免外部依赖
         try:
             self.play('cruise')
         except Exception:
@@ -252,7 +252,7 @@ def process_led_updates():
 def init_led():
     """
     初始化LED系统。
-    为了向后兼容性而提供的函数，实际上LED会在首次调用时自动初始化。
+    为了向后兼容性而提供的函数, 实际上LED会在首次调用时自动初始化。
     初始化完成后, 默认启用CRUISE模式。
     
     Example:
@@ -269,10 +269,10 @@ def init_led():
 def set_led_mode(mode: str):
     """
     设置LED模式。
-    这是play函数的别名，为了向后兼容性而提供。
+    这是play函数的别名, 为了向后兼容性而提供。
     
     Args:
-        mode (str): LED模式，支持 'off', 'blink', 'pulse', 'cruise', 'sos'
+        mode (str): LED模式, 支持 'off', 'blink', 'pulse', 'cruise', 'sos'
         
     Example:
         from hw.led import set_led_mode

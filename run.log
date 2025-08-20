@@ -18,28 +18,28 @@ MPY: soft reboot
 [00:00:16] [INFO ] [FSM] 进入 RUNNING 状态
 [00:00:17] [ERROR] [MQTT] 异步检查MQTT消息失败: type=OSError, errno=104, reason=ECONNRESET, detail=OSError(104,)
 [00:00:18] [WARN ] [NET] MQTT连接丢失
-[00:00:18] [WARN ] [FSM] MQTT连接断开，重新连接
+[00:00:18] [WARN ] [FSM] MQTT连接断开, 重新连接
 [00:00:18] [INFO ] [NET] 触发网络连接流程
 [00:00:18] [INFO ] [NET] MQTT连接成功
 [00:00:18] [INFO ] [FSM] MQTT连接成功
 [00:00:18] [INFO ] [FSM] 进入 RUNNING 状态
 [00:00:19] [ERROR] [MQTT] 异步检查MQTT消息失败: type=OSError, errno=104, reason=ECONNRESET, detail=OSError(104,)
 [00:00:20] [WARN ] [NET] MQTT连接丢失
-[00:00:20] [WARN ] [FSM] MQTT连接断开，重新连接
+[00:00:20] [WARN ] [FSM] MQTT连接断开, 重新连接
 [00:00:20] [INFO ] [NET] 触发网络连接流程
 [00:00:20] [INFO ] [NET] MQTT连接成功
 [00:00:20] [INFO ] [FSM] MQTT连接成功
 [00:00:20] [INFO ] [FSM] 进入 RUNNING 状态
 [00:00:22] [ERROR] [MQTT] 异步检查MQTT消息失败: type=OSError, errno=104, reason=ECONNRESET, detail=OSError(104,)
 [00:00:22] [WARN ] [NET] MQTT连接丢失
-[00:00:22] [WARN ] [FSM] MQTT连接断开，重新连接
+[00:00:22] [WARN ] [FSM] MQTT连接断开, 重新连接
 [00:00:22] [INFO ] [NET] 触发网络连接流程
 [00:00:23] [INFO ] [NET] MQTT连接成功
 [00:00:23] [INFO ] [FSM] MQTT连接成功
 [00:00:23] [INFO ] [FSM] 进入 RUNNING 状态
 [00:00:24] [ERROR] [MQTT] 异步检查MQTT消息失败: type=OSError, errno=104, reason=ECONNRESET, detail=OSError(104,)
 [00:00:24] [WARN ] [NET] MQTT连接丢失
-[00:00:24] [WARN ] [FSM] MQTT连接断开，重新连接
+[00:00:24] [WARN ] [FSM] MQTT连接断开, 重新连接
 [00:00:24] [INFO ] [NET] 触发网络连接流程
 [00:00:25] [INFO ] [FSM] 进入 RUNNING 状态
 [00:00:25] [INFO ] [NET] MQTT连接成功

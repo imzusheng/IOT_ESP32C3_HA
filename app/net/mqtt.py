@@ -3,14 +3,14 @@
 MQTT 控制器
 职责：
 - 封装 MQTTClient 的连接/断开/发布/订阅/消息处理
-- 通过事件总线上报收到的消息，供系统其他模块使用
+- 通过事件总线上报收到的消息, 供系统其他模块使用
 
 设计边界：
-- 不包含指数退避重连与复杂会话保持策略（由上层 NetworkManager/FSM 统一治理）
-- 仅做轻量的连接状态管理，避免在资源受限环境中过度占用内存
+- 不包含指数退避重连与复杂会话保持策略(由上层 NetworkManager/FSM 统一治理)
+- 仅做轻量的连接状态管理, 避免在资源受限环境中过度占用内存
 
 扩展建议：
-- 可引入心跳/遗嘱/自动重连等策略，但需统一设计避免与FSM职责重叠
+- 可引入心跳/遗嘱/自动重连等策略, 但需统一设计避免与FSM职责重叠
 - 可通过主题前缀/设备ID规范化上报主题
 """
 from lib.lock.umqtt import MQTTClient
@@ -23,7 +23,7 @@ try:
 except ImportError:
     import asyncio
 
-# 为了在错误日志中输出更明确的原因，提供一个简单的errno解释函数
+# 为了在错误日志中输出更明确的原因, 提供一个简单的errno解释函数
 def _errno_reason(err_no):
     try:
         code = int(err_no)
@@ -36,7 +36,7 @@ def _errno_reason(err_no):
         111: "ECONNREFUSED",
         113: "EHOSTUNREACH",
         128: "ENETUNREACH",
-        -1:  "UNKNOWN(-1): 驱动/底层返回-1，常见于连接中断或未知错误"
+        -1:  "UNKNOWN(-1): 驱动/底层返回-1, 常见于连接中断或未知错误"
     }
     return reasons.get(code, "unknown")
 
@@ -60,13 +60,13 @@ class MqttController:
         self.config = config or {}
         self.client = None
         self._is_connected = False
-        self.event_bus = event_bus  # 使用传入的EventBus，不创建新的
+        self.event_bus = event_bus  # 使用传入的EventBus, 不创建新的
         
         # 并发控制：防止并发连接重入
         self._connecting = False
 
         # 日志转发相关
-        self._log_topic = None  # INFO 日志转发主题（MQTT连接成功后设定）
+        self._log_topic = None  # INFO 日志转发主题(MQTT连接成功后设定)
 
         # 根据配置初始化MQTT客户端
         try:
@@ -112,7 +112,7 @@ class MqttController:
 
     # ------------------ 日志与心跳辅助 ------------------
     def _resolve_client_id(self):
-        """获取客户端ID（字符串），用于构造默认日志主题"""
+        """获取客户端ID(字符串), 用于构造默认日志主题"""
         try:
             cid = getattr(self.client, "client_id", None)
             if cid is None:
@@ -132,10 +132,10 @@ class MqttController:
         说明：
         - 仅在 MQTT 连接成功后调用
         - 采用 QoS0、非保留消息
-        - 失败时静默，不影响主流程
+        - 失败时静默, 不影响主流程
         """
         try:
-            # 计算日志主题：优先使用配置项，其次使用 client_id
+            # 计算日志主题：优先使用配置项, 其次使用 client_id
             if not self._log_topic:
                 conf_topic = (self.config or {}).get("log_topic")
                 if conf_topic:
@@ -145,10 +145,10 @@ class MqttController:
                     self._log_topic = f"log/{cid}"
 
             def _hook(line):
-                # 仅在已连接状态下转发，避免启动阶段或断链时异常
+                # 仅在已连接状态下转发, 避免启动阶段或断链时异常
                 if self._is_connected and self.client:
                     try:
-                        # 使用控制器的 publish，内部自带最小保护
+                        # 使用控制器的 publish, 内部自带最小保护
                         self.publish(self._log_topic, line, retain=False, qos=0)
                     except Exception:
                         # 静默失败
@@ -168,10 +168,10 @@ class MqttController:
 
     def _maybe_send_ping(self):
         """
-        根据 keepalive 调度心跳：当距离上次收到数据超过 keepalive 的安全边际时，发送 PINGREQ。
+        根据 keepalive 调度心跳：当距离上次收到数据超过 keepalive 的安全边际时, 发送 PINGREQ。
         说明：
-        - 使用底层 MQTTClient 的 last_ping 与 last_ping_resp（单位：秒）
-        - 边际：取 min(5, max(1, keepalive//3)) 秒，避免临界超时
+        - 使用底层 MQTTClient 的 last_ping 与 last_ping_resp(单位：秒)
+        - 边际：取 min(5, max(1, keepalive//3)) 秒, 避免临界超时
         - 仅在连接状态下执行
         """
         try:
@@ -185,7 +185,7 @@ class MqttController:
             last_resp = getattr(self.client, "last_ping_resp", 0) or 0
             last_ping = getattr(self.client, "last_ping", 0) or 0
             margin = 5 if ka > 15 else max(1, ka // 3)
-            # 若长时间未收到任何数据，则发送心跳；并避免在刚发送过心跳后立刻重复发送
+            # 若长时间未收到任何数据, 则发送心跳；并避免在刚发送过心跳后立刻重复发送
             if (now_s - last_resp) >= (ka - margin) and (now_s - last_ping) >= margin:
                 try:
                     self.client.ping()
@@ -302,7 +302,7 @@ class MqttController:
                 module="MQTT",
             )
             
-            # 异步连接，分步骤进行以避免长时间阻塞
+            # 异步连接, 分步骤进行以避免长时间阻塞
             success = await self._async_connect_with_timeout()
             
             if success:
@@ -345,26 +345,26 @@ class MqttController:
             self._is_connected = False
             return False
         finally:
-            # 重置连接中标志，确保后续可再次尝试
+            # 重置连接中标志, 确保后续可再次尝试
             self._connecting = False
             
     async def _async_connect_with_timeout(self):
-        """异步连接，带超时控制
+        """异步连接, 带超时控制
         
         说明：
-        - 仅设置全局 socket 默认超时为 10 秒，避免长时间阻塞
-        - 直接复用 __init__ 中已创建并设置回调的 self.client，不在此处重复创建客户端
-        - 保持最小改动，避免引入新的配置键名差异
+        - 仅设置全局 socket 默认超时为 10 秒, 避免长时间阻塞
+        - 直接复用 __init__ 中已创建并设置回调的 self.client, 不在此处重复创建客户端
+        - 保持最小改动, 避免引入新的配置键名差异
         """
         try:
-            # 设置 socket 超时（统一为 10 秒）
+            # 设置 socket 超时(统一为 10 秒)
             try:
                 import socket as _sock
                 _timeout_sec = 10
                 if hasattr(_sock, "setdefaulttimeout"):
                     _sock.setdefaulttimeout(_timeout_sec)
             except Exception:
-                # 在部分运行时环境下，可能不支持 setdefaulttimeout，这里容错处理
+                # 在部分运行时环境下, 可能不支持 setdefaulttimeout, 这里容错处理
                 pass
             
             # 执行连接：复用已初始化的 MQTTClient 实例
@@ -439,7 +439,7 @@ class MqttController:
             return False
 
         try:
-            # 确保以 UTF-8 bytes 发送，避免中文等多字节字符导致长度不一致
+            # 确保以 UTF-8 bytes 发送, 避免中文等多字节字符导致长度不一致
             topic_b = topic if isinstance(topic, (bytes, bytearray)) else str(topic).encode("utf-8")
             msg_b = msg if isinstance(msg, (bytes, bytearray)) else str(msg).encode("utf-8")
             self.client.publish(topic_b, msg_b, retain, qos)
@@ -464,7 +464,7 @@ class MqttController:
             return False
 
         try:
-            # 统一编码为 bytes，保证协议报文正确
+            # 统一编码为 bytes, 保证协议报文正确
             topic_b = topic if isinstance(topic, (bytes, bytearray)) else str(topic).encode("utf-8")
             self.client.subscribe(topic_b, qos)
             return True
@@ -476,7 +476,7 @@ class MqttController:
         """检查是否有新消息"""
         if self._is_connected and self.client:
             try:
-                # 心跳调度（同步路径）
+                # 心跳调度(同步路径)
                 self._maybe_send_ping()
                 self.client.check_msg()
             except Exception as e:
@@ -489,18 +489,18 @@ class MqttController:
                         err_no = None
                 error("检查MQTT消息失败: type={}, errno={}, reason={}, detail={}",
                       type(e).__name__, err_no, _errno_reason(err_no), repr(e), module="MQTT")
-                # 标记连接已断开，交由上层进行事件与重连处理
+                # 标记连接已断开, 交由上层进行事件与重连处理
                 self._is_connected = False
-                # 移除 INFO 日志钩子，避免无连接情况下继续转发
+                # 移除 INFO 日志钩子, 避免无连接情况下继续转发
                 self._remove_info_log_hook()
                 
     async def check_msg_async(self):
         """异步检查是否有新消息"""
         if self._is_connected and self.client:
             try:
-                # 让出控制权，避免阻塞
+                # 让出控制权, 避免阻塞
                 await asyncio.sleep_ms(1)
-                # 心跳调度（异步路径）
+                # 心跳调度(异步路径)
                 self._maybe_send_ping()
                 self.client.check_msg()
                 await asyncio.sleep_ms(1)  # 处理完消息后让出控制权
@@ -514,7 +514,7 @@ class MqttController:
                         err_no = None
                 error("异步检查MQTT消息失败: type={}, errno={}, reason={}, detail={}",
                       type(e).__name__, err_no, _errno_reason(err_no), repr(e), module="MQTT")
-                # 标记连接已断开，交由上层进行事件与重连处理
+                # 标记连接已断开, 交由上层进行事件与重连处理
                 self._is_connected = False
-                # 移除 INFO 日志钩子，避免无连接情况下继续转发
+                # 移除 INFO 日志钩子, 避免无连接情况下继续转发
                 self._remove_info_log_hook()

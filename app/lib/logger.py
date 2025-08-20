@@ -41,14 +41,14 @@ def _get_timestamp():
         return "00:00:00"
 
 
-# 可选：INFO 级日志转发钩子（例如转发到 MQTT）
-# 注意：应当由上层在网络就绪后注册，避免启动阶段阻塞或异常
+# 可选：INFO 级日志转发钩子(例如转发到 MQTT)
+# 注意：应当由上层在网络就绪后注册, 避免启动阶段阻塞或异常
 _INFO_HOOK = None
 
 def set_info_hook(hook):
     """
     注册/移除 INFO 级日志的转发钩子。
-    hook: 可调用对象，签名为 hook(formatted_line: str)
+    hook: 可调用对象, 签名为 hook(formatted_line: str)
     传入 None 表示移除钩子。
     """
     global _INFO_HOOK
@@ -92,7 +92,7 @@ def _log(level, level_name, msg, *args, module=None):
         try:
             _INFO_HOOK(line)
         except Exception:
-            # 转发钩子不应影响主日志流程，静默失败
+            # 转发钩子不应影响主日志流程, 静默失败
             pass
 
 

@@ -6,13 +6,13 @@ ESP32C3 IoT 设备主程序
 - 驱动主循环：事件分发 → FSM 更新 → 网络循环 → 看门狗喂狗 → 周期性维护
 
 架构关系：
-- EventBus 作为系统消息中枢，FSM/NetworkManager/其他模块通过事件解耦
-- FSM 负责系统状态演进与容错策略，NetworkManager 负责具体联网动作
-- MainController 不直接耦合业务细节，仅协调整体生命周期
+- EventBus 作为系统消息中枢, FSM/NetworkManager/其他模块通过事件解耦
+- FSM 负责系统状态演进与容错策略, NetworkManager 负责具体联网动作
+- MainController 不直接耦合业务细节, 仅协调整体生命周期
 
 维护说明：
-- 主循环默认 100ms 周期，可视需要在配置中抽象
-- 统计输出与 GC 在 30s 周期执行，避免频繁抖动
+- 主循环默认 100ms 周期, 可视需要在配置中抽象
+- 统计输出与 GC 在 30s 周期执行, 避免频繁抖动
 """
 
 import utime as time
@@ -54,10 +54,10 @@ class MainController:
             self.config = get_config()
             info("配置加载完成", module="MAIN")
             
-            # 2. 日志系统为零配置、全局可用，无需手动初始化
+            # 2. 日志系统为零配置、全局可用, 无需手动初始化
             info("日志系统准备就绪", module="MAIN")
             
-            # 3. 初始化LED（提前）
+            # 3. 初始化LED(提前)
             self._init_led()
             
             # 4. 初始化事件总线
@@ -90,7 +90,7 @@ class MainController:
         try:
             from hw.led import init_led, play
             init_led()
-            # 初始化后启动慢速闪烁，代表运行中
+            # 初始化后启动慢速闪烁, 代表运行中
             play('blink')
             debug("LED初始化完成", module="MAIN")
         except Exception as e:
@@ -134,7 +134,7 @@ class MainController:
             self.event_bus.process_events()
             # 2. 状态机
             self.state_machine.update()
-            # 3. 网络管理现在由异步任务处理，无需同步调用
+            # 3. 网络管理现在由异步任务处理, 无需同步调用
             # 4. 喂看门狗
             self.state_machine.feed_watchdog()
             # 5. LED
@@ -159,7 +159,7 @@ class MainController:
             # 垃圾回收
             gc.collect()
             
-            # 输出统计信息（移除性能显示）
+            # 输出统计信息(移除性能显示)
             from utils.helpers import check_memory
             mem = check_memory()
             free_kb = mem.get("free_kb", gc.mem_free() // 1024)

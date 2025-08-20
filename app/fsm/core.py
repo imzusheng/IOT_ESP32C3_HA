@@ -1,11 +1,11 @@
 # app/fsm/core.py
 """
 状态机核心实现
-简化状态模型为 5 个核心状态（BOOT/INIT/CONNECTING/RUNNING/ERROR），移除独立的 NetworkFSM 冗余
+简化状态模型为 5 个核心状态(BOOT/INIT/CONNECTING/RUNNING/ERROR), 移除独立的 NetworkFSM 冗余
 
 职责：
-- 订阅网络/系统关键事件（WIFI_STATE_CHANGE、MQTT_STATE_CHANGE、SYSTEM_STATE_CHANGE）
-- 驱动系统从启动到运行的状态演进，并在异常时进入 ERROR 并执行重试/重启策略
+- 订阅网络/系统关键事件(WIFI_STATE_CHANGE、MQTT_STATE_CHANGE、SYSTEM_STATE_CHANGE)
+- 驱动系统从启动到运行的状态演进, 并在异常时进入 ERROR 并执行重试/重启策略
 - 统一控制 LED 指示与看门狗喂狗
 
 状态与转换：
@@ -48,7 +48,7 @@ STATE_TRANSITIONS = {
 class FSM:
     """
     状态机类
-    合并原有的FunctionalStateMachine功能，消除冗余
+    合并原有的FunctionalStateMachine功能, 消除冗余
     """
     
     def __init__(self, event_bus, config, network_manager=None):
@@ -164,7 +164,7 @@ class FSM:
     def _transition_to_error(self):
         """转换到错误状态"""
         if self.error_count >= self.max_errors:
-            error("达到最大错误次数，系统将重启", module="FSM")
+            error("达到最大错误次数, 系统将重启", module="FSM")
             machine.reset()
         else:
             self._enter_state(STATE_ERROR)
@@ -208,17 +208,17 @@ class FSM:
         state = kwargs.get('state', 'unknown')
         
         if state == 'connected' and self.current_state == STATE_INIT:
-            # WiFi连接成功，检查是否完全连接
+            # WiFi连接成功, 检查是否完全连接
             info("WiFi连接成功", module="FSM")
             if self.network_manager and self.network_manager.is_connected():
                 self._enter_state(STATE_RUNNING)
             
         elif state == 'disconnected' and self.current_state == STATE_RUNNING:
-            # WiFi断开，需要重新连接
-            warning("WiFi连接断开，重新连接", module="FSM")
+            # WiFi断开, 需要重新连接
+            warning("WiFi连接断开, 重新连接", module="FSM")
             self._enter_state(STATE_INIT)
         
-        # 连接阶段发生断开/失败: 不改变状态机策略，但让LED进入SOS提示
+        # 连接阶段发生断开/失败: 不改变状态机策略, 但让LED进入SOS提示
         elif state == 'disconnected' and self.current_state in (STATE_INIT, STATE_CONNECTING):
             try:
                 from hw.led import set_led_mode
@@ -232,17 +232,17 @@ class FSM:
         state = kwargs.get('state', 'unknown')
         
         if state == 'connected' and self.current_state == STATE_INIT:
-            # MQTT连接成功，检查是否完全连接
+            # MQTT连接成功, 检查是否完全连接
             info("MQTT连接成功", module="FSM")
             if self.network_manager and self.network_manager.is_connected():
                 self._enter_state(STATE_RUNNING)
             
         elif state == 'disconnected' and self.current_state == STATE_RUNNING:
-            # MQTT断开，重新连接
-            warning("MQTT连接断开，重新连接", module="FSM")
+            # MQTT断开, 重新连接
+            warning("MQTT连接断开, 重新连接", module="FSM")
             self._enter_state(STATE_INIT)
         
-        # 连接阶段发生断开/失败: 不改变状态机策略，但让LED进入SOS提示
+        # 连接阶段发生断开/失败: 不改变状态机策略, 但让LED进入SOS提示
         elif state == 'disconnected' and self.current_state in (STATE_INIT, STATE_CONNECTING):
             try:
                 from hw.led import set_led_mode
@@ -271,8 +271,8 @@ class FSM:
                 if self.network_manager and self.network_manager.is_connected():
                     self._enter_state(STATE_RUNNING)
                 else:
-                    # 取消全局60秒超时切换到ERROR，以避免与NET内部退避/重试策略冲突
-                    # 保持在 INIT，等待 NetworkManager 自行管理重连与退避
+                    # 取消全局60秒超时切换到ERROR, 以避免与NET内部退避/重试策略冲突
+                    # 保持在 INIT, 等待 NetworkManager 自行管理重连与退避
                     pass
                 
             elif self.current_state == STATE_RUNNING:
@@ -285,8 +285,8 @@ class FSM:
                     self._enter_state(STATE_CONNECTING)
                     
             elif self.current_state == STATE_CONNECTING:
-                # 取消全局60秒超时切换到ERROR，以避免与NET内部退避/重试策略冲突
-                # 保持在 CONNECTING，由 NetworkManager 的 WiFi/MQTT 模块（各自10s超时）配合退避驱动连接流程
+                # 取消全局60秒超时切换到ERROR, 以避免与NET内部退避/重试策略冲突
+                # 保持在 CONNECTING, 由 NetworkManager 的 WiFi/MQTT 模块(各自10s超时)配合退避驱动连接流程
                 pass
                     
         except Exception as e:
@@ -338,11 +338,11 @@ class FSM:
 
 # 兼容性函数
 def create_state_machine(config, event_bus, network_manager=None, static_cache=None):
-    """创建状态机实例（保持兼容性）"""
+    """创建状态机实例(保持兼容性)"""
     return FSM(event_bus, config, network_manager)
 
 
-# 全局实例管理（保持兼容性）
+# 全局实例管理(保持兼容性)
 _state_machine_instance = None
 
 def get_state_machine():

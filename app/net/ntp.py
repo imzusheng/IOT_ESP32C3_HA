@@ -2,11 +2,11 @@
 """
 NTP 时间同步管理器
 职责：
-- 执行一次性 NTP 时间同步，缓存同步状态
-- 提供 is_synced() 查询，供 NetworkManager 决策是否继续流程
+- 执行一次性 NTP 时间同步, 缓存同步状态
+- 提供 is_synced() 查询, 供 NetworkManager 决策是否继续流程
 
 设计边界：
-- 不实现内部重试与退避（交由 NetworkManager 或 FSM 统一治理）
+- 不实现内部重试与退避(交由 NetworkManager 或 FSM 统一治理)
 - 允许在某些固件中 ntptime 不支持设置 host 的情况优雅降级
 
 扩展建议：

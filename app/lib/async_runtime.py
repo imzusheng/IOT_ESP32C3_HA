@@ -7,7 +7,7 @@
 - 统一异步任务的错误处理和日志记录
 
 设计边界：
-- 仅负责异步任务编排，不包含具体业务逻辑
+- 仅负责异步任务编排, 不包含具体业务逻辑
 - 提供任务管理接口供 NetworkManager、FSM 等模块使用
 - 确保异步任务异常不会影响主事件循环
 """
@@ -32,13 +32,13 @@ class AsyncRuntime:
         
         Args:
             coro: 协程对象
-            name: 任务名称，用于标识和管理
+            name: 任务名称, 用于标识和管理
             
         Returns:
             Task: asyncio.Task 对象
         """
         try:
-            # 同名任务幂等：若存在同名任务且未结束，先取消旧任务，避免并发重复执行
+            # 同名任务幂等：若存在同名任务且未结束, 先取消旧任务, 避免并发重复执行
             if name and name in self.tasks:
                 try:
                     old_task = self.tasks.get(name)
@@ -46,8 +46,8 @@ class AsyncRuntime:
                         old_task.cancel()
                         debug("取消已存在的同名异步任务以进行替换: {}", name, module="ASYNC")
                 except Exception as _e:
-                    # 取消失败不应阻断后续创建，记录告警继续
-                    warning("取消同名任务时发生异常，将继续创建新任务: {} -> {}", name, _e, module="ASYNC")
+                    # 取消失败不应阻断后续创建, 记录告警继续
+                    warning("取消同名任务时发生异常, 将继续创建新任务: {} -> {}", name, _e, module="ASYNC")
             
             task = asyncio.create_task(coro)
             
@@ -135,7 +135,7 @@ class AsyncRuntime:
                 error("创建主任务失败", module="ASYNC")
                 
         except KeyboardInterrupt:
-            info("收到中断信号，正在停止异步运行时", module="ASYNC")
+            info("收到中断信号, 正在停止异步运行时", module="ASYNC")
         except Exception as e:
             error("异步运行时异常: {}", e, module="ASYNC")
         finally:
