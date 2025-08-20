@@ -1,53 +1,46 @@
 >>> %Run -c $EDITOR_CONTENT
 
 MPY: soft reboot
-[00:00:12] [INFO ] [MAIN] === ESP32C3系统启动 ===
-[00:00:12] [INFO ] [MAIN] 配置加载完成
-[00:00:12] [INFO ] [MAIN] 日志系统准备就绪
-[00:00:12] [INFO ] [LED] LED硬件定时器已启动
-[00:00:12] [INFO ] [LED] LED控制器已初始化, 引脚: [12, 13]
-[00:00:12] [INFO ] [LED] LED系统初始化完成(硬件定时器驱动, CRUISE模式)
-[00:00:12] [INFO ] [NET] 触发网络连接流程
-[00:00:12] [INFO ] [MAIN] === 系统初始化完成 ===
-[00:00:15] [INFO ] [MAIN] 系统状态 - 状态:INIT, 内存:100KB(38%), WiFi:False, MQTT:False
-[00:00:16] [INFO ] [NET] WiFi连接成功: CMCC-pdRG
-[00:00:16] [INFO ] [FSM] WiFi连接成功
-[00:00:17] [INFO ] [NET] NTP时间同步成功
-[00:00:35] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
-[00:00:56] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
-[00:00:56] [INFO ] [MAIN] 系统状态 - 状态:INIT, 内存:93KB(39%), WiFi:True, MQTT:False
-[00:01:16] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
-[00:01:37] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
-[00:01:37] [INFO ] [MAIN] 系统状态 - 状态:INIT, 内存:93KB(39%), WiFi:True, MQTT:False
-[00:01:57] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
-[00:02:18] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
-[00:02:18] [INFO ] [MAIN] 系统状态 - 状态:INIT, 内存:93KB(39%), WiFi:True, MQTT:False
-[00:02:38] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
-[00:02:59] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
-[00:02:59] [INFO ] [MAIN] 系统状态 - 状态:INIT, 内存:93KB(39%), WiFi:True, MQTT:False
-[00:03:19] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
-[00:03:40] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
-[00:03:40] [INFO ] [MAIN] 系统状态 - 状态:INIT, 内存:93KB(39%), WiFi:True, MQTT:False
-[00:04:00] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
-[00:04:21] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
-[00:04:21] [INFO ] [MAIN] 系统状态 - 状态:INIT, 内存:93KB(39%), WiFi:True, MQTT:False
-[00:04:41] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
-[00:05:02] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
-[00:05:02] [INFO ] [MAIN] 系统状态 - 状态:INIT, 内存:93KB(39%), WiFi:True, MQTT:False
-[00:05:22] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
-[00:05:43] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
-[00:05:43] [INFO ] [MAIN] 系统状态 - 状态:INIT, 内存:93KB(39%), WiFi:True, MQTT:False
-[00:06:03] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
-[00:06:24] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
-[00:06:24] [INFO ] [MAIN] 系统状态 - 状态:INIT, 内存:93KB(39%), WiFi:True, MQTT:False
-[00:06:44] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
-[00:07:05] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
-[00:07:05] [INFO ] [MAIN] 系统状态 - 状态:INIT, 内存:93KB(39%), WiFi:True, MQTT:False
-[00:07:26] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
-[00:07:46] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
-[00:07:46] [INFO ] [MAIN] 系统状态 - 状态:INIT, 内存:93KB(39%), WiFi:True, MQTT:False
-[00:08:07] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
-[00:08:27] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
-[00:08:27] [INFO ] [MAIN] 系统状态 - 状态:INIT, 内存:93KB(39%), WiFi:True, MQTT:False
-[00:08:48] [ERROR] [MQTT] MQTT连接失败: [Errno 113] ECONNABORTED
+[00:00:10] [INFO ] [MAIN] === ESP32C3系统启动 ===
+[00:00:10] [INFO ] [MAIN] 配置加载完成
+[00:00:10] [INFO ] [MAIN] 日志系统准备就绪
+[00:00:10] [INFO ] [LED] LED硬件定时器已启动
+[00:00:10] [INFO ] [LED] LED控制器已初始化, 引脚: [12, 13]
+[00:00:10] [INFO ] [LED] LED系统初始化完成(硬件定时器驱动, CRUISE模式)
+[00:00:11] [INFO ] [NET] 触发网络连接流程
+[00:00:11] [INFO ] [MAIN] === 系统初始化完成 ===
+[00:00:14] [INFO ] [MAIN] 系统状态 - 状态:INIT, 内存:97KB(39%), WiFi:False, MQTT:False
+[00:00:15] [INFO ] [NET] WiFi连接成功: CMCC-pdRG
+[00:00:15] [INFO ] [FSM] WiFi连接成功
+[00:00:16] [INFO ] [NET] NTP时间同步成功
+[00:00:16] [INFO ] [NET] MQTT连接成功
+[00:00:16] [INFO ] [FSM] MQTT连接成功
+[00:00:16] [INFO ] [FSM] 进入 RUNNING 状态
+[00:00:17] [ERROR] [MQTT] 异步检查MQTT消息失败: type=OSError, errno=104, reason=ECONNRESET, detail=OSError(104,)
+[00:00:18] [WARN ] [NET] MQTT连接丢失
+[00:00:18] [WARN ] [FSM] MQTT连接断开，重新连接
+[00:00:18] [INFO ] [NET] 触发网络连接流程
+[00:00:18] [INFO ] [NET] MQTT连接成功
+[00:00:18] [INFO ] [FSM] MQTT连接成功
+[00:00:18] [INFO ] [FSM] 进入 RUNNING 状态
+[00:00:19] [ERROR] [MQTT] 异步检查MQTT消息失败: type=OSError, errno=104, reason=ECONNRESET, detail=OSError(104,)
+[00:00:20] [WARN ] [NET] MQTT连接丢失
+[00:00:20] [WARN ] [FSM] MQTT连接断开，重新连接
+[00:00:20] [INFO ] [NET] 触发网络连接流程
+[00:00:20] [INFO ] [NET] MQTT连接成功
+[00:00:20] [INFO ] [FSM] MQTT连接成功
+[00:00:20] [INFO ] [FSM] 进入 RUNNING 状态
+[00:00:22] [ERROR] [MQTT] 异步检查MQTT消息失败: type=OSError, errno=104, reason=ECONNRESET, detail=OSError(104,)
+[00:00:22] [WARN ] [NET] MQTT连接丢失
+[00:00:22] [WARN ] [FSM] MQTT连接断开，重新连接
+[00:00:22] [INFO ] [NET] 触发网络连接流程
+[00:00:23] [INFO ] [NET] MQTT连接成功
+[00:00:23] [INFO ] [FSM] MQTT连接成功
+[00:00:23] [INFO ] [FSM] 进入 RUNNING 状态
+[00:00:24] [ERROR] [MQTT] 异步检查MQTT消息失败: type=OSError, errno=104, reason=ECONNRESET, detail=OSError(104,)
+[00:00:24] [WARN ] [NET] MQTT连接丢失
+[00:00:24] [WARN ] [FSM] MQTT连接断开，重新连接
+[00:00:24] [INFO ] [NET] 触发网络连接流程
+[00:00:25] [INFO ] [FSM] 进入 RUNNING 状态
+[00:00:25] [INFO ] [NET] MQTT连接成功
 

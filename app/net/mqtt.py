@@ -16,12 +16,29 @@ MQTT 控制器
 from lib.lock.umqtt import MQTTClient
 import machine
 import utime as time
-from lib.logger import error, warning, debug
+from lib.logger import error, warning, debug, set_info_hook
 from lib.lock.event_bus import EventBus, EVENTS
 try:
     import uasyncio as asyncio
 except ImportError:
     import asyncio
+
+# 为了在错误日志中输出更明确的原因，提供一个简单的errno解释函数
+def _errno_reason(err_no):
+    try:
+        code = int(err_no)
+    except Exception:
+        return "unknown"
+    reasons = {
+        103: "ECONNABORTED",
+        104: "ECONNRESET",
+        110: "ETIMEDOUT",
+        111: "ECONNREFUSED",
+        113: "EHOSTUNREACH",
+        128: "ENETUNREACH",
+        -1:  "UNKNOWN(-1): 驱动/底层返回-1，常见于连接中断或未知错误"
+    }
+    return reasons.get(code, "unknown")
 
 
 class MqttController:
@@ -47,6 +64,9 @@ class MqttController:
         
         # 并发控制：防止并发连接重入
         self._connecting = False
+
+        # 日志转发相关
+        self._log_topic = None  # INFO 日志转发主题（MQTT连接成功后设定）
 
         # 根据配置初始化MQTT客户端
         try:
@@ -90,6 +110,93 @@ class MqttController:
         except Exception as e:
             error("处理MQTT消息失败: {}", e, module="MQTT")
 
+    # ------------------ 日志与心跳辅助 ------------------
+    def _resolve_client_id(self):
+        """获取客户端ID（字符串），用于构造默认日志主题"""
+        try:
+            cid = getattr(self.client, "client_id", None)
+            if cid is None:
+                return "device"
+            if isinstance(cid, bytes):
+                try:
+                    return cid.decode("utf-8")
+                except Exception:
+                    return str(cid)
+            return str(cid)
+        except Exception:
+            return "device"
+
+    def _install_info_log_hook(self):
+        """
+        安装 INFO 级日志转发钩子：将日志转发到 MQTT
+        说明：
+        - 仅在 MQTT 连接成功后调用
+        - 采用 QoS0、非保留消息
+        - 失败时静默，不影响主流程
+        """
+        try:
+            # 计算日志主题：优先使用配置项，其次使用 client_id
+            if not self._log_topic:
+                conf_topic = (self.config or {}).get("log_topic")
+                if conf_topic:
+                    self._log_topic = conf_topic
+                else:
+                    cid = self._resolve_client_id()
+                    self._log_topic = f"log/{cid}"
+
+            def _hook(line):
+                # 仅在已连接状态下转发，避免启动阶段或断链时异常
+                if self._is_connected and self.client:
+                    try:
+                        # 使用控制器的 publish，内部自带最小保护
+                        self.publish(self._log_topic, line, retain=False, qos=0)
+                    except Exception:
+                        # 静默失败
+                        pass
+
+            set_info_hook(_hook)
+        except Exception:
+            # 安装钩子失败不应影响连接流程
+            pass
+
+    def _remove_info_log_hook(self):
+        """移除 INFO 级日志转发钩子"""
+        try:
+            set_info_hook(None)
+        except Exception:
+            pass
+
+    def _maybe_send_ping(self):
+        """
+        根据 keepalive 调度心跳：当距离上次收到数据超过 keepalive 的安全边际时，发送 PINGREQ。
+        说明：
+        - 使用底层 MQTTClient 的 last_ping 与 last_ping_resp（单位：秒）
+        - 边际：取 min(5, max(1, keepalive//3)) 秒，避免临界超时
+        - 仅在连接状态下执行
+        """
+        try:
+            if not (self._is_connected and self.client and getattr(self.client, "keepalive", 0)):
+                return
+            ka = int(self.client.keepalive) if self.client.keepalive else 0
+            if ka <= 0:
+                return
+            # 采用 utime.time() 秒
+            now_s = time.time() if hasattr(time, "time") else (time.ticks_ms() // 1000)
+            last_resp = getattr(self.client, "last_ping_resp", 0) or 0
+            last_ping = getattr(self.client, "last_ping", 0) or 0
+            margin = 5 if ka > 15 else max(1, ka // 3)
+            # 若长时间未收到任何数据，则发送心跳；并避免在刚发送过心跳后立刻重复发送
+            if (now_s - last_resp) >= (ka - margin) and (now_s - last_ping) >= margin:
+                try:
+                    self.client.ping()
+                except Exception as _:
+                    # 交由上层异常路径处理
+                    raise
+        except Exception as _:
+            # 在上层 check_msg(_async) 中统一处理异常与断链标记
+            raise
+
+    # ------------------ 连接与断开 ------------------
     def connect(self):
         """
         连接到MQTT Broker
@@ -126,6 +233,8 @@ class MqttController:
             # 验证连接是否建立
             if hasattr(self.client, "is_connected") and self.client.is_connected():
                 self._is_connected = True
+                # 安装 INFO 日志转发钩子
+                self._install_info_log_hook()
                 debug("MQTT连接成功", module="MQTT")
                 return True
             else:
@@ -134,6 +243,8 @@ class MqttController:
                 try:
                     self.client.ping()
                     self._is_connected = True
+                    # 安装 INFO 日志转发钩子
+                    self._install_info_log_hook()
                     debug("MQTT连接成功 (通过ping验证)", module="MQTT")
                     return True
                 except:
@@ -198,6 +309,8 @@ class MqttController:
                 # 验证连接是否建立
                 if await self._async_verify_connection():
                     self._is_connected = True
+                    # 安装 INFO 日志转发钩子
+                    self._install_info_log_hook()
                     debug("MQTT异步连接成功", module="MQTT")
                     return True
                 else:
@@ -206,8 +319,8 @@ class MqttController:
                     return False
             else:
                 self._is_connected = False
+                warning("MQTT连接失败", module="MQTT")
                 return False
-
         except OSError as e:
             if e.errno == 113:  # ECONNABORTED
                 error(
@@ -303,6 +416,9 @@ class MqttController:
                 error("MQTT断开失败: {}", e, module="MQTT")
                 return False
 
+        # 断开后移除 INFO 日志钩子
+        self._remove_info_log_hook()
+
         self._is_connected = False
         return True
 
@@ -323,7 +439,10 @@ class MqttController:
             return False
 
         try:
-            self.client.publish(topic, msg, retain, qos)
+            # 确保以 UTF-8 bytes 发送，避免中文等多字节字符导致长度不一致
+            topic_b = topic if isinstance(topic, (bytes, bytearray)) else str(topic).encode("utf-8")
+            msg_b = msg if isinstance(msg, (bytes, bytearray)) else str(msg).encode("utf-8")
+            self.client.publish(topic_b, msg_b, retain, qos)
             return True
         except Exception as e:
             error("MQTT发布失败: {}", e, module="MQTT")
@@ -345,7 +464,9 @@ class MqttController:
             return False
 
         try:
-            self.client.subscribe(topic, qos)
+            # 统一编码为 bytes，保证协议报文正确
+            topic_b = topic if isinstance(topic, (bytes, bytearray)) else str(topic).encode("utf-8")
+            self.client.subscribe(topic_b, qos)
             return True
         except Exception as e:
             error("MQTT订阅失败: {}", e, module="MQTT")
@@ -355,11 +476,23 @@ class MqttController:
         """检查是否有新消息"""
         if self._is_connected and self.client:
             try:
+                # 心跳调度（同步路径）
+                self._maybe_send_ping()
                 self.client.check_msg()
             except Exception as e:
-                error("检查MQTT消息失败: {}", e, module="MQTT")
+                # 加强错误上下文：类型、errno(若有)、repr细节
+                err_no = getattr(e, "errno", None)
+                if err_no is None and getattr(e, "args", None):
+                    try:
+                        err_no = e.args[0] if isinstance(e.args[0], int) else None
+                    except Exception:
+                        err_no = None
+                error("检查MQTT消息失败: type={}, errno={}, reason={}, detail={}",
+                      type(e).__name__, err_no, _errno_reason(err_no), repr(e), module="MQTT")
                 # 标记连接已断开，交由上层进行事件与重连处理
                 self._is_connected = False
+                # 移除 INFO 日志钩子，避免无连接情况下继续转发
+                self._remove_info_log_hook()
                 
     async def check_msg_async(self):
         """异步检查是否有新消息"""
@@ -367,9 +500,21 @@ class MqttController:
             try:
                 # 让出控制权，避免阻塞
                 await asyncio.sleep_ms(1)
+                # 心跳调度（异步路径）
+                self._maybe_send_ping()
                 self.client.check_msg()
                 await asyncio.sleep_ms(1)  # 处理完消息后让出控制权
             except Exception as e:
-                error("异步检查MQTT消息失败: {}", e, module="MQTT")
+                # 加强错误上下文：类型、errno(若有)、repr细节
+                err_no = getattr(e, "errno", None)
+                if err_no is None and getattr(e, "args", None):
+                    try:
+                        err_no = e.args[0] if isinstance(e.args[0], int) else None
+                    except Exception:
+                        err_no = None
+                error("异步检查MQTT消息失败: type={}, errno={}, reason={}, detail={}",
+                      type(e).__name__, err_no, _errno_reason(err_no), repr(e), module="MQTT")
                 # 标记连接已断开，交由上层进行事件与重连处理
                 self._is_connected = False
+                # 移除 INFO 日志钩子，避免无连接情况下继续转发
+                self._remove_info_log_hook()

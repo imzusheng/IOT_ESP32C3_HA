@@ -152,8 +152,8 @@ class MainController:
             
     def _periodic_maintenance(self, current_time):
         """定期维护任务"""
-        # 每30秒执行一次
-        if time.ticks_diff(current_time, self.last_stats_time) >= 30000 or self.last_stats_time == 0:
+        # 每60秒执行一次
+        if time.ticks_diff(current_time, self.last_stats_time) >= 60000 or self.last_stats_time == 0:
             self.last_stats_time = current_time
             
             # 垃圾回收
