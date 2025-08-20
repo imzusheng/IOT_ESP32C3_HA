@@ -234,51 +234,5 @@ def cleanup():
         _instance = None
 
 
-def process_led_updates():
-    """
-    手动处理LED更新 - 由主循环调用 (已弃用)
-    
-    LED现在由硬件定时器独立驱动, 此函数不再执行任何操作。
-    保留仅为向后兼容性。
-
-    Example:
-        from hw.led import process_led_updates
-        process_led_updates()  # 空操作
-    """
-    # 空操作 - LED由硬件定时器独立驱动
-    pass
-
-
-def init_led():
-    """
-    初始化LED系统。
-    为了向后兼容性而提供的函数, 实际上LED会在首次调用时自动初始化。
-    初始化完成后, 默认启用CRUISE模式。
-    
-    Example:
-        from hw.led import init_led
-        init_led()
-    """
-    # LED控制器会在首次获取实例时自动初始化
-    _get_instance()
-    # 默认启用CRUISE模式
-    play('cruise')
-    info("LED系统初始化完成(硬件定时器驱动, CRUISE模式)", module="LED")
-
-
-def set_led_mode(mode: str):
-    """
-    设置LED模式。
-    这是play函数的别名, 为了向后兼容性而提供。
-    
-    Args:
-        mode (str): LED模式, 支持 'off', 'blink', 'pulse', 'cruise', 'sos'
-        
-    Example:
-        from hw.led import set_led_mode
-        set_led_mode('blink')
-    """
-    play(mode)
-
-
+# 兼容接口已移除：process_led_updates / init_led / set_led_mode
 # LED module loaded silently

@@ -524,21 +524,4 @@ class NetworkManager:
         return self.connect()
 
 
-# 兼容性函数
-def create_network_manager(config, event_bus):
-    """创建网络管理器实例(保持兼容性)"""
-    return NetworkManager(config, event_bus)
-
-
-# 全局实例管理(保持兼容性)
-_network_manager_instance = None
-
-def get_network_manager():
-    """获取全局网络管理器实例"""
-    return _network_manager_instance
-
-def create_global_network_manager(config, event_bus):
-    """创建全局网络管理器实例"""
-    global _network_manager_instance
-    _network_manager_instance = NetworkManager(config, event_bus)
-    return _network_manager_instance
+# 兼容性函数已移除：create_network_manager/get_network_manager/create_global_network_manager

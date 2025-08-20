@@ -6,7 +6,7 @@ ESP32C3 IoT 设备主程序
 - 驱动主循环：事件分发 → FSM 更新 → 网络循环 → 看门狗喂狗 → 周期性维护
 
 架构关系：
-- EventBus 作为系统消息中枢, FSM/NetworkManager/其他模块通过事件解耦
+- EventBus 作为系统消息中枢, FSM/NetworkManager/其他模块通过事件解耦合
 - FSM 负责系统状态演进与容错策略, NetworkManager 负责具体联网动作
 - MainController 不直接耦合业务细节, 仅协调整体生命周期
 
@@ -86,15 +86,13 @@ class MainController:
             return False
             
     def _init_led(self):
-        """初始化LED"""
         try:
-            from hw.led import init_led, play
-            init_led()
-            # 初始化后启动慢速闪烁, 代表运行中
+            from hw.led import play
+            # LED 控制器采用硬件定时器独立驱动, 无需手动更新
+            # 初始进入 blink 模式，表示正在初始化
             play('blink')
-            debug("LED初始化完成", module="MAIN")
         except Exception as e:
-            error("LED初始化失败: {}", e, module="MAIN")
+            error("初始化LED失败: {}", e, module="MAIN")
             
     def run(self):
         """运行主循环(已迁移到异步, 保留入口调用)"""
@@ -122,34 +120,31 @@ class MainController:
             error("主循环异常: {}", e, module="MAIN")
 
     async def _main_loop_async(self):
-        """异步主循环逻辑"""
-        current_time = time.ticks_ms()
-        elapsed = time.ticks_diff(current_time, self.last_loop_time)
-        if elapsed < self.loop_interval:
-            await asyncio.sleep_ms(self.loop_interval - elapsed)
-            current_time = time.ticks_ms()
-        self.last_loop_time = current_time
-        try:
-            # 1. 事件总线
-            self.event_bus.process_events()
-            # 2. 状态机
-            self.state_machine.update()
-            # 3. 网络管理现在由异步任务处理, 无需同步调用
-            # 4. 喂看门狗
-            self.state_machine.feed_watchdog()
-            # 5. LED
+        """主控制循环 (异步)"""
+        info("进入主控制循环(异步)", module="MAIN")
+        # 采用固定周期运行，避免对CPU占用过高
+        loop_delay = getattr(self.config, 'main_loop_delay', 100)  # 默认100ms
+        
+        while True:
             try:
-                from hw.led import process_led_updates
-                # 注: LED模块已在init_led()时启动自动更新任务
-                # 这里的手动更新在自动模式下将被忽略(空操作), 保持向后兼容
-                process_led_updates()
-            except Exception:
-                pass
+                # 状态机更新
+                if self.state_machine:
+                    self.state_machine.update()
+                
+                # 喂看门狗保持在主循环中，避免掩盖死锁
+                self.state_machine.feed_watchdog()
+                
+                # LED 已由硬件定时器独立驱动，无需手动更新
+                # （已移除对 process_led_updates 的兼容调用）
+
+                await asyncio.sleep_ms(loop_delay)
+            except Exception as e:
+                error("主循环异常: {}", e, module="MAIN")
+                await asyncio.sleep_ms(loop_delay)
             # 6. 维护
+            current_time = time.ticks_ms()
             self._periodic_maintenance(current_time)
-        except Exception as e:
-            error("主循环执行异常: {}", e, module="MAIN")
-            
+        
     def _periodic_maintenance(self, current_time):
         """定期维护任务"""
         # 每60秒执行一次
@@ -188,10 +183,9 @@ class MainController:
                 
             # 清理LED
             try:
-                from hw.led import cleanup_led
-                cleanup_led()
-                info("LED已清理", module="MAIN")
-            except:
+                from hw.led import cleanup
+                cleanup()
+            except Exception:
                 pass
                 
             # 最终垃圾回收

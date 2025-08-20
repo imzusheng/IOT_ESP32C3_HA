@@ -172,7 +172,7 @@ class FSM:
     def _update_led(self):
         """更新LED状态"""
         try:
-            from hw.led import set_led_mode
+            from hw.led import play
             
             # 与当前简化状态模型对齐：INIT/CONNECTING/RUNNING/ERROR
             led_modes = {
@@ -184,7 +184,7 @@ class FSM:
             }
             
             mode = led_modes.get(self.current_state, "off")
-            set_led_mode(mode)
+            play(mode)
             
         except Exception as e:
             error("更新LED状态失败: {}", e, module="FSM")
@@ -221,8 +221,8 @@ class FSM:
         # 连接阶段发生断开/失败: 不改变状态机策略, 但让LED进入SOS提示
         elif state == 'disconnected' and self.current_state in (STATE_INIT, STATE_CONNECTING):
             try:
-                from hw.led import set_led_mode
-                set_led_mode('sos')
+                from hw.led import play
+                play('sos')
                 debug("WiFi断开于连接阶段: LED进入SOS模式", module="FSM")
             except Exception:
                 pass
@@ -245,8 +245,8 @@ class FSM:
         # 连接阶段发生断开/失败: 不改变状态机策略, 但让LED进入SOS提示
         elif state == 'disconnected' and self.current_state in (STATE_INIT, STATE_CONNECTING):
             try:
-                from hw.led import set_led_mode
-                set_led_mode('sos')
+                from hw.led import play
+                play('sos')
                 debug("MQTT断开于连接阶段: LED进入SOS模式", module="FSM")
             except Exception:
                 pass
@@ -336,21 +336,4 @@ class FSM:
             error("未知的状态名称: {}", state_name, module="FSM")
 
 
-# 兼容性函数
-def create_state_machine(config, event_bus, network_manager=None, static_cache=None):
-    """创建状态机实例(保持兼容性)"""
-    return FSM(event_bus, config, network_manager)
-
-
-# 全局实例管理(保持兼容性)
-_state_machine_instance = None
-
-def get_state_machine():
-    """获取全局状态机实例"""
-    return _state_machine_instance
-
-def create_global_state_machine(config, event_bus, network_manager=None, static_cache=None):
-    """创建全局状态机实例"""
-    global _state_machine_instance
-    _state_machine_instance = FSM(event_bus, config, network_manager)
-    return _state_machine_instance
+# 兼容性函数已移除：create_state_machine/get_state_machine/create_global_state_machine
