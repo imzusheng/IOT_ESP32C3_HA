@@ -234,5 +234,4 @@ def cleanup():
         _instance = None
 
 
-# 兼容接口已移除：process_led_updates / init_led / set_led_mode
 # LED module loaded silently

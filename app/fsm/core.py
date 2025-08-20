@@ -334,6 +334,3 @@ class FSM:
             self._enter_state(state_map[state_name])
         else:
             error("未知的状态名称: {}", state_name, module="FSM")
-
-
-# 兼容性函数已移除：create_state_machine/get_state_machine/create_global_state_machine

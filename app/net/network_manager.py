@@ -522,6 +522,3 @@ class NetworkManager:
         self.disconnect()
         await asyncio.sleep_ms(1000)  # 异步等待1秒
         return self.connect()
-
-
-# 兼容性函数已移除：create_network_manager/get_network_manager/create_global_network_manager

@@ -134,8 +134,7 @@ class MainController:
                 # 喂看门狗保持在主循环中，避免掩盖死锁
                 self.state_machine.feed_watchdog()
                 
-                # LED 已由硬件定时器独立驱动，无需手动更新
-                # （已移除对 process_led_updates 的兼容调用）
+                
 
                 await asyncio.sleep_ms(loop_delay)
             except Exception as e:
