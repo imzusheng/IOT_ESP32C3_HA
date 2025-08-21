@@ -154,15 +154,19 @@ class MainController:
             gc.collect()
             
             # 输出统计信息(移除性能显示)
-            from utils.helpers import check_memory
+            from utils.helpers import check_memory, get_temperature
             mem = check_memory()
             free_kb = mem.get("free_kb", gc.mem_free() // 1024)
             percent_used = mem.get("percent", 0)
+            
+            # 读取MCU内部温度
+            temp = get_temperature()
+            
             state = self.state_machine.get_current_state()
             net_status = self.network_manager.get_status()
             
-            info("系统状态 - 状态:{}, 内存:{}KB({:.0f}%), WiFi:{}, MQTT:{}", 
-                 state, free_kb, percent_used,
+            info("系统状态 - 状态:{}, 内存:{}KB({:.0f}%), 温度:{}, WiFi:{}, MQTT:{}", 
+                 state, free_kb, percent_used, temp,
                  net_status['wifi'], net_status['mqtt'], 
                  module="MAIN")
             
