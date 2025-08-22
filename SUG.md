@@ -714,7 +714,7 @@ python build.py --monitor
 **代码变更**:
 - `app/fsm/core.py:141,148,155,160,166` - 修正状态机中的EVENTS访问
 - `app/fsm/handlers.py:275,282,293,368,380` - 修正状态处理函数中的EVENTS访问
-- `app/hw/sensor.py:164,378` - 修正传感器模块中的EVENTS访问
+- 已移除 `app/hw/sensor.py` 模块, 相关EVENTS访问修复不再适用
 - `app/net/fsm.py:126,128,146,230,271,280,292,314,317,319,322,335,336` - 修正网络状态机中的EVENTS访问
 - `app/lib/lock/event_bus.py:237,239` - 修正事件总线中的EVENTS访问
 
@@ -722,7 +722,6 @@ python build.py --monitor
 - ✅ 消除所有EVENTS访问错误
 - ✅ 状态机事件转换正常工作
 - ✅ 网络连接流程能够正常启动
-- ✅ 传感器数据发布正常工作
 - ✅ 事件总线错误处理正常工作
 
 ### 2025-08-13 EVENTS常量补充修复 ✅

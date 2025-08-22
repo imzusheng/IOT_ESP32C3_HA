@@ -82,12 +82,7 @@ IOT_ESP32C3/
 
 ### 硬件抽象层
 
-#### 5. 传感器管理器 (SensorManager)
-- **位置**: [`app/hw/sensor.py`](app/hw/sensor.py)
-- **功能**: 统一的传感器数据采集和管理
-- **支持**: 内部温度传感器、外部传感器(DHT11/DHT22/BMP280)
-
-#### 6. LED模式控制器
+#### 5. LED模式控制器
 - **位置**: [`app/hw/led.py`](app/hw/led.py)
 - **功能**: 丰富的LED状态指示和模式控制, 开箱即用
 - **特性**: 
@@ -100,47 +95,47 @@ IOT_ESP32C3/
 
 ### 网络通信层
 
-#### 7. WiFi管理器 (WifiManager)
+#### 6. WiFi管理器 (WifiManager)
 - **位置**: [`app/net/wifi.py`](app/net/wifi.py)
 - **功能**: 健壮的WiFi连接管理
 - **特性**: 扫描、连接、断开、连接状态检查
 
-#### 8. MQTT控制器 (MqttController)
+#### 7. MQTT控制器 (MqttController)
 - **位置**: [`app/net/mqtt.py`](app/net/mqtt.py)
 - **功能**: 高效的MQTT通信管理
 - **特性**: 心跳监控、内存优化
 
 ### 工具和辅助模块
 
-#### 9. 定时器工具 (Timers)
+#### 8. 定时器工具 (Timers)
 - **位置**: [`app/utils/timers.py`](app/utils/timers.py)
 - **功能**: 丰富的定时器工具集
 - **包含**: 防抖定时器、周期定时器、超时定时器、硬件定时器管理器、性能分析器
 
-#### 10. 系统助手 (Helpers)
+#### 9. 系统助手 (Helpers)
 - **位置**: [`app/utils/helpers.py`](app/utils/helpers.py)
 - **功能**: 系统监控和辅助函数
 - **包含**: 内存检查、温度监控、时间格式化、设备信息
 
-#### 11. 日志系统 (Logger)
+#### 10. 日志系统 (Logger)
 - **位置**: [`app/lib/logger.py`](app/lib/logger.py)
 - **功能**: 极简日志系统, 专为ESP32-C3嵌入式环境设计
 - **特性**: 零配置、拿来即用、固定格式、颜色支持、内存优化
 - **使用**: 直接导入 `debug`, `info`, `warning`, `error` 函数即可使用
 
-#### 12. 配置管理 (Config)
+#### 11. 配置管理 (Config)
 - **位置**: [`app/config.py`](app/config.py)
 - **功能**: 集中式配置管理
 - **特性**: 类型验证、默认值、运行时检查
 
 ### 主应用程序
 
-#### 13. 主控制器 (Main)
+#### 12. 主控制器 (Main)
 - **位置**: [`app/main.py`](app/main.py)
 - **功能**: 系统初始化和主循环控制
 - **特性**: 依赖注入、模块化管理、优雅启动
 
-#### 14. 启动引导 (Boot)
+#### 13. 启动引导 (Boot)
 - **位置**: [`app/boot.py`](app/boot.py)
 - **功能**: 系统启动引导
 - **特性**: 最小化启动、GC初始化
@@ -153,7 +148,6 @@ IOT_ESP32C3/
 
 ### 事件流程示例
 ```
-传感器数据变化 → EventBus发布事件 → 计时器队列调度 → 相关模块订阅处理 → 状态更新 → LED指示变化
 WiFi连接成功 → NTP时间同步 → TIME_UPDATED事件 → 计时器队列调度 → 时间相关模块开始工作
 ```
 

@@ -153,11 +153,6 @@ pytest app/tests/ --cov=app
 - **特性**: 轻量连接管理、内存优化(指数退避/心跳可在上层统一策略后引入)
 - **事件**: 发布 MQTT_STATE_CHANGE 事件
 
-### 8. 传感器管理器 (SensorManager) - `app/hw/sensor.py`
-- **功能**: 统一的传感器数据采集和管理
-- **支持**: 内部温度传感器、外部传感器(DHT11/DHT22/BMP280)
-- **事件**: 发布 SENSOR_DATA 事件
-
 ## 系统服务层
 
 ### 9. 配置管理 (Config) - `app/config.py`
@@ -193,15 +188,12 @@ EVENTS.SYSTEM_STATE_CHANGE    # 状态变化
 EVENTS.SYSTEM_ERROR          # 系统错误
 
 # 网络事件  
-EVENTS.WIFI_STATE_CHANGE     # WiFi状态
-EVENTS.MQTT_STATE_CHANGE     # MQTT状态
-EVENTS.MQTT_MESSAGE          # MQTT消息
+EVENTS['WIFI_STATE_CHANGE']     # WiFi状态
+EVENTS['MQTT_STATE_CHANGE']     # MQTT状态
+EVENTS['MQTT_MESSAGE']          # MQTT消息
 
 # 时间事件
-EVENTS.NTP_STATE_CHANGE      # NTP同步状态
-
-# 传感器事件
-EVENTS.SENSOR_DATA           # 传感器数据
+EVENTS['NTP_STATE_CHANGE']      # NTP同步状态
 ```
 
 ### 事件处理流程
@@ -258,7 +250,6 @@ while time.ticks_diff(time.ticks_ms(), start_time) < delay_ms:
 object_pool.add_pool("mqtt_messages", lambda: {"topic": "", "payload": ""}, 8)
 
 # 传感器数据对象池  
-object_pool.add_pool("sensor_data", lambda: {"sensor_id": "", "value": None}, 6)
 
 # 系统事件对象池
 object_pool.add_pool("system_events", lambda: {"event": "", "state": ""}, 5)
@@ -306,7 +297,6 @@ app/                        # 开发源代码目录(编译后上传到设备根�
 │   └── state_const.py    # 状态常量定义
 ├── hw/                     # 硬件抽象层
 │   ├── led.py            # LED控制器(开箱即用)
-│   └── sensor.py         # 传感器管理器
 ├── net/                    # 网络通信层
 │   ├── __init__.py       # 网络模块导入
 │   ├── index.py          # 网络管理器(统一入口)
