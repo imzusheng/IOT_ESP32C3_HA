@@ -300,11 +300,10 @@ def get_temperature():
     读取 MCU内部温度 单位摄氏度
 
     仅使用 esp32.mcu_temperature()，这是 ESP32-C3/C6/S2/S3 平台提供的 MCU 温度读取接口。
-    为避免误解与不可靠读数，移除了旧版 raw_temperature 与 ADC 回退逻辑。
     """
     try:
         import esp32
-        # 直接读取 MCU 温度（摄氏度），并保留一位小数
+        # 直接读取 MCU 温度(摄氏度)，并保留一位小数
         temp_c = esp32.mcu_temperature()
         return round(temp_c, 1)
     except Exception as e:

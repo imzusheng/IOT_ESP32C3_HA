@@ -2,25 +2,22 @@
 """
 ESP32C3 IoT 设备主程序
 职责：
-- 统一完成配置加载、日志初始化、事件总线、网络管理器与状态机的装配
+- 统一完成配置加载、日志初始化、看门狗初始化、事件总线、网络管理器与状态机的装配
 - 驱动主循环：事件分发 → FSM 更新 → 网络循环 → 看门狗喂狗 → 周期性维护
 
 架构关系：
 - EventBus 作为系统消息中枢, FSM/NetworkManager/其他模块通过事件解耦合
 - FSM 负责系统状态演进与容错策略, NetworkManager 负责具体联网动作
-- MainController 不直接耦合业务细节, 仅协调整体生命周期
-
-维护说明：
-- 主循环默认 100ms 周期, 可视需要在配置中抽象
-- 统计输出与 GC 在 30s 周期执行, 避免频繁抖动
+- MainController 负责看门狗的初始化和喂狗，确保统一管理
 """
 
 import utime as time
 import gc
+import machine
+import uasyncio as asyncio
 from lib.logger import info, error, debug
 from config import get_config
 from lib.lock.event_bus import EventBus
-import uasyncio as asyncio
 
 
 class MainController:
@@ -35,13 +32,38 @@ class MainController:
         self.event_bus = None
         self.state_machine = None
         self.network_manager = None
-        
-        # 运行控制
-        self.running = False
+        self.wdt = None
         
         # 维护任务定时
         self.last_stats_time = 0
-        
+ 
+    def _init_led(self):
+        """初始化LED"""
+        try:
+            from hw.led import play
+            # LED 控制器采用硬件定时器驱动，完全独立于主循环
+            # 初始进入 blink 模式，表示正在初始化
+            play('blink')
+        except Exception as e:
+            error("初始化LED失败: {}", e, module="MAIN")
+
+    def _init_watchdog(self):
+        """初始化硬件看门狗
+        说明：
+        - 从配置读取 wdt_enabled 与 wdt_timeout 默认启用且 120000ms
+        - 仅在启用时创建 machine.WDT 实例
+        """
+        try:
+            enabled = get_config('daemon', 'wdt_enabled', True)
+            timeout = int(get_config('daemon', 'wdt_timeout', 120000))
+            if enabled:
+                self.wdt = machine.WDT(timeout=timeout)
+            else:
+                self.wdt = None
+        except Exception as e:
+            self.wdt = None
+            error("初始化看门狗失败: {}", e, module="MAIN")
+
     def initialize(self):
         """初始化系统"""
         try:
@@ -50,22 +72,22 @@ class MainController:
             self.config = get_config()
             info("配置加载完成", module="MAIN")
             
-            # 2. 日志系统为零配置、全局可用, 无需手动初始化
-            info("日志系统准备就绪", module="MAIN")
+            # 初始化看门狗
+            self._init_watchdog()
             
-            # 3. 初始化LED(提前)
+            # 初始化LED
             self._init_led()
             
-            # 4. 初始化事件总线
+            # 初始化事件总线
             self.event_bus = EventBus()
             debug("事件总线初始化完成", module="MAIN")
             
-            # 5. 初始化网络管理器
+            # 初始化网络管理器
             from net.network_manager import NetworkManager
             self.network_manager = NetworkManager(self.config, self.event_bus)
             debug("网络管理器初始化完成", module="MAIN")
             
-            # 6. 初始化状态机
+            # 初始化状态机
             from fsm.core import FSM
             self.state_machine = FSM(
                 self.event_bus, 
@@ -81,42 +103,25 @@ class MainController:
             error("系统初始化失败: {}", e, module="MAIN")
             return False
             
-    def _init_led(self):
-        try:
-            from hw.led import play
-            # LED 控制器采用硬件定时器驱动，完全独立于主循环
-            # 初始进入 blink 模式，表示正在初始化
-            play('blink')
-        except Exception as e:
-            error("初始化LED失败: {}", e, module="MAIN")
-            
-    def run(self):
-        """运行主循环(已迁移到异步, 保留入口调用)"""
+    async def run(self):
+        """异步主循环入口"""
         if not self.initialize():
             error("系统初始化失败, 无法启动", module="MAIN")
             return
         try:
-            asyncio.run(self.run_async())
-        except Exception as e:
-            error("异步运行异常: {}", e, module="MAIN")
-        finally:
-            self._cleanup()
-
-    async def run_async(self):
-        """异步主循环入口"""
-        self.running = True
-        self.last_loop_time = time.ticks_ms()
-        self.loop_interval = 100
-        try:
-            while self.running:
-                await self._main_loop_async()
+            await self._main_loop_async()
         except asyncio.CancelledError:
             info("主循环任务取消", module="MAIN")
         except Exception as e:
             error("主循环异常: {}", e, module="MAIN")
 
     async def _main_loop_async(self):
-        """主控制循环 (异步)"""
+        """主控制循环 (异步)
+        职责：
+        - 更新状态机
+        - 定期喂看门狗
+        - 周期性维护任务(内存回收、状态上报)
+        """
         info("进入主控制循环(异步)", module="MAIN")
         # 采用固定周期运行，避免对CPU占用过高
         loop_delay = get_config('system', 'main_loop_delay', 100)
@@ -128,9 +133,8 @@ class MainController:
                     self.state_machine.update()
                 
                 # 喂看门狗保持在主循环中，避免掩盖死锁
-                self.state_machine.feed_watchdog()
-                
-                
+                if self.wdt:
+                    self.wdt.feed()
 
                 await asyncio.sleep_ms(loop_delay)
             except Exception as e:
@@ -171,71 +175,11 @@ class MainController:
                  env_data["humidity"] if env_data["humidity"] is not None else "N/A",
                  net_status['wifi'], net_status['mqtt'], 
                  module="MAIN")
-            
-    def _cleanup(self):
-        """清理资源"""
-        info("正在清理系统资源", module="MAIN")
-        
-        try:
-            # 停止状态机
-            if self.state_machine:
-                info("停止状态机", module="MAIN")
-                self.state_machine.stop()
-                
-            # 断开网络连接
-            if self.network_manager:
-                self.network_manager.disconnect()
-                info("网络连接已断开", module="MAIN")
-                
-            # 清理LED
-            try:
-                from hw.led import cleanup
-                cleanup()
-            except Exception:
-                pass
-                
-            # 最终垃圾回收
-            gc.collect()
-            
-            info("系统资源清理完成", module="MAIN")
-            
-        except Exception as e:
-            error("清理资源时发生异常: {}", e, module="MAIN")
-            
-    def stop(self):
-        """停止系统"""
-        info("收到停止信号", module="MAIN")
-        self.running = False
-        
-    def get_system_info(self):
-        """获取系统信息"""
-        try:
-            return {
-                "state": self.state_machine.get_current_state() if self.state_machine else "UNKNOWN",
-                "network": self.network_manager.get_status() if self.network_manager else {},
-                "memory": gc.mem_free(),
-                "uptime": time.ticks_ms()
-            }
-        except Exception as e:
-            error("获取系统信息失败: {}", e, module="MAIN")
-            return {}
-            
-    async def force_network_reconnect(self):
-        """强制网络重连(异步)"""
-        if self.network_manager:
-            return await self.network_manager.force_reconnect()
-        return False
-        
-    def force_state_change(self, state_name):
-        """强制状态改变"""
-        if self.state_machine:
-            self.state_machine.force_state(state_name)
-
 
 def main():
     """主函数"""
     controller = MainController()
-    controller.run()
+    asyncio.run(controller.run())
 
 
 if __name__ == "__main__":
