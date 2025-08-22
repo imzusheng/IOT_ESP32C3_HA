@@ -17,7 +17,7 @@ ESP32C3 IoT 设备主程序
 
 import utime as time
 import gc
-from lib.logger import info, warning, error, debug
+from lib.logger import info, error, debug
 from config import get_config
 from lib.lock.event_bus import EventBus
 import uasyncio as asyncio
@@ -38,8 +38,6 @@ class MainController:
         
         # 运行控制
         self.running = False
-        self.last_loop_time = 0
-        self.loop_interval = 100  # 100ms主循环间隔
         
         # 维护任务定时
         self.last_stats_time = 0
@@ -49,8 +47,6 @@ class MainController:
         try:
             info("=== ESP32C3系统启动 ===", module="MAIN")
             
-            # 1. 加载配置
-            from config import get_config
             self.config = get_config()
             info("配置加载完成", module="MAIN")
             
@@ -88,7 +84,7 @@ class MainController:
     def _init_led(self):
         try:
             from hw.led import play
-            # LED 控制器采用硬件定时器独立驱动, 无需手动更新
+            # LED 控制器采用硬件定时器驱动，完全独立于主循环
             # 初始进入 blink 模式，表示正在初始化
             play('blink')
         except Exception as e:
@@ -123,7 +119,7 @@ class MainController:
         """主控制循环 (异步)"""
         info("进入主控制循环(异步)", module="MAIN")
         # 采用固定周期运行，避免对CPU占用过高
-        loop_delay = getattr(self.config, 'main_loop_delay', 100)  # 默认100ms
+        loop_delay = get_config('system', 'main_loop_delay', 100)
         
         while True:
             try:
@@ -162,11 +158,17 @@ class MainController:
             # 读取MCU内部温度
             temp = get_temperature()
             
+            # 读取环境温湿度
+            from hw.sht40 import read
+            env_data = read()
+            
             state = self.state_machine.get_current_state()
             net_status = self.network_manager.get_status()
             
-            info("系统状态 - 状态:{}, 内存:{}KB({:.0f}%), 温度:{}, WiFi:{}, MQTT:{}", 
+            info("系统状态 - 状态:{}, 内存:{}KB({:.0f}%), 温度:{}, 环境:{}°C/{}%, WiFi:{}, MQTT:{}", 
                  state, free_kb, percent_used, temp,
+                 env_data["temperature"] if env_data["temperature"] is not None else "N/A",
+                 env_data["humidity"] if env_data["humidity"] is not None else "N/A",
                  net_status['wifi'], net_status['mqtt'], 
                  module="MAIN")
             
@@ -178,6 +180,7 @@ class MainController:
             # 停止状态机
             if self.state_machine:
                 info("停止状态机", module="MAIN")
+                self.state_machine.stop()
                 
             # 断开网络连接
             if self.network_manager:

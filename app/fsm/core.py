@@ -302,6 +302,9 @@ class FSM:
                     self._enter_state(STATE_CONNECTING)
                     return
                     
+            # 温度监控
+            self._check_temperature()
+                    
             # 定期垃圾回收
             current_time = time.ticks_ms()
             if not hasattr(self, '_last_gc_time'):
@@ -313,6 +316,127 @@ class FSM:
                 
         except Exception as e:
             error("系统健康检查失败: {}", e, module="FSM")
+            
+    def _check_temperature(self):
+        """检查温度状态"""
+        try:
+            # 检查是否启用温度监控
+            if not self.config.get("system", {}).get("temperature_monitoring_enabled", True):
+                return
+                
+            current_time = time.ticks_ms()
+            
+            # 初始化温度检查时间
+            if not hasattr(self, '_last_temp_check_time'):
+                self._last_temp_check_time = current_time
+                
+            # 获取温度检查间隔
+            temp_check_interval = self.config.get("system", {}).get("temperature_check_interval", 30000)
+            
+            # 检查是否到了温度检查时间
+            if time.ticks_diff(current_time, self._last_temp_check_time) >= temp_check_interval:
+                self._last_temp_check_time = current_time
+                
+                # 读取SHT40温度
+                temp_data = self._read_sht40_temperature()
+                
+                if temp_data and temp_data.get("temperature") is not None:
+                    temp = temp_data["temperature"]
+                    
+                    # 获取温度阈值配置
+                    temp_threshold = self.config.get("system", {}).get("temperature_threshold", 50.0)
+                    
+                    # 温度状态检查
+                    if temp >= temp_threshold:
+                        # 超过阈值, 进入安全模式
+                        error("温度超过阈值: {}°C >= {}°C, 进入安全模式", temp, temp_threshold, module="FSM")
+                        self._handle_temperature_critical(temp)
+                    elif hasattr(self, '_temperature_state') and self._temperature_state == 'critical':
+                        # 从高温状态恢复
+                        if temp < temp_threshold:
+                            info("温度已恢复正常: {}°C < {}°C", temp, temp_threshold, module="FSM")
+                            self._handle_temperature_recovery(temp)
+                    
+                    # 发布温度数据事件
+                    self._publish_temperature_event(temp, temp_data.get("humidity"))
+                    
+        except Exception as e:
+            error("温度检查失败: {}", e, module="FSM")
+            
+    def _read_sht40_temperature(self):
+        """读取SHT40温度传感器数据"""
+        try:
+            from hw.sht40 import read
+            
+            # 读取温度数据（使用中等精度以平衡速度和准确性）
+            temp_data = read("med")
+            
+            if temp_data and temp_data.get("temperature") is not None:
+                debug("SHT40温度读取成功: {}°C, 湿度:{}%", 
+                      temp_data["temperature"], temp_data["humidity"], module="FSM")
+                return temp_data
+            else:
+                warning("SHT40温度读取失败", module="FSM")
+                return None
+                
+        except Exception as e:
+            error("SHT40温度读取异常: {}", e, module="FSM")
+            return None
+            
+    def _handle_temperature_critical(self, temperature):
+        """处理危险温度情况"""
+        try:
+            # 设置温度状态
+            self._temperature_state = 'critical'
+            
+            # 进入错误状态
+            if self.current_state != STATE_ERROR:
+                self._enter_state(STATE_ERROR)
+                
+            # LED显示警告模式
+            try:
+                from hw.led import play
+                play('sos')  # SOS模式表示紧急情况
+            except Exception:
+                pass
+                
+            # 发布温度危险事件
+            self.event_bus.publish(
+                EVENTS["SYSTEM_ERROR"],
+                error_type="temperature_critical",
+                error_info=f"温度超过危险阈值: {temperature}°C"
+            )
+            
+        except Exception as e:
+            error("处理危险温度失败: {}", e, module="FSM")
+            
+    def _handle_temperature_recovery(self, temperature):
+        """处理温度恢复情况"""
+        try:
+            # 恢复温度状态
+            self._temperature_state = 'normal'
+            
+            # 如果当前在错误状态, 尝试恢复
+            if self.current_state == STATE_ERROR:
+                info("温度恢复正常, 尝试恢复系统状态", module="FSM")
+                self._enter_state(STATE_INIT)  # 重新初始化系统
+                
+        except Exception as e:
+            error("处理温度恢复失败: {}", e, module="FSM")
+            
+    def _publish_temperature_event(self, temperature, humidity):
+        """发布温度数据事件"""
+        try:
+            # 发布传感器数据事件
+            self.event_bus.publish(
+                EVENTS["SENSOR_DATA"],
+                sensor_id="sht40",
+                temperature=temperature,
+                humidity=humidity
+            )
+            
+        except Exception as e:
+            error("发布温度事件失败: {}", e, module="FSM")
             
     def get_current_state(self):
         """获取当前状态名称"""
