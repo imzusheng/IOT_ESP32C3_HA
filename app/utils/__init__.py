@@ -1,7 +1,7 @@
+# -*- coding: utf-8 -*-
 # app/utils/__init__.py
 """
-�w!W
-Л͞(�w{��p
+工具函数库
 """
 
 from .timers import (
