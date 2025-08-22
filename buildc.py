@@ -681,17 +681,14 @@ def start_repl(port, raw=False):
     mode = "原始" if raw else "交互式"
     print_message(f"启动{mode}REPL (端口: {port})", "INFO")
     print_message("按 Ctrl+] 或 Ctrl+X 退出", "INFO")
+    if raw:
+        print_message("提示: 进入 REPL 后按 Ctrl+A 切换到原始(raw)模式, 按 Ctrl+B 返回", "INFO")
     
     cmd = [MPREMOTE_EXECUTABLE, "connect", port, "repl"]
-    if raw:
-        cmd.append("--raw-paste") # A better mode for raw interaction
     
     try:
-        # 在Windows上, 使用subprocess.run可能会有问题, 直接启动新进程
-        if sys.platform == "win32":
-            os.system(f"start {MPREMOTE_EXECUTABLE} connect {port} repl")
-        else:
-            subprocess.run(cmd)
+        # 在所有平台直接在当前终端中运行, 以便用户可直接交互输入
+        subprocess.run(cmd)
     except KeyboardInterrupt:
         print_message(f"\n{mode}REPL连接已断开", "INFO")
     except Exception as e:
@@ -782,15 +779,18 @@ def main():
         description="ESP32-C3 MicroPython 构建和部署工具 (v5.2 - 串口冲突处理增强版)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-示例用法:
+# 使用示例:
+# python build.py --compile           # 仅编译, 不上传
+# python build.py --raw-repl           # 启动原始REPL
+# python build.py -r 或 --repl         # 启动交互式REPL
   python build.py                # 编译并上传 (智能同步)
   python build.py -c 或 --compile      # 仅编译 app/ 目录到 dist/
   python build.py -u 或 --upload       # 仅上传到设备 (智能同步)
   python build.py -c -u 或 --compile --upload  # 编译并上传
-  python build.py -C 或 --clean        # 清理设备文件后, 再执行上传
+  python build.py -C 或 --clean        # 仅清理设备文件, 不上传
   python build.py -f 或 --full-upload  # 强制全量上传, 忽略缓存
   python build.py -r 或 --repl         # 启动交互式REPL
-  python build.py -R 或 --raw-repl     # 启动原始REPL
+  python build.py --raw-repl           # 启动原始REPL
   python build.py -m 或 --monitor      # 监控设备输出
   python build.py -d 或 --diagnose     # 诊断设备连接状态
   python build.py -u -p COM3 或 --upload --port COM3  # 指定端口上传
@@ -813,13 +813,14 @@ def main():
     parser.add_argument("-c", "--compile", action="store_true", help="仅编译, 不上传")
     parser.add_argument("-u", "--upload", action="store_true", help="编译并上传 (或仅上传, 如果 dist 存在)")
     parser.add_argument("-r", "--repl", action="store_true", help="启动交互式REPL")
-    parser.add_argument("-R", "--raw-repl", action="store_true", help="启动原始REPL")
+    parser.add_argument("-R", dest="raw_repl_window", action="store_true", help="在独立终端启动原始REPL(Windows)")
+    parser.add_argument("--raw-repl", action="store_true", help="启动原始REPL (进入后按 Ctrl+A 切换)")
     parser.add_argument("-m", "--monitor", action="store_true", help="监控设备输出")
     parser.add_argument("-d", "--diagnose", action="store_true", help="诊断设备状态")
 
     # 构建和上传选项
     parser.add_argument("-t", "--test", action="store_true", help="编译时包含测试文件 (app/tests/)")
-    parser.add_argument("-C", "--clean", action="store_true", help="上传前清空设备")
+    parser.add_argument("-C", "--clean", action="store_true", help="仅清空设备, 不上传")
     parser.add_argument("-f", "--full-upload", action="store_true", help="强制全量上传, 忽略缓存")
     
     # 设备选项
@@ -874,7 +875,7 @@ def main():
             print_message("编译失败, 操作中止", "ERROR")
             sys.exit(1)
         if args.compile and not is_device_action:
-             print_message("仅编译完成", "SUCCESS")
+             print_message("编译完成", "SUCCESS")
              return
 
     # --- 设备相关操作 ---
@@ -883,25 +884,16 @@ def main():
         if not device_port:
             sys.exit(1)
         
-        # 连接到设备, 处理串口占用问题
-        interactive_mode = not args.no_interactive
-        force_release = args.force_release or args.kill_blocking
-        
-        if not connect_to_device(device_port, force_release=force_release, 
-                               interactive=interactive_mode, verbose=args.verbose):
-            print_message("无法连接到设备, 操作中止", "ERROR")
-            print_message("建议：", "INFO")
-            print_message("1. 关闭Thonny或其他IDE", "INFO")
-            print_message("2. 使用 --force-release 参数强制释放串口", "INFO")
-            print_message("3. 手动重启ESP32设备", "INFO")
-            sys.exit(1)
-        
         if args.diagnose:
             diagnose_device(device_port, args.verbose)
             return
         
         if args.repl:
             start_repl(device_port, raw=False)
+            return
+        
+        if getattr(args, "raw_repl_window", False):
+            start_repl_new_console(device_port, raw=True)
             return
             
         if args.raw_repl:
@@ -912,8 +904,17 @@ def main():
             monitor_device(device_port, args.verbose)
             return
 
+        # --- 清理(仅清理设备, 不上传) ---
+        if args.clean and not args.upload:
+            print_message("开始清理设备...", "HEADER")
+            if not clean_device(device_port, args.verbose):
+                print_message("设备清理失败", "ERROR")
+                sys.exit(1)
+            print_message("设备清理完成", "SUCCESS")
+            return
+
         # --- 上传流程 ---
-        if args.upload or args.clean:
+        if args.upload:
             print_message("开始部署到设备...", "HEADER")
             if args.clean:
                 if not clean_device(device_port, args.verbose):
@@ -942,3 +943,23 @@ if __name__ == "__main__":
         import traceback
         traceback.print_exc()
         sys.exit(1)
+
+
+
+def start_repl_new_console(port, raw=False):
+    """在独立终端启动REPL"""
+    mode = "原始" if raw else "交互式"
+    print_message(f"在独立终端启动{mode}REPL (端口: {port})", "INFO")
+    if sys.platform == "win32":
+        try:
+            title = f'mpremote REPL({port})'
+            subcmd = 'rawrepl' if raw else 'repl'
+            cmdline = f'start "{title}" {MPREMOTE_EXECUTABLE} connect {port} {subcmd}'
+            subprocess.Popen(cmdline, shell=True)
+            print_message("已在新终端窗口中启动, 关闭该窗口即可退出 REPL", "INFO")
+        except Exception as e:
+            print_message(f"无法在新窗口启动REPL: {e}, 回退为当前终端启动", "WARNING")
+            start_repl(port, raw=raw)
+    else:
+        print_message("当前平台不支持独立终端启动, 回退为当前终端启动", "WARNING")
+        start_repl(port, raw=raw)

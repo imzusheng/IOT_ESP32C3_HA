@@ -28,7 +28,7 @@ TIMER_PERIOD_MS = 50  # 硬件定时器周期, 50ms保证精确性
 # 所有模式均定义为"亮-灭"时间序列 (单位: ms)
 BLINK_SEQUENCE = [500, 500]
 PULSE_SEQUENCE = [150, 150, 150, 850]
-CRUISE_SEQUENCE = [50, 950]
+CRUISE_SEQUENCE = [50, 1500]
 SOS_SEQUENCE = [
     200,
     200,
