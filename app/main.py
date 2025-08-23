@@ -17,7 +17,7 @@ import machine
 import uasyncio as asyncio
 from lib.logger import info, error, debug
 from config import get_config
-from lib.lock.event_bus import EventBus, EVENTS
+from lib.event_bus_lock import EventBus, EVENTS
 
 
 # 内联的轻量工具函数, 避免对 app/utils

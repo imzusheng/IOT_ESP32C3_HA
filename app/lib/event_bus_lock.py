@@ -1,6 +1,10 @@
 """
 事件总线模块
 提供发布-订阅模式的异步非阻塞事件处理
+
+注意:
+- 本文件已合并原 lock/evnets_const.py 的常量定义, 统一在此处集中管理
+- 文件由 lock/event_bus.py 移动并重命名为 lib/event_bus_lock.py
 """
 
 import gc
@@ -33,28 +37,32 @@ def safe_log(level="error"):
     return decorator
 
 
-# 配置类 - 集中化配置管理
-class EventBusConfig:
-    TIMER_TICK_MS = 25  # 定时器间隔, 平衡响应性和性能
-    MAX_QUEUE_SIZE = 64  # 总队列大小, 降低内存占用
-    BATCH_PROCESS_COUNT = 5  # 批处理数量
-    GC_THRESHOLD = 100  # 垃圾回收阈值
+# ================= 合并: 事件常量集中管理 =================
+# 系统状态常量
+SYSTEM_STATUS = {
+    "NORMAL": "normal",
+    "WARNING": "warning",
+    "CRITICAL": "critical",
+}
 
-    @classmethod
-    def get_dict(cls):
-        """获取配置字典格式(向后兼容)"""
-        return {
-            "MAX_QUEUE_SIZE": cls.MAX_QUEUE_SIZE,
-            "TIMER_TICK_MS": cls.TIMER_TICK_MS,
-            "BATCH_PROCESS_COUNT": cls.BATCH_PROCESS_COUNT,
-            "GC_THRESHOLD": cls.GC_THRESHOLD,
-        }
-
-
-
-# 优先从集中管理的模块导入常量, 以实现统一管理
-from .evnets_const import SYSTEM_STATUS, EVENTS
-
+# 事件常量
+EVENTS = {
+    # WiFi 网络状态变化事件
+    "WIFI_STATE_CHANGE": "wifi.state_change",  # data: (state, info) e.g., scanning, connecting, connected, disconnected
+    # MQTT 状态变化事件
+    "MQTT_STATE_CHANGE": "mqtt.state_change",  # data: (state, info) e.g., connected, disconnected
+    # MQTT 消息事件
+    "MQTT_MESSAGE": "mqtt.message",  # data: (topic, message)
+    # 系统状态变化事件
+    "SYSTEM_STATE_CHANGE": "system.state_change",  # data: (state, info) e.g., 1.init, 2.running, 3.error, 4.shutdown
+    # 系统错误事件
+    "SYSTEM_ERROR": "system.error",  # data: (error_type, error_info)
+    # NTP 时间同步状态变化事件
+    "NTP_STATE_CHANGE": "ntp.state_change",  # data: (state, info) e.g., success, failed, syncing
+    # 传感器数据事件
+    "SENSOR_DATA": "sensor.data",  # data: (sensor_id, value)
+}
+# ======================================================
 
 
 class EventQueue:
@@ -95,6 +103,24 @@ class EventQueue:
     def clear(self):
         """清空队列"""
         self.queue.clear()
+
+
+class EventBusConfig:
+    """事件总线配置"""
+    TIMER_TICK_MS = 25  # 定时器间隔, 平衡响应性和性能
+    MAX_QUEUE_SIZE = 64  # 总队列大小, 降低内存占用
+    BATCH_PROCESS_COUNT = 5  # 批处理数量
+    GC_THRESHOLD = 100  # 垃圾回收阈值
+
+    @classmethod
+    def get_dict(cls):
+        """获取配置字典格式(向后兼容)"""
+        return {
+            "MAX_QUEUE_SIZE": cls.MAX_QUEUE_SIZE,
+            "TIMER_TICK_MS": cls.TIMER_TICK_MS,
+            "BATCH_PROCESS_COUNT": cls.BATCH_PROCESS_COUNT,
+            "GC_THRESHOLD": cls.GC_THRESHOLD,
+        }
 
 
 class EventBus:
@@ -248,100 +274,63 @@ class EventBus:
         # 恢复正常模式
         elif self._system_status != SYSTEM_STATUS["NORMAL"]:
             self._system_status = SYSTEM_STATUS["NORMAL"]
-            self._publish_direct_system_event(
-                "recovered", {"from_status": old_status}
-            )
 
     def _publish_direct_system_event(self, state, info):
-        """直接发布系统事件"""
-        event_item = (self.EVENTS["SYSTEM_STATE_CHANGE"], (state,), info)
-        # 系统状态事件直接入队
-        self.event_queue.enqueue(event_item)
-
-    # 公共接口
+        """直接发布系统状态事件(内部使用)"""
+        evt = (
+            EVENTS["SYSTEM_STATE_CHANGE"],
+            (state,),
+            {"info": info},
+        )
+        self.event_queue.enqueue(evt)
 
     @safe_log("error")
     def subscribe(self, event_name, callback):
         """订阅事件"""
         if event_name not in self.subscribers:
             self.subscribers[event_name] = []
-        if callback not in self.subscribers[event_name]:
-            self.subscribers[event_name].append(callback)
-            debug(
-                "订阅事件: {} -> {}个回调",
-                event_name,
-                len(self.subscribers[event_name]),
-                module="EventBus",
-            )
+        self.subscribers[event_name].append(callback)
+        debug("订阅事件: {}", event_name, module="EventBus")
 
     def unsubscribe(self, event_name, callback):
-        """取消订阅"""
-        if event_name in self.subscribers:
-            try:
-                self.subscribers[event_name].remove(callback)
-                if not self.subscribers[event_name]:
-                    del self.subscribers[event_name]
-            except ValueError:
-                pass  # callback不在列表中
+        """取消订阅事件"""
+        if event_name in self.subscribers and callback in self.subscribers[event_name]:
+            self.subscribers[event_name].remove(callback)
+            debug("取消订阅事件: {}", event_name, module="EventBus")
 
     @safe_log("error")
     def publish(self, event_name, *args, **kwargs):
-        """发布事件"""
-        if not self.has_subscribers(event_name):
-            # 移除无订阅者时的调试日志, 降低日志IO
-            return True
-
+        """发布事件: 入队待处理"""
         event_item = (event_name, args, kwargs)
-        success = self.event_queue.enqueue(event_item)
-        if not success:
-            error("事件入队失败: {}", event_name, module="EventBus")
-        return success
+        self.event_queue.enqueue(event_item)
 
     def has_subscribers(self, event_name):
-        """检查是否有订阅者"""
         return event_name in self.subscribers and len(self.subscribers[event_name]) > 0
 
     def get_stats(self):
-        """获取统计信息"""
-        queue_stats = self.event_queue.get_stats()
-        stats = {
-            "event_types": len(self.subscribers),
-            "total_subscribers": sum(len(cbs) for cbs in self.subscribers.values()),
-            "processed_count": self._processed_count,
-            "error_count": self._error_count,
-            "system_status": self._system_status,
+        return {
+            "processed": self._processed_count,
+            "errors": self._error_count,
+            "queue": self.event_queue.get_stats(),
         }
-        # 合并队列统计信息
-        stats.update(queue_stats)
-        return stats
 
     def _print_stats(self):
-        """输出统计信息"""
         stats = self.get_stats()
         info(
-            "EventBus: 事件={}, 订阅者={}, 队列={}/{} ({}%), 已处理={}, 错误={}, 状态={}",
-            stats["event_types"],
-            stats["total_subscribers"],
-            stats["total_length"],
-            stats["max_size"],
-            int(stats["usage_ratio"] * 100),
-            stats["processed_count"],
-            stats["error_count"],
-            stats["system_status"],
+            "EventBus stats => processed: {}, errors: {}, queue: {}",
+            stats["processed"],
+            stats["errors"],
+            stats["queue"],
             module="EventBus",
         )
 
     @safe_log("error")
     def cleanup(self):
-        """清理资源"""
+        """清理资源: 清空队列、取消订阅"""
         self.event_queue.clear()
         self.subscribers.clear()
-
-        # 重置计数器和状态
         self._processed_count = 0
         self._error_count = 0
-        self._system_status = SYSTEM_STATUS["NORMAL"]
 
     def get_system_status(self):
-        """获取当前系统状态"""
         return self._system_status

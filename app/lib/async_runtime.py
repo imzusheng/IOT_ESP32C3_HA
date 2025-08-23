@@ -12,7 +12,7 @@
 """
 
 import uasyncio as asyncio
-from lib.logger import info, error, debug, warning
+from lib.logger import error, debug, warning
 
 
 class AsyncRuntime:

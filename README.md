@@ -60,7 +60,7 @@ IOT_ESP32C3/
 ### 核心架构组件
 
 #### 1. 事件总线 (EventBus)
-- **位置**: [`app/lib/lock/event_bus.py`](app/lib/lock/event_bus.py)
+- **位置**: [`app/lib/event_bus_lock.py`](app/lib/event_bus_lock.py)
 - **功能**: 模块间通信的核心枢纽, 支持发布-订阅模式
 - **特性**: 异步非阻塞事件处理、错误隔离、内存优化、计时器队列驱动
 - **实现**: 基于硬件计时器的循环队列系统, 避免 micropython.schedule 的 queue full 问题
@@ -248,8 +248,8 @@ WiFi连接成功 → NTP时间同步 → TIME_UPDATED事件 → 计时器队列�
 
 ### 软件依赖
 - **MicroPython固件**: ESP32-C3支持的MicroPython版本
-- **umqtt.simple**: 轻量级MQTT客户端库 ([`app/lib/lock/umqtt.py`](app/lib/lock/umqtt.py))
-- **ulogging**: 轻量级日志库 ([`app/lib/lock/ulogging.py`](app/lib/lock/ulogging.py))
+- **umqtt.simple**: 轻量级MQTT客户端库 ([`app/lib/umqtt_lock.py`](app/lib/umqtt_lock.py))
+- **ulogging**: 轻量级日志库 ([`app/lib/ulogging_lock.py`](app/lib/ulogging_lock.py))
 - **MicroPython标准库**: network, time, machine, ntptime, gc
 
 ### 安装步骤
@@ -464,7 +464,7 @@ python build.py --clean-cache
 
 - **内存限制**: ESP32C3只有264KB内存, 必须时刻注意内存使用
 - **文件位置**: 主要代码位于 `./app` 目录, 但上传到设备时直接位于根目录
-- **路径引用**: 设备上使用 `from lib.lock.event_bus import EventBus` 等相对导入, MicroPython自动识别 `lib/` 目录
+- **路径引用**: 设备上使用 `from lib.event_bus_lock import EventBus` 等相对导入, MicroPython自动识别 `lib/` 目录
 - **MicroPython导入机制**: 由于`build.py`脚本会将`app/`目录下的所有文件直接上传到设备的根目录, 因此在设备上不存在`app`这个包。所有的导入都必须从根目录开始
 - **配置管理**: 所有配置项都在 `config.py` 中定义
 - **语言**: 代码注释和文档使用中文 (✅ 已完成全面中文化)

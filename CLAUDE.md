@@ -3,7 +3,6 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 - 始终使用中文回答
-- 完成后若有额外建议则记录在SUG.md中
 - app 内的所有代码都是在 ESP32C3 MicroPython 上运行的, 不需要在本地测试和运行
 - app/tests 的代码也是在 ESP32C3 MicroPython 上运行的,  用来测试 app 内的代码, 也不需要在本地测试和运行
 - 若有差异以 README.md 为准
@@ -85,7 +84,7 @@ pytest app/tests/ --cov=app
 
 ## 核心架构组件
 
-### 1. 事件总线 (EventBus) - `app/lib/lock/event_bus.py`
+### 1. 事件总线 (EventBus) - `app/lib/event_bus_lock.py`
 - **功能**: 模块间异步通信的核心枢纽
 - **特性**: 
   - 基于diff时间的软件定时系统, 节省硬件定时器资源
@@ -136,7 +135,7 @@ pytest app/tests/ --cov=app
   cleanup()      # 清理资源
   ```
 
-### 5. 事件常量 (EVENTS) - `app/lib/lock/event_bus.py`
+### 5. 事件常量 (EVENTS) - `app/lib/event_bus_lock.py`
 - **功能**: 统一事件名称定义, 避免字符串散落
 - **包含**: WIFI_STATE_CHANGE, MQTT_STATE_CHANGE, SYSTEM_STATE_CHANGE, SYSTEM_ERROR, NTP_STATE_CHANGE, SENSOR_DATA
 - **特性**: 集中在EventBus模块中, 避免额外的导入依赖
@@ -330,12 +329,12 @@ class MyModule:
         
     # 2. 事件订阅
     def setup(self):
-        from lib.lock.event_bus import EVENTS
+        from lib.event_bus_lock import EVENTS
         self.event_bus.subscribe(EVENTS.SYSTEM_STATE_CHANGE, self.on_system_state_change)
         
     # 3. 事件发布
     def do_something(self):
-        from lib.lock.event_bus import EVENTS
+        from lib.event_bus_lock import EVENTS
         self.event_bus.publish(EVENTS.SYSTEM_ERROR, error_type="my_error", error_info="details")
         
     # 4. 使用LED(开箱即用)
@@ -353,7 +352,7 @@ class MyModule:
 ## 重要注意事项
 
 - **内存限制**: ESP32C3只有264KB内存, 必须时刻注意内存使用
-- **文件位置**: 只允许编辑 `./app` 下一级目录的文件, `app/lib/lock/` 目录下的外部库文件不可编辑
+- **文件位置**: 只允许编辑 `./app` 下一级目录的文件, `app/lib/*_lock.py` 外部库文件不可编辑
 - **测试代码**: 不要添加测试代码和文件, 所有测试都在 `app/tests/` 目录下
 - **文档**: 不要擅自添加说明文档, 项目文档位于 `docs/` 目录
 - **语言**: 始终使用中文进行代码注释和文档

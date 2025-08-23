@@ -1,4 +1,4 @@
-# app/lib/lock/ulogging.py
+# app/lib/ulogging_lock.py
 """
 外部日志模块, 不可编辑
 """

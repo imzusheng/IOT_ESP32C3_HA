@@ -23,9 +23,8 @@
 
 import utime as time
 import uasyncio as asyncio
-# 移除不必要的导入: network, gc
 from lib.logger import info, warning, error, debug
-from lib.lock.event_bus import EVENTS
+from lib.event_bus_lock import EVENTS
 from lib.async_runtime import get_async_runtime
 
 class NetworkManager:

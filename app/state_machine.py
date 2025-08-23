@@ -22,7 +22,7 @@ import utime as time
 import machine
 import gc
 from lib.logger import info, warning, error, debug
-from lib.lock.event_bus import EVENTS
+from lib.event_bus_lock import EVENTS
 
 # 状态常量定义
 STATE_INIT = 0  # 系统启动、初始化

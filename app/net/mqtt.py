@@ -13,11 +13,11 @@ MQTT 控制器
 - 可引入心跳/遗嘱/自动重连等策略, 但需统一设计避免与FSM职责重叠
 - 可通过主题前缀/设备ID规范化上报主题
 """
-from lib.lock.umqtt import MQTTClient
+from lib.umqtt_lock import MQTTClient
 import machine
 import utime as time
 from lib.logger import error, warning, debug, set_info_hook
-from lib.lock.event_bus import EventBus, EVENTS
+from lib.event_bus_lock import EVENTS
 try:
     import uasyncio as asyncio
 except ImportError:
@@ -517,4 +517,3 @@ class MqttController:
                 # 标记连接已断开, 交由上层进行事件与重连处理
                 self._is_connected = False
                 # 移除 INFO 日志钩子, 避免无连接情况下继续转发
-                self._remove_info_log_hook()

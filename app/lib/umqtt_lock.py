@@ -1,4 +1,4 @@
-# app/lib/lock/umqtt.py
+# app/lib/umqtt_lock.py
 """
 umqtt 模块的简化版本, 不可编辑
 
