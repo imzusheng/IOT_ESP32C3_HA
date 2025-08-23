@@ -8,12 +8,10 @@
 
 设计边界：
 - 仅负责异步任务编排, 不包含具体业务逻辑
-- 提供任务管理接口供 NetworkManager、FSM 等模块使用
 - 确保异步任务异常不会影响主事件循环
 """
 
 import uasyncio as asyncio
-import utime as time
 from lib.logger import info, error, debug, warning
 
 
@@ -114,37 +112,10 @@ class AsyncRuntime:
             error("获取任务状态失败: {}", e, module="ASYNC")
             
         return status
-        
-    async def run_async(self, main_coro):
-        """
-        运行异步主循环
-        
-        Args:
-            main_coro: 主协程函数
-        """
-        self.running = True
-        info("启动异步运行时", module="ASYNC")
-        
-        try:
-            # 创建主任务
-            main_task = self.create_task(main_coro(), "main_loop")
-            
-            if main_task:
-                await main_task
-            else:
-                error("创建主任务失败", module="ASYNC")
-                
-        except KeyboardInterrupt:
-            info("收到中断信号, 正在停止异步运行时", module="ASYNC")
-        except Exception as e:
-            error("异步运行时异常: {}", e, module="ASYNC")
-        finally:
-            await self._cleanup()
-            
+
     async def _cleanup(self):
         """清理异步运行时资源"""
         try:
-            info("清理异步运行时资源", module="ASYNC")
             self.running = False
             
             # 取消所有任务
