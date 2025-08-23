@@ -37,13 +37,8 @@ def safe_log(level="error"):
 class EventBusConfig:
     TIMER_TICK_MS = 25  # 定时器间隔, 平衡响应性和性能
     MAX_QUEUE_SIZE = 64  # 总队列大小, 降低内存占用
-    STATS_INTERVAL = 30  # 统计间隔设置为30秒
     BATCH_PROCESS_COUNT = 5  # 批处理数量
     GC_THRESHOLD = 100  # 垃圾回收阈值
-
-    # 错误累积与断路器配置
-    ERROR_THRESHOLD = 10  # 错误阈值
-    RECOVERY_TIME = 60  # 恢复时间(秒)
 
     @classmethod
     def get_dict(cls):
@@ -51,32 +46,15 @@ class EventBusConfig:
         return {
             "MAX_QUEUE_SIZE": cls.MAX_QUEUE_SIZE,
             "TIMER_TICK_MS": cls.TIMER_TICK_MS,
-            "STATS_INTERVAL": cls.STATS_INTERVAL,
             "BATCH_PROCESS_COUNT": cls.BATCH_PROCESS_COUNT,
             "GC_THRESHOLD": cls.GC_THRESHOLD,
         }
 
 
-# 系统状态常量
-SYSTEM_STATUS = {"NORMAL": "normal", "WARNING": "warning", "CRITICAL": "critical"}
 
-# 事件常量模块
-EVENTS = {
-    # WiFi 网络状态变化事件
-    "WIFI_STATE_CHANGE": "wifi.state_change",  # data: (state, info) state可以是: scanning, connecting, connected, disconnected
-    # MQTT 状态变化事件
-    "MQTT_STATE_CHANGE": "mqtt.state_change",  # data: (state, info) state可以是: connected, disconnected
-    # MQTT 消息事件
-    "MQTT_MESSAGE": "mqtt.message",  # data: (topic, message) MQTT消息事件
-    # 系统状态变化事件
-    "SYSTEM_STATE_CHANGE": "system.state_change",  # data: (state, info) state可以是: 1.init, 2.running, 3.error, 4.shutdown
-    # 系统错误事件
-    "SYSTEM_ERROR": "system.error",  # data: (error_type, error_info) 系统错误事件
-    # NTP 时间同步状态变化事件
-    "NTP_STATE_CHANGE": "ntp.state_change",  # data: (state, info) state可以是: success, failed, syncing
-    # 传感器数据事件
-    "SENSOR_DATA": "sensor.data",  # data: (sensor_id, value) 传感器数据事件
-}
+# 优先从集中管理的模块导入常量, 以实现统一管理
+from .evnets_const import SYSTEM_STATUS, EVENTS
+
 
 
 class EventQueue:
@@ -120,7 +98,7 @@ class EventQueue:
 
 
 class EventBus:
-    """简化的事件总线 - 单队列模式与错误断路器"""
+    """简化的事件总线 - 单队列模式"""
 
     _instance = None
     _initialized = False
@@ -147,12 +125,6 @@ class EventBus:
         # 性能计数器
         self._processed_count = 0
         self._error_count = 0
-        self._last_stats_time = time.time()
-
-        # 错误累积与断路器
-        self._consecutive_errors = 0
-        self._circuit_breaker_open = False
-        self._last_error_time = 0
 
         # 保存EVENTS引用到实例, 避免NameError
         self.EVENTS = EVENTS
@@ -175,16 +147,6 @@ class EventBus:
 
         self._last_process_time = current_time
 
-        # 检查断路器状态
-        if self._circuit_breaker_open:
-            current_sec = time.time()
-            if current_sec - self._last_error_time > EventBusConfig.RECOVERY_TIME:
-                self._circuit_breaker_open = False
-                self._consecutive_errors = 0
-                info("断路器已恢复, 重新开始处理事件", module="EventBus")
-            else:
-                return  # 断路器开启, 跳过处理
-
         try:
             # 批量处理事件
             processed = 0
@@ -202,64 +164,41 @@ class EventBus:
             if self._processed_count % EventBusConfig.GC_THRESHOLD == 0:
                 gc.collect()
 
-            # 处理成功, 重置连续错误计数
-            self._consecutive_errors = 0
-
         except Exception as e:
             self._handle_processing_error(e)
         finally:
-            # 定期维护任务
-            self._periodic_maintenance()
+            # 轻量维护: 仅更新系统状态
+            self._check_system_status()
 
     def _handle_processing_error(self, error):
-        """处理事件处理错误和断路器逻辑"""
+        """处理事件处理错误"""
         self._error_count += 1
-        self._consecutive_errors += 1
-        self._last_error_time = time.time()
+        error_msg = str(error)
+        error("事件处理异常: {}", error_msg, module="EventBus")
+        # 最小化副作用: 仅入队一个系统状态提示, 避免递归引用未定义变量
+        try:
+            evt = (self.EVENTS["SYSTEM_STATE_CHANGE"], ("processing_error",), {"error": error_msg})
+            self.event_queue.enqueue(evt)
+        except Exception:
+            # 忽略二次错误, 避免形成异常风暴
+            pass
 
-        error("事件处理异常: {}", str(error), module="EventBus")
-
-        # 检查是否需要开启断路器
-        if self._consecutive_errors >= EventBusConfig.ERROR_THRESHOLD:
-            self._circuit_breaker_open = True
-            warning(
-                "连续错误达到阈值({}), 断路器已开启",
-                EventBusConfig.ERROR_THRESHOLD,
-                module="EventBus",
-            )
+        # 系统错误事件发布由 _handle_callback_error 负责, 此处不再重复
 
     @safe_log("error")
     def _execute_event(self, event_item):
         """执行事件"""
         event_name, args, kwargs = event_item
 
-        debug(
-            "执行事件: {} (参数: {}, {})", event_name, args, kwargs, module="EventBus"
-        )
-
+        # 减少热路径日志, 降低串口IO与CPU占用
         if event_name not in self.subscribers:
             warning("事件 {} 没有订阅者", event_name, module="EventBus")
             return
 
-        # 复制订阅者列表避免迭代时修改
         callbacks = self.subscribers[event_name][:]
-        debug("事件 {} 有 {} 个订阅者", event_name, len(callbacks), module="EventBus")
-
         for callback in callbacks:
             try:
-                debug(
-                    "调用回调: {} -> {}",
-                    event_name,
-                    getattr(callback, "__name__", "unknown"),
-                    module="EventBus",
-                )
                 callback(event_name, *args, **kwargs)
-                debug(
-                    "回调执行成功: {} -> {}",
-                    event_name,
-                    getattr(callback, "__name__", "unknown"),
-                    module="EventBus",
-                )
             except Exception as e:
                 self._handle_callback_error(event_name, callback, e)
 
@@ -290,21 +229,13 @@ class EventBus:
         # 检查系统状态
         self._check_system_status()
 
-        # 定期输出统计
-        if current_time - self._last_stats_time >= EventBusConfig.STATS_INTERVAL:
-            self._last_stats_time = current_time
-            self._print_stats()
-
     def _check_system_status(self):
         """检查并更新系统状态"""
         queue_stats = self.event_queue.get_stats()
         old_status = self._system_status
 
-        # 检查断路器状态
-        if self._circuit_breaker_open:
-            self._system_status = SYSTEM_STATUS["CRITICAL"]
         # 检查队列使用率
-        elif queue_stats["usage_ratio"] > 0.8:
+        if queue_stats["usage_ratio"] > 0.8:
             self._system_status = SYSTEM_STATUS["WARNING"]
             if old_status == SYSTEM_STATUS["NORMAL"]:
                 self._publish_direct_system_event(
@@ -315,12 +246,11 @@ class EventBus:
                     },
                 )
         # 恢复正常模式
-        elif queue_stats["usage_ratio"] < 0.6 and not self._circuit_breaker_open:
-            if self._system_status != SYSTEM_STATUS["NORMAL"]:
-                self._system_status = SYSTEM_STATUS["NORMAL"]
-                self._publish_direct_system_event(
-                    "recovered", {"from_status": old_status}
-                )
+        elif self._system_status != SYSTEM_STATUS["NORMAL"]:
+            self._system_status = SYSTEM_STATUS["NORMAL"]
+            self._publish_direct_system_event(
+                "recovered", {"from_status": old_status}
+            )
 
     def _publish_direct_system_event(self, state, info):
         """直接发布系统事件"""
@@ -357,28 +287,13 @@ class EventBus:
     @safe_log("error")
     def publish(self, event_name, *args, **kwargs):
         """发布事件"""
-        # 检查是否有订阅者
         if not self.has_subscribers(event_name):
-            debug("发布事件 {} (无订阅者)", event_name, module="EventBus")
+            # 移除无订阅者时的调试日志, 降低日志IO
             return True
 
-        # 断路器开启时不再丢弃新事件, 改为排队等待恢复
-        if self._circuit_breaker_open:
-            warning("断路器开启, 事件将延迟处理: {}", event_name, module="EventBus")
-            # 继续入队, 等待恢复后处理
-
-        # 入队事件
         event_item = (event_name, args, kwargs)
         success = self.event_queue.enqueue(event_item)
-        if success:
-            debug(
-                "事件已入队: {} (参数: {}, {})",
-                event_name,
-                args,
-                kwargs,
-                module="EventBus",
-            )
-        else:
+        if not success:
             error("事件入队失败: {}", event_name, module="EventBus")
         return success
 
@@ -404,7 +319,7 @@ class EventBus:
         """输出统计信息"""
         stats = self.get_stats()
         info(
-            "EventBus: 事件={}, 订阅者={}, 队列={}/{} ({}%), 已处理={}, 错误={}, 状态={}, 断路器={}",
+            "EventBus: 事件={}, 订阅者={}, 队列={}/{} ({}%), 已处理={}, 错误={}, 状态={}",
             stats["event_types"],
             stats["total_subscribers"],
             stats["total_length"],
@@ -413,7 +328,6 @@ class EventBus:
             stats["processed_count"],
             stats["error_count"],
             stats["system_status"],
-            "开启" if self._circuit_breaker_open else "关闭",
             module="EventBus",
         )
 
@@ -426,8 +340,6 @@ class EventBus:
         # 重置计数器和状态
         self._processed_count = 0
         self._error_count = 0
-        self._consecutive_errors = 0
-        self._circuit_breaker_open = False
         self._system_status = SYSTEM_STATUS["NORMAL"]
 
     def get_system_status(self):

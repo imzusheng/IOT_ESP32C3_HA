@@ -8,7 +8,7 @@ ESP32C3 IoT 设备主程序
 架构关系：
 - EventBus 作为系统消息中枢, FSM/NetworkManager/其他模块通过事件解耦合
 - FSM 负责系统状态演进与容错策略, NetworkManager 负责具体联网动作
-- MainController 负责看门狗的初始化和喂狗，确保统一管理
+- MainController 负责看门狗的初始化和喂狗, 确保统一管理
 """
 
 import utime as time
@@ -17,7 +17,44 @@ import machine
 import uasyncio as asyncio
 from lib.logger import info, error, debug
 from config import get_config
-from lib.lock.event_bus import EventBus
+from lib.lock.event_bus import EventBus, EVENTS
+
+
+# 内联的轻量工具函数, 避免对 app/utils
+def _check_memory():
+    try:
+        mem_free = gc.mem_free()
+        mem_alloc = gc.mem_alloc()
+        mem_total = mem_free + mem_alloc
+        percent_used = (mem_alloc / mem_total) * 100 if mem_total > 0 else 0
+        return {
+            "free": mem_free,
+            "allocated": mem_alloc,
+            "total": mem_total,
+            "percent": percent_used,
+            "free_kb": mem_free // 1024,
+            "allocated_kb": mem_alloc // 1024,
+            "total_kb": mem_total // 1024,
+        }
+    except Exception:
+        return {
+            "free": 0,
+            "allocated": 0,
+            "total": 0,
+            "percent": 0,
+            "free_kb": 0,
+            "allocated_kb": 0,
+            "total_kb": 0,
+        }
+
+
+def _get_temperature():
+    try:
+        import esp32
+        temp_c = esp32.mcu_temperature()
+        return round(temp_c, 1)
+    except Exception:
+        return None
 
 
 class MainController:
@@ -36,13 +73,22 @@ class MainController:
         
         # 维护任务定时
         self.last_stats_time = 0
+
+    def _emit_system_error(self, where, err):
+        """集中上报系统错误到事件总线(若可用)"""
+        try:
+            if self.event_bus:
+                self.event_bus.publish(EVENTS["SYSTEM_ERROR"], source=where, error=str(err))
+        except Exception:
+            # 避免在异常路径上再次抛出
+            pass
  
     def _init_led(self):
         """初始化LED"""
         try:
             from hw.led import play
-            # LED 控制器采用硬件定时器驱动，完全独立于主循环
-            # 初始进入 blink 模式，表示正在初始化
+            # LED 控制器采用硬件定时器驱动, 完全独立于主循环
+            # 初始进入 blink 模式, 表示正在初始化
             play('blink')
         except Exception as e:
             error("初始化LED失败: {}", e, module="MAIN")
@@ -88,7 +134,7 @@ class MainController:
             debug("网络管理器初始化完成", module="MAIN")
             
             # 初始化状态机
-            from fsm.core import FSM
+            from state_machine import FSM
             self.state_machine = FSM(
                 self.event_bus, 
                 self.config, 
@@ -101,6 +147,7 @@ class MainController:
             
         except Exception as e:
             error("系统初始化失败: {}", e, module="MAIN")
+            self._emit_system_error("initialize", e)
             return False
             
     async def run(self):
@@ -114,6 +161,7 @@ class MainController:
             info("主循环任务取消", module="MAIN")
         except Exception as e:
             error("主循环异常: {}", e, module="MAIN")
+            self._emit_system_error("run", e)
 
     async def _main_loop_async(self):
         """主控制循环 (异步)
@@ -123,22 +171,27 @@ class MainController:
         - 周期性维护任务(内存回收、状态上报)
         """
         info("进入主控制循环(异步)", module="MAIN")
-        # 采用固定周期运行，避免对CPU占用过高
+        # 采用固定周期运行, 避免对CPU占用过高
         loop_delay = get_config('system', 'main_loop_delay', 100)
         
         while True:
             try:
+                # 分发事件队列中的事件(与EventBus手动调度模型对齐)
+                if self.event_bus:
+                    self.event_bus.process_events()
+                
                 # 状态机更新
                 if self.state_machine:
                     self.state_machine.update()
                 
-                # 喂看门狗保持在主循环中，避免掩盖死锁
+                # 喂看门狗保持在主循环中, 避免掩盖死锁
                 if self.wdt:
                     self.wdt.feed()
-
+ 
                 await asyncio.sleep_ms(loop_delay)
             except Exception as e:
                 error("主循环异常: {}", e, module="MAIN")
+                self._emit_system_error("main_loop", e)
                 await asyncio.sleep_ms(loop_delay)
             # 6. 维护
             current_time = time.ticks_ms()
@@ -154,13 +207,12 @@ class MainController:
             gc.collect()
             
             # 输出统计信息(移除性能显示)
-            from utils.helpers import check_memory, get_temperature
-            mem = check_memory()
+            mem = _check_memory()
             free_kb = mem.get("free_kb", gc.mem_free() // 1024)
             percent_used = mem.get("percent", 0)
             
             # 读取MCU内部温度
-            temp = get_temperature()
+            temp = _get_temperature()
             
             # 读取环境温湿度
             from hw.sht40 import read

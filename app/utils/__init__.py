@@ -5,9 +5,7 @@
 """
 
 from .timers import get_hardware_timer_manager
-from .helpers import Throttle
 
 __all__ = [
     "get_hardware_timer_manager",
-    "Throttle",
 ]
