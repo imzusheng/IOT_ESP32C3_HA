@@ -15,14 +15,15 @@ WiFi 管理器
 - 可集成信道质量评估与连接历史统计
 """
 import network
-from lib.logger import info, error, warning
+import utime as time
+from lib.logger import error, warning
 
 
 class WifiManager:
     """
     WiFi管理器
 
-    只提供基本的WiFi操作功能：
+    只提供基本的WiFi操作功能
     - 扫描网络(按信号强度排序)
     - 连接指定网络
     - 断开连接
@@ -40,7 +41,7 @@ class WifiManager:
         if not self.wlan.active():
             self.wlan.active(True)
 
-    def scan_networks(self, timeout_ms=10000):
+    def scan_networks(self):
         """
         扫描可用网络并按信号强度排序
 
@@ -51,12 +52,13 @@ class WifiManager:
             list: 网络列表, 每个网络包含 {'ssid': str, 'rssi': int, 'bssid': bytes}
         """
         try:
-            import time
+            # 计算有效超时时间：从配置读取, 否则回退到默认值
+            timeout_ms = self.config.get("scan_timeout_ms", 10000)
 
             # 记录开始时间
             start_time = time.ticks_ms()
 
-            # 执行扫描
+            # 执行扫描(阻塞)
             scan_results = self.wlan.scan()
 
             # 检查扫描是否超时
@@ -92,7 +94,7 @@ class WifiManager:
             password (str): WiFi密码
 
         Returns:
-            bool: 连接成功返回True
+            bool: 发起连接成功返回 True - 非阻塞, 最终连接状态请配合 get_is_connected() 或上层轮询判定
         """
         try:
             self.wlan.connect(ssid, password)

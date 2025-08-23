@@ -4,7 +4,6 @@
 职责：
 - 顺序编排 WiFi → NTP → MQTT 的连接流程, 替代早期的独立 NET FSM
 - 在主循环中持续检查 WiFi/MQTT 状态并触发必要的事件
-- 对外暴露 connect()/disconnect()/loop()/get_status()/force_reconnect() 等接口
 
 事件约定：
 - 当 WiFi 状态变化时发布 EVENTS["WIFI_STATE_CHANGE"], state ∈ {"connected","disconnected"}
@@ -445,31 +444,25 @@ class NetworkManager:
                     
         except Exception as e:
             error("异步状态检查异常: {}", e, module="NET")
-            
+
+    """
+    ================================
+    外部调用接口
+    ================================
+    """
+
     def connect(self):
         """
-        启动网络连接流程 - 异步版本的同步包装
+        启动网络连接流程（触发异步连接任务）
         返回: bool - 是否成功启动连接流程
         """
         try:
-            # 注意：这是一个同步包装, 实际连接由异步任务处理
-            # 这里只是触发连接尝试, 不等待结果
             info("触发网络连接流程", module="NET")
             return True
             
         except Exception as e:
             error("网络连接异常: {}", e, module="NET")
             return False
-    
-    # 旧的同步扫描和匹配方法已删除, 使用 _async_scan_and_match_networks 替代
-    
-    # 旧的同步WiFi连接尝试方法已删除, 使用 _async_attempt_wifi_connection 替代
-            
-    # 旧的同步 WiFi 连接方法已删除, 使用 _async_connect_wifi 替代
-            
-    # 旧的同步 NTP 同步方法已删除, 使用 _async_sync_ntp 替代
-            
-    # 旧的同步 MQTT 连接方法已删除, 使用 _async_connect_mqtt 替代
             
     def disconnect(self):
         """断开所有网络连接"""
@@ -507,17 +500,3 @@ class NetworkManager:
             "ntp": self.ntp_synced,
             "mqtt": self.mqtt_connected
         }
-        
-    # 旧的同步 loop 方法已删除, 网络管理现在完全由异步任务处理
-            
-    # 旧的同步状态检查方法已删除, 使用 _async_check_status 替代
-            
-    async def force_reconnect(self):
-        """强制重新连接"""
-        info("强制重新连接网络", module="NET")
-        # 重置重连计时器, 允许即时重试
-        self.mqtt_last_attempt = 0
-        self.wifi_last_attempt = 0
-        self.disconnect()
-        await asyncio.sleep_ms(1000)  # 异步等待1秒
-        return self.connect()

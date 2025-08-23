@@ -1,20 +1,14 @@
 # app/net/ntp.py
 """
-NTP 时间同步管理器
+NTP 时间同步管理器（精简版）
 职责：
-- 执行一次性 NTP 时间同步, 缓存同步状态
-- 提供 is_synced() 查询, 供 NetworkManager 决策是否继续流程
+- 执行一次性 NTP 时间同步并缓存同步状态
+- 提供 is_synced()
 
-设计边界：
-- 不实现内部重试与退避(交由 NetworkManager 或 FSM 统一治理)
-- 允许在某些固件中 ntptime 不支持设置 host 的情况优雅降级
-
-扩展建议：
-- 增加多服务器顺序/并行尝试
-- 同步后与 RTC/本地时区集成
+约束：
+- 不做内部重试与退避（由 NetworkManager 处理）
+- 当固件不支持设置 ntptime.host 时优雅降级
 """
-import utime as time
-from lib.logger import info, error
 
 try:
     import ntptime
@@ -23,63 +17,46 @@ except ImportError:
 
 
 class NtpManager:
-    """
-    NTP时间同步管理器
-
-    只提供基本的NTP时间同步功能:
-    - 执行NTP时间同步
-    - 检查同步状态
-    """
+    """提供最小可用的 NTP 同步能力与状态查询。"""
 
     def __init__(self, config=None):
-        """
-        初始化NTP管理器
-        :param config: NTP配置字典-可选
-        """
         self.config = config or {}
-        # 移除logger实例, 直接使用全局日志函数
         self._ntp_synced = False
 
     def sync_time(self):
         """
-        执行NTP时间同步
-
-        Returns:
-            bool: 同步成功返回True, 失败返回False
+        执行一次 NTP 时间同步。
+        返回：
+            bool: 成功 True, 失败 False
+        说明：
+        - 仅尝试一次，不在此处实现重试与退避。
+        - 实际重试与时序控制在 NetworkManager 中完成。
         """
         if ntptime is None:
             return False
 
-        # 通过配置允许自定义NTP服务器, 默认使用阿里云NTP池
-        ntp_server = self.config.get("ntp_server", "ntp1.aliyun.com")
-        max_attempts = int(self.config.get("ntp_max_attempts", 3))
-        retry_interval = int(self.config.get("ntp_retry_interval", 2))  # 秒
+        # 支持新旧两种配置键：优先 "server"，其次 "ntp_server"，最后使用默认池
+        ntp_server = (
+            self.config.get("server")
+            or "pool.ntp.org"
+        )
 
+        # 尝试设置 NTP 服务器（部分端口可能不支持）
         try:
             if hasattr(ntptime, "host"):
-                ntptime.host = ntp_server  # 设置NTP服务器
+                ntptime.host = ntp_server
         except Exception:
-            # 某些端口的ntptime不支持设置host, 忽略
+            # 不支持设置或设置失败时忽略，继续使用默认服务器
             pass
 
+        # 设置时间（可能抛出异常）
         try:
-            # 只尝试一次, 让外部的NetworkManager处理重试和退避
             ntptime.settime()
-            # 成功
             self._ntp_synced = True
-            timestamp = time.time()
-
             return True
-
-        except Exception as e:
-            # 直接返回失败, 让外部的NetworkManager处理重试
+        except Exception:
             return False
 
     def is_synced(self):
-        """
-        检查NTP是否已同步
-
-        Returns:
-            bool: 已同步返回True
-        """
+        """返回是否已完成 NTP 同步。"""
         return self._ntp_synced

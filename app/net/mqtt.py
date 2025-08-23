@@ -197,84 +197,7 @@ class MqttController:
             raise
 
     # ------------------ 连接与断开 ------------------
-    def connect(self):
-        """
-        连接到MQTT Broker
 
-        Returns:
-            bool: 连接成功返回True, 失败返回False
-        """
-        if self._is_connected:
-            return True
-
-        if not self.client:
-            warning("MQTT客户端未初始化或配置不完整", module="MQTT")
-            return False
-
-        try:
-            debug(
-                "尝试连接MQTT服务器: {}:{}",
-                self.config["broker"],
-                self.config.get("port", 1883),
-                module="MQTT",
-            )
-            # 设置连接超时为10秒
-            try:
-                import socket as _sock
-                _timeout_sec = 10
-                # 如果底层客户端尚未创建socket, 通过全局默认超时影响后续socket创建
-                if hasattr(_sock, "socket") and hasattr(_sock, "setdefaulttimeout"):
-                    _sock.setdefaulttimeout(_timeout_sec)
-            except Exception:
-                pass
-
-            self.client.connect()
-
-            # 验证连接是否建立
-            if hasattr(self.client, "is_connected") and self.client.is_connected():
-                self._is_connected = True
-                # 安装 INFO 日志转发钩子
-                self._install_info_log_hook()
-                debug("MQTT连接成功", module="MQTT")
-                return True
-            else:
-                # 对于某些MQTT库,连接成功后没有is_connected方法
-                # 尝试发送ping来验证连接
-                try:
-                    self.client.ping()
-                    self._is_connected = True
-                    # 安装 INFO 日志转发钩子
-                    self._install_info_log_hook()
-                    debug("MQTT连接成功 (通过ping验证)", module="MQTT")
-                    return True
-                except:
-                    self._is_connected = False
-                    warning("MQTT连接状态验证失败", module="MQTT")
-                    return False
-
-        except OSError as e:
-            if e.errno == 113:  # ECONNABORTED
-                error(
-                    "MQTT连接被拒绝: 服务器{}:{}不可达或拒绝连接",
-                    self.config["broker"],
-                    self.config.get("port", 1883),
-                    module="MQTT",
-                )
-            elif e.errno == 110:  # ETIMEDOUT
-                error(
-                    "MQTT连接超时: 服务器{}:{}无响应",
-                    self.config["broker"],
-                    self.config.get("port", 1883),
-                    module="MQTT",
-                )
-            else:
-                error("MQTT连接网络错误 [{}]: {}", e.errno, e, module="MQTT")
-            self._is_connected = False
-            return False
-        except Exception as e:
-            error("MQTT连接异常: {}", e, module="MQTT")
-            self._is_connected = False
-            return False
 
     async def connect_async(self):
         """异步连接到MQTT Broker
@@ -355,6 +278,7 @@ class MqttController:
         - 仅设置全局 socket 默认超时为 10 秒, 避免长时间阻塞
         - 直接复用 __init__ 中已创建并设置回调的 self.client, 不在此处重复创建客户端
         - 保持最小改动, 避免引入新的配置键名差异
+        - 不在本函数内修改连接状态，由验证步骤统一设置，避免瞬态抖动
         """
         try:
             # 设置 socket 超时(统一为 10 秒)
@@ -370,11 +294,9 @@ class MqttController:
             # 执行连接：复用已初始化的 MQTTClient 实例
             # self.client 已在 __init__ 中创建并设置了回调为 self._mqtt_callback
             self.client.connect()
-            self._is_connected = True
-            debug("MQTT连接成功", module="MQTT")
+            # 状态与日志钩子统一由验证步骤设置，避免瞬态抖动
             return True
         except Exception as e:
-            self._is_connected = False
             error("MQTT连接失败: {}", e, module="MQTT")
             return False
             
@@ -472,48 +394,45 @@ class MqttController:
             error("MQTT订阅失败: {}", e, module="MQTT")
             return False
 
-    def check_msg(self):
-        """检查是否有新消息"""
-        if self._is_connected and self.client:
-            try:
-                # 心跳调度(同步路径)
-                self._maybe_send_ping()
-                self.client.check_msg()
-            except Exception as e:
-                # 加强错误上下文：类型、errno(若有)、repr细节
-                err_no = getattr(e, "errno", None)
-                if err_no is None and getattr(e, "args", None):
-                    try:
-                        err_no = e.args[0] if isinstance(e.args[0], int) else None
-                    except Exception:
-                        err_no = None
-                error("检查MQTT消息失败: type={}, errno={}, reason={}, detail={}",
-                      type(e).__name__, err_no, _errno_reason(err_no), repr(e), module="MQTT")
-                # 标记连接已断开, 交由上层进行事件与重连处理
-                self._is_connected = False
-                # 移除 INFO 日志钩子, 避免无连接情况下继续转发
-                self._remove_info_log_hook()
-                
+    def _check_msg_core(self) -> bool:
+        """共享的消息检查核心逻辑
+        
+        - 负责发送心跳、拉取消息
+        - 统一异常处理、连接状态维护与日志钩子清理
+        - 返回 True 表示成功检查(不代表一定收到消息)，False 表示检查过程中发生错误
+        """
+        if not (self._is_connected and self.client):
+            return False
+        try:
+            # 心跳调度
+            self._maybe_send_ping()
+            # 拉取处理消息
+            self.client.check_msg()
+            return True
+        except Exception as e:
+            # 加强错误上下文：类型、errno(若有)、repr细节
+            err_no = getattr(e, "errno", None)
+            if err_no is None and getattr(e, "args", None):
+                try:
+                    err_no = e.args[0] if isinstance(e.args[0], int) else None
+                except Exception:
+                    err_no = None
+            error("检查MQTT消息失败: type={}, errno={}, reason={}, detail={}",
+                  type(e).__name__, err_no, _errno_reason(err_no), repr(e), module="MQTT")
+            # 标记连接已断开, 交由上层进行事件与重连处理
+            self._is_connected = False
+            # 移除 INFO 日志钩子, 避免无连接情况下继续转发
+            self._remove_info_log_hook()
+            return False
+
     async def check_msg_async(self):
-        """异步检查是否有新消息"""
+        """异步检查是否有新消息
+        
+        说明：
+        - 仅在已连接时调用共享核心逻辑，避免多余的让出
+        - 由上层循环控制调用频率
+        """
         if self._is_connected and self.client:
-            try:
-                # 让出控制权, 避免阻塞
-                await asyncio.sleep_ms(1)
-                # 心跳调度(异步路径)
-                self._maybe_send_ping()
-                self.client.check_msg()
-                await asyncio.sleep_ms(1)  # 处理完消息后让出控制权
-            except Exception as e:
-                # 加强错误上下文：类型、errno(若有)、repr细节
-                err_no = getattr(e, "errno", None)
-                if err_no is None and getattr(e, "args", None):
-                    try:
-                        err_no = e.args[0] if isinstance(e.args[0], int) else None
-                    except Exception:
-                        err_no = None
-                error("异步检查MQTT消息失败: type={}, errno={}, reason={}, detail={}",
-                      type(e).__name__, err_no, _errno_reason(err_no), repr(e), module="MQTT")
-                # 标记连接已断开, 交由上层进行事件与重连处理
-                self._is_connected = False
-                # 移除 INFO 日志钩子, 避免无连接情况下继续转发
+            # 直接复用共享核心逻辑；让出与节奏控制由上层调度
+            self._check_msg_core()
+            return
