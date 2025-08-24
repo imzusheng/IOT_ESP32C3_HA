@@ -11,7 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### 构建和部署
 ```bash
-# 默认构建：编译、上传、启动REPL
+# 默认构建: 编译、上传、启动REPL
 python build.py
 
 # 仅编译不部署
@@ -121,12 +121,12 @@ pytest app/tests/ --cov=app
 ### 4. LED模式控制器 - `app/hw/led.py`
 - **功能**: 丰富的LED状态指示和模式控制, 开箱即用
 - **特性**: 
-  - 开箱即用：无需初始化, 直接调用全局函数
-  - 延迟初始化：首次调用时自动初始化
-  - 单例模式：防止重复实例化
-  - 手动更新模式：由主循环调用,节省硬件定时器
-  - 多种预设模式：blink, pulse, cruise, sos, off
-  - 状态可视化：通过不同LED模式指示系统状态
+  - 开箱即用: 无需初始化, 直接调用全局函数
+  - 延迟初始化: 首次调用时自动初始化
+  - 单例模式: 防止重复实例化
+  - 手动更新模式: 由主循环调用,节省硬件定时器
+  - 多种预设模式: blink, pulse, cruise, sos, off
+  - 状态可视化: 通过不同LED模式指示系统状态
 - **使用方式**: 
   ```python
   from hw.led import play, cleanup, process_led_updates

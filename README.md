@@ -86,12 +86,12 @@ IOT_ESP32C3/
 - **位置**: [`app/hw/led.py`](app/hw/led.py)
 - **功能**: 丰富的LED状态指示和模式控制, 开箱即用
 - **特性**: 
-  - 开箱即用：无需初始化, 直接调用全局函数
-  - 延迟初始化：首次调用时自动初始化
-  - 单例模式：防止重复实例化
-  - 多种预设模式：blink, pulse, cruise, sos, off
-  - 状态可视化：通过不同LED模式指示系统状态
-  - 低功耗设计：优化的定时器和uasyncio支持
+  - 开箱即用: 无需初始化, 直接调用全局函数
+  - 延迟初始化: 首次调用时自动初始化
+  - 单例模式: 防止重复实例化
+  - 多种预设模式: blink, pulse, cruise, sos, off
+  - 状态可视化: 通过不同LED模式指示系统状态
+  - 低功耗设计: 优化的定时器和uasyncio支持
 
 ### 网络通信层
 
@@ -115,7 +115,7 @@ IOT_ESP32C3/
 #### 9. 系统助手 (Helpers)
 - **位置**: [`app/utils/helpers.py`](app/utils/helpers.py)
 - **功能**: 系统监控和辅助函数
-- **包含**: 内存检查、环境温湿度(SHT40，可选)、时间格式化、设备信息
+- **包含**: 内存检查、环境温湿度(SHT40, 可选)、时间格式化、设备信息
 
 #### 10. 日志系统 (Logger)
 - **位置**: [`app/lib/logger.py`](app/lib/logger.py)
@@ -152,11 +152,11 @@ WiFi连接成功 → NTP时间同步 → TIME_UPDATED事件 → 计时器队列�
 ```
 
 ### 事件载荷与回调签名约定
-- 回调优先采用新签名：callback(event_name, *args, **kwargs), 事件名作为第一个参数, 便于统一处理与日志追踪。
-- 兼容旧签名：若回调不接受 event_name, 将自动降级为 callback(*args, **kwargs)；仍不兼容则尝试 callback(), 确保向后兼容。
-- TIME_UPDATED 事件载荷：从"完成B"起, 事件将附带关键字参数 timestamp(秒级Unix时间戳)。示例：
-  - 发布方：event_bus.publish(EVENT.TIME_UPDATED, timestamp=timestamp)
-  - 订阅方回调示例：def _on_time_updated(self, event_name, timestamp=None, **kwargs): ...
+- 回调优先采用新签名: callback(event_name, *args, **kwargs), 事件名作为第一个参数, 便于统一处理与日志追踪。
+- 兼容旧签名: 若回调不接受 event_name, 将自动降级为 callback(*args, **kwargs)；仍不兼容则尝试 callback(), 确保向后兼容。
+- TIME_UPDATED 事件载荷: 从"完成B"起, 事件将附带关键字参数 timestamp(秒级Unix时间戳)。示例: 
+  - 发布方: event_bus.publish(EVENT.TIME_UPDATED, timestamp=timestamp)
+  - 订阅方回调示例: def _on_time_updated(self, event_name, timestamp=None, **kwargs): ...
 
 ### 事件总线技术特性
 - **计时器队列驱动**: 使用硬件计时器实现精确的事件调度, 避免 micropython.schedule 的队列满问题
@@ -170,7 +170,7 @@ WiFi连接成功 → NTP时间同步 → TIME_UPDATED事件 → 计时器队列�
 ## ⚙️ 配置说明
 
 ### 配置文件结构
-项目使用纯Python配置系统：
+项目使用纯Python配置系统: 
 - [`app/config.py`](app/config.py): Python字典配置(主要配置和验证规则)
 
 ### 主要配置项
@@ -191,7 +191,7 @@ WiFi连接成功 → NTP时间同步 → TIME_UPDATED事件 → 计时器队列�
 #### WiFi配置
 ```python
 "wifi": {
-    # 说明：当前实现基于单个SSID连接；如需多网络选择, 请在上层管理器中实现按RSSI或优先级选择逻辑
+    # 说明: 当前实现基于单个SSID连接；如需多网络选择, 请在上层管理器中实现按RSSI或优先级选择逻辑
     "ssid": "your-ssid",
     "password": "your-password",
     "config": {
@@ -282,7 +282,7 @@ WiFi连接成功 → NTP时间同步 → TIME_UPDATED事件 → 计时器队列�
 
 ### 构建和部署
 
-使用 [`build.py`](build.py) 脚本构建和部署项目：
+使用 [`build.py`](build.py) 脚本构建和部署项目: 
 
 ```bash
 # 构建项目(排除测试文件)
@@ -316,7 +316,7 @@ python build.py --clean-cache
 ## 📊 系统状态和监控
 
 ### 状态机系统
-系统支持以下状态：
+系统支持以下状态: 
 - **INIT**: 系统初始化
 - **NETWORKING**: 网络连接
 - **RUNNING**: 正常运行
@@ -347,7 +347,7 @@ python build.py --clean-cache
 
 ### 系统监控指标
 - 内存使用率(实时监控)
-- 环境温湿度(SHT40，可选)
+- 环境温湿度(SHT40, 可选)
 - 错误计数和统计
 - 网络连接状态
 - MQTT连接状态
@@ -361,7 +361,7 @@ python build.py --clean-cache
 - 使用状态机监控系统状态
 
 ### 串口日志
-设备通过串口输出详细日志：
+设备通过串口输出详细日志: 
 - WiFi连接状态
 - MQTT连接状态
 - 内存使用报告
@@ -402,7 +402,7 @@ python build.py --clean-cache
 8. **主循环** → 系统稳定运行
 
 ### MQTT 重连机制
-当前实现采用简化的重连策略：
+当前实现采用简化的重连策略: 
 - 在WiFi已连接的前提下, 周期性检查MQTT连接状态
 - 断开时尝试直接重连(固定等待间隔), 未实现指数退避
 - 后续可在 NetworkManager/FSM 层统一引入退避与分级重连策略
@@ -454,7 +454,7 @@ python build.py --clean-cache
 
 ## 🌐 Web配置界面
 
-项目包含基于Web Bluetooth的配置界面：
+项目包含基于Web Bluetooth的配置界面: 
 - **状态**: 规划中(当前仓库未包含 web/index.html 文件)
 - **功能**: 蓝牙连接、WiFi配置、MQTT配置、设备配置
 - **设计**: Apple设计风格, 响应式布局
@@ -530,7 +530,7 @@ LED指示 → 日志记录 → MQTT发送
 
 ## 📞 支持
 
-如果您在使用过程中遇到任何问题, 请通过以下方式获取支持：
+如果您在使用过程中遇到任何问题, 请通过以下方式获取支持: 
 
 - 📧 **邮件支持**: [your-email@example.com](mailto:your-email@example.com)
 - 🐛 **问题报告**: [GitHub Issues](https://github.com/your-username/IOT_ESP32C3_HA/issues)

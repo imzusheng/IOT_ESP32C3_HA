@@ -1,11 +1,11 @@
 # app/main.py
 """
 ESP32C3 IoT 设备主程序
-职责：
+职责: 
 - 统一完成配置加载、日志初始化、看门狗初始化、事件总线、网络管理器与状态机的装配
-- 驱动主循环：事件分发 → FSM 更新 → 网络循环 → 看门狗喂狗 → 周期性维护
+- 驱动主循环: 事件分发 → FSM 更新 → 网络循环 → 看门狗喂狗 → 周期性维护
 
-架构关系：
+架构关系: 
 - EventBus 作为系统消息中枢, FSM/NetworkManager/其他模块通过事件解耦合
 - FSM 负责系统状态演进与容错策略, NetworkManager 负责具体联网动作
 - MainController 负责看门狗的初始化和喂狗, 确保统一管理
@@ -95,7 +95,7 @@ class MainController:
 
     def _init_watchdog(self):
         """初始化硬件看门狗
-        说明：
+        说明: 
         - 从配置读取 wdt_enabled 与 wdt_timeout 默认启用且 120000ms
         - 仅在启用时创建 machine.WDT 实例
         """
@@ -165,7 +165,7 @@ class MainController:
 
     async def _main_loop_async(self):
         """主控制循环 (异步)
-        职责：
+        职责: 
         - 更新状态机
         - 定期喂看门狗
         - 周期性维护任务(内存回收、状态上报)

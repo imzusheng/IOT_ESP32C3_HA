@@ -1,12 +1,12 @@
 # app/lib/async_runtime.py
 """
 异步运行时管理器
-职责：
+职责: 
 - 管理 uasyncio 事件循环的创建、运行和清理
 - 提供任务注册、取消和监控接口
 - 统一异步任务的错误处理和日志记录
 
-设计边界：
+设计边界: 
 - 仅负责异步任务编排, 不包含具体业务逻辑
 - 确保异步任务异常不会影响主事件循环
 """
@@ -36,7 +36,7 @@ class AsyncRuntime:
             Task: asyncio.Task 对象
         """
         try:
-            # 同名任务幂等：若存在同名任务且未结束, 先取消旧任务, 避免并发重复执行
+            # 同名任务幂等: 若存在同名任务且未结束, 先取消旧任务, 避免并发重复执行
             if name and name in self.tasks:
                 try:
                     old_task = self.tasks.get(name)
@@ -143,12 +143,12 @@ def get_async_runtime():
 
 
 def create_task(coro, name=None):
-    """便捷函数：创建异步任务"""
+    """便捷函数: 创建异步任务"""
     runtime = get_async_runtime()
     return runtime.create_task(coro, name)
 
 
 def cancel_task(name):
-    """便捷函数：取消异步任务"""
+    """便捷函数: 取消异步任务"""
     runtime = get_async_runtime()
     return runtime.cancel_task(name)

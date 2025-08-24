@@ -41,8 +41,8 @@ def _get_timestamp():
         return "00:00:00"
 
 
-# 可选：INFO 级日志转发钩子(例如转发到 MQTT)
-# 注意：应当由上层在网络就绪后注册, 避免启动阶段阻塞或异常
+# 可选: INFO 级日志转发钩子(例如转发到 MQTT)
+# 注意: 应当由上层在网络就绪后注册, 避免启动阶段阻塞或异常
 _INFO_HOOK = None
 
 def set_info_hook(hook):
@@ -69,7 +69,7 @@ def _log(level, level_name, msg, *args, module=None):
     try:
         message = msg.format(*args) if args else str(msg)
     except Exception:
-        # 容错：避免 format 失败
+        # 容错: 避免 format 失败
         try:
             message = f"{msg} | args={args}"
         except Exception:
@@ -87,7 +87,7 @@ def _log(level, level_name, msg, *args, module=None):
     # 控制台输出
     print(line)
 
-    # 可选：INFO 级日志转发
+    # 可选: INFO 级日志转发
     if level == INFO and _INFO_HOOK:
         try:
             _INFO_HOOK(line)

@@ -599,7 +599,7 @@ def monitor_device(port, verbose=False):
 def diagnose_device(port, verbose=False):
     """诊断设备状态, 特别是安全模式"""
     print_message("开始设备诊断...", "INFO")
-    # 简单的诊断：检查设备是否能正常执行代码
+    # 简单的诊断: 检查设备是否能正常执行代码
     ret, out, err = execute_mpremote_command(port, "exec", "import gc; print(gc.mem_free())", retries=2)
     if ret == 0:
         print_message("设备连接正常", "SUCCESS")
@@ -607,7 +607,7 @@ def diagnose_device(port, verbose=False):
     else:
         print_message("设备连接异常或无响应", "ERROR")
         print_message(f"错误信息: {err.strip()}", "WARNING")
-        print_message("建议：", "INFO")
+        print_message("建议: ", "INFO")
         print_message("1. 检查USB线缆和端口连接", "INFO")
         print_message("2. 尝试手动重启设备", "INFO")
         print_message("3. 运行 'python build.py --clean --upload' 强制重新部署", "INFO")

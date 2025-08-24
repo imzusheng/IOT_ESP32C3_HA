@@ -14,7 +14,7 @@
 import machine
 import utime as time
 from lib.logger import error
-# 注意：utils 模块的导入在 _init_hardware_timer() 中进行, 避免循环导入问题，utils 可能依赖于其他硬件模块
+# 注意: utils 模块的导入在 _init_hardware_timer() 中进行, 避免循环导入问题, utils 可能依赖于其他硬件模块
 
 # =============================================================================
 # 配置常量

@@ -1,21 +1,21 @@
 # app/net/network_manager.py
 """
 网络管理器
-职责：
+职责: 
 - 顺序编排 WiFi → NTP → MQTT 的连接流程, 替代早期的独立 NET FSM
 - 在主循环中持续检查 WiFi/MQTT 状态并触发必要的事件
 
-事件约定：
+事件约定: 
 - 当 WiFi 状态变化时发布 EVENTS["WIFI_STATE_CHANGE"], state ∈ {"connected","disconnected"}
 - 当 MQTT 状态变化时发布 EVENTS["MQTT_STATE_CHANGE"], state ∈ {"connected","disconnected"}
 
-设计边界与约束：
+设计边界与约束: 
 - 实现指数退避策略(由配置 mqtt.base_delay_ms/max_delay_ms/max_retries 控制)
 - NTP 同步失败不会阻塞后续 MQTT 连接
 - WifiManager/NtpManager/MqttController 由本模块聚合管理, 配置来自 app/config.py
-- 内置“连接中”防重入保护(_mqtt_connecting + MqttController._connecting), 避免重复触发与重复日志
+- 内置"连接中"防重入保护(_mqtt_connecting + MqttController._connecting), 避免重复触发与重复日志
 
-扩展建议：
+扩展建议: 
 - 可在不破坏接口的前提下引入更灵活的退避/重试策略
 - 可将连接状态与统计指标上报到事件总线或系统状态接口
 """
@@ -58,7 +58,7 @@ class NetworkManager:
         # 无限退避重试策略
         self.mqtt_base_delay = int(self.mqtt_config.get("base_delay_ms", 2000))  # 基础延迟 2秒
         self.mqtt_last_attempt = 0
-        # 新增：MQTT 指数退避控制参数
+        # 新增: MQTT 指数退避控制参数
         self.mqtt_max_delay = int(self.mqtt_config.get("max_delay_ms", 180000))  # 最大延迟 3分钟
         self.mqtt_max_retries = int(self.mqtt_config.get("max_retries", -1))    # -1 表示无限重试
         self.mqtt_retry_attempts = 0  # 当前连续失败次数, 用于指数退避
@@ -67,7 +67,7 @@ class NetworkManager:
         self.wifi_base_delay = int(self.wifi_config.get("base_delay_ms", 2000))  # 基础延迟 2秒
         self.wifi_max_delay = int(self.wifi_config.get("max_delay_ms", 180000))  # 最大延迟 3分钟
         self.wifi_last_attempt = 0
-        # 新增：WiFi 指数退避控制参数(与 MQTT 对齐, 支持可选 max_retries, 默认无限)
+        # 新增: WiFi 指数退避控制参数(与 MQTT 对齐, 支持可选 max_retries, 默认无限)
         self.wifi_max_retries = int(self.wifi_config.get("max_retries", -1))
         self.wifi_retry_attempts = 0  # 当前 WiFi 重试次数
         
@@ -116,7 +116,7 @@ class NetworkManager:
             # 按子配置实例化
             self.wifi_manager = WifiManager(self.wifi_config)
             self.ntp_manager = NtpManager(self.ntp_config)
-            self.mqtt_controller = MqttController(self.mqtt_config, self.event_bus)
+            self.mqtt_controller = MqttController(self.mqtt_config)
             
             debug("网络组件初始化完成", module="NET")
             
@@ -174,13 +174,13 @@ class NetworkManager:
         
         now = time.ticks_ms()
         
-        # 退避重试检查：首次尝试立即执行, 随后指数退避并封顶到 max_delay, 加入±20%抖动
+        # 退避重试检查: 首次尝试立即执行, 随后指数退避并封顶到 max_delay, 加入±20%抖动
         if self.wifi_retry_attempts > 0:
             calc_delay = self.wifi_base_delay << (self.wifi_retry_attempts - 1)
             delay = calc_delay if calc_delay < self.wifi_max_delay else self.wifi_max_delay
         else:
             delay = self.wifi_base_delay
-        # 抖动：0.8x ~ 1.2x, urandom 优先, 退化到时间基准
+        # 抖动: 0.8x ~ 1.2x, urandom 优先, 退化到时间基准
         try:
             import urandom
             rnd = urandom.getrandbits(16) / 65535.0
@@ -231,14 +231,14 @@ class NetworkManager:
                 password = network.get("password", "")
                 if await self._async_attempt_wifi_connection(ssid, password):
                     self.wifi_connected = True
-                    # 连接成功：重置退避计数；last_attempt清零, 允许后续流程立即推进
+                    # 连接成功: 重置退避计数; last_attempt清零, 允许后续流程立即推进
                     self.wifi_last_attempt = 0
                     self.wifi_retry_attempts = 0
                     info("WiFi连接成功: {}", ssid, module="NET")
                     self.event_bus.publish(EVENTS["WIFI_STATE_CHANGE"], state="connected")
                     return True
             
-            # 所有候选网络均未连接成功：记录一次失败并递增退避计数
+            # 所有候选网络均未连接成功: 记录一次失败并递增退避计数
             self.wifi_last_attempt = time.ticks_ms()
             if self.wifi_max_retries >= 0:
                 if self.wifi_retry_attempts < self.wifi_max_retries:
@@ -332,7 +332,7 @@ class NetworkManager:
 
             # 退避重试检查
             now = time.ticks_ms()
-            # 指数退避：delay = base * 2^(attempts-1), 首次失败后开始指数增长, 限制到 max_delay
+            # 指数退避: delay = base * 2^(attempts-1), 首次失败后开始指数增长, 限制到 max_delay
             if self.mqtt_retry_attempts > 0:
                 calc_delay = self.mqtt_base_delay << (self.mqtt_retry_attempts - 1)
                 delay = calc_delay if calc_delay < self.mqtt_max_delay else self.mqtt_max_delay
@@ -437,7 +437,7 @@ class NetworkManager:
                 # MQTT消息处理(异步), 避免异常中断状态检查
                 if self.mqtt_connected:
                     try:
-                        await self.mqtt_controller.check_msg_async()
+                        await self.mqtt_controller.process_once()
                     except Exception as _e:
                         # 由 MqttController 内部负责标记连接状态与日志, 这里避免重复日志
                         pass
@@ -453,7 +453,7 @@ class NetworkManager:
 
     def connect(self):
         """
-        启动网络连接流程（触发异步连接任务）
+        启动网络连接流程(触发异步连接任务)
         返回: bool - 是否成功启动连接流程
         """
         try:

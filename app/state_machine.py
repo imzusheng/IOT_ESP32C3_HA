@@ -4,16 +4,16 @@
 Moved from app/fsm/core.py to app/state_machine.py
 简化状态模型为 4 个核心状态(INIT/CONNECTING/RUNNING/ERROR), 移除独立的 NetworkFSM 冗余
 
-职责：
+职责: 
 - 订阅网络/系统关键事件(WIFI_STATE_CHANGE, MQTT_STATE_CHANGE, SYSTEM_STATE_CHANGE)
 - 驱动系统从启动到运行的状态演进, 并在异常时进入 ERROR 并执行重试/重启策略
 - 统一控制 LED 指示
 
-状态与转换：
+状态与转换: 
 - INIT -> CONNECTING -> RUNNING
 - 运行中发生断链则回到 CONNECTING
 
-设计边界：
+设计边界: 
 - 具体网络连接流程委托给 NetworkManager
 - 退避/重试策略可后续在 FSM 或 NetworkManager 层统一引入
 """

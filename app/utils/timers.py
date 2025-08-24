@@ -38,7 +38,7 @@ class HardwareTimerManager:
         return None
 
     def create_timer(self, period_ms, callback, mode=machine.Timer.PERIODIC):
-        """创建硬件定时器。返回定时器实例，失败时返回 None。"""
+        """创建硬件定时器。返回定时器实例, 失败时返回 None。"""
         timer_id = self.get_available_timer()
         if timer_id is None:
             warning("没有可用的硬件定时器", module=MODULE_NAME)
