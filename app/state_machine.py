@@ -166,6 +166,15 @@ class FSM:
         except Exception as e:
             error("更新LED状态失败: {}", e, module="FSM")
             
+    def _try_enter_running_if_fully_connected(self):
+        """在 INIT/CONNECTING 阶段, 若网络已完全连通则进入 RUNNING"""
+        try:
+            if self.current_state in (STATE_INIT, STATE_CONNECTING):
+                if self.network_manager and self.network_manager.is_connected():
+                    self._enter_state(STATE_RUNNING)
+        except Exception as e:
+            error("尝试进入 RUNNING 失败: {}", e, module="FSM")
+            
     def _handle_event(self, event_name, *args, **kwargs):
         """处理事件"""
         try:
@@ -187,8 +196,7 @@ class FSM:
         if state == 'connected' and self.current_state in (STATE_INIT, STATE_CONNECTING):
             # WiFi连接成功, 检查是否完全连接
             info("WiFi连接成功", module="FSM")
-            if self.network_manager and self.network_manager.is_connected():
-                self._enter_state(STATE_RUNNING)
+            self._try_enter_running_if_fully_connected()
             
         elif state == 'disconnected' and self.current_state == STATE_RUNNING:
             # WiFi断开, 需要重新连接
@@ -211,8 +219,7 @@ class FSM:
         if state == 'connected' and self.current_state in (STATE_INIT, STATE_CONNECTING):
             # MQTT连接成功, 检查是否完全连接
             info("MQTT连接成功", module="FSM")
-            if self.network_manager and self.network_manager.is_connected():
-                self._enter_state(STATE_RUNNING)
+            self._try_enter_running_if_fully_connected()
             
         elif state == 'disconnected' and self.current_state == STATE_RUNNING:
             # MQTT断开, 重新连接
@@ -245,11 +252,7 @@ class FSM:
             # 根据当前状态执行相应逻辑
             if self.current_state in (STATE_INIT, STATE_CONNECTING):
                 # INIT/CONNECTING: 若网络已全连通, 切换到 RUNNING
-                if self.network_manager and self.network_manager.is_connected():
-                    self._enter_state(STATE_RUNNING)
-                else:
-                    # 交由 NetworkManager 内部的退避/重试策略调度
-                    pass
+                self._try_enter_running_if_fully_connected()
                 
             elif self.current_state == STATE_RUNNING:
                 # 运行状态的定期检查
@@ -259,11 +262,7 @@ class FSM:
                 if elapsed >= 10000:  # 10秒后重试
                     info("错误状态超时({} ms), 尝试重新连接", elapsed, module="FSM")
                     self._enter_state(STATE_CONNECTING)
-                    
-            elif self.current_state == STATE_CONNECTING:
-                # CONNECTING 已包含在前面的分支中
-                pass
-                    
+            
         except Exception as e:
             error("状态机更新失败: {}", e, module="FSM")
             
