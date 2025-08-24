@@ -1,0 +1,46 @@
+>>> %Run -c $EDITOR_CONTENT
+
+MPY: soft reboot
+[00:01:10] [INFO ] [NET] 触发网络连接流程
+[00:01:13] [INFO ] [NET] WiFi连接成功: CMCC-pdRG
+[00:01:14] [WARN ] [NET] NTP时间同步失败(忽略, 继续MQTT连接)
+[00:01:14] [INFO ] [SHT40] SHT40 detected at 0x44
+[00:01:14] [INFO ] [MAIN] 系统状态 - 状态:INIT, 内存:101KB(34%), 温度:36, 环境:28.1°C/59.0%, WiFi:True, MQTT:False
+[00:01:16] [INFO ] [FSM] WiFi连接成功
+[00:01:16] [INFO ] [NET] MQTT连接成功
+[00:01:16] [ERROR] [MQTT] MQTT发布失败 [errno=128 reason=ENETUNREACH: 网络不可达]: [Errno 128] ENOTCONN
+[00:01:16] [INFO ] [FSM] MQTT连接成功
+[00:01:16] [INFO ] [FSM] 进入 RUNNING 状态
+[00:01:16] [WARN ] [NET] MQTT连接丢失
+[00:01:16] [WARN ] [FSM] MQTT连接断开, 重新连接
+[00:01:16] [INFO ] [NET] 触发网络连接流程
+[00:01:20] [INFO ] [NET] NTP时间同步成功
+[00:01:20] [INFO ] [NET] MQTT连接成功
+[00:01:20] [ERROR] [MQTT] MQTT发布失败 [errno=128 reason=ENETUNREACH: 网络不可达]: [Errno 128] ENOTCONN
+[00:01:20] [INFO ] [FSM] MQTT连接成功
+[00:01:20] [INFO ] [FSM] 进入 RUNNING 状态
+[00:01:20] [WARN ] [NET] MQTT连接丢失
+[00:01:20] [WARN ] [FSM] MQTT连接断开, 重新连接
+[00:01:20] [INFO ] [NET] 触发网络连接流程
+[00:01:24] [INFO ] [NET] MQTT连接成功
+[00:01:24] [ERROR] [MQTT] MQTT发布失败 [errno=128 reason=ENETUNREACH: 网络不可达]: [Errno 128] ENOTCONN
+[00:01:24] [INFO ] [FSM] MQTT连接成功
+[00:01:24] [INFO ] [FSM] 进入 RUNNING 状态
+[00:01:24] [WARN ] [NET] MQTT连接丢失
+[00:01:24] [WARN ] [FSM] MQTT连接断开, 重新连接
+[00:01:24] [INFO ] [NET] 触发网络连接流程
+[00:01:28] [INFO ] [NET] MQTT连接成功
+[00:01:28] [ERROR] [MQTT] MQTT发布失败 [errno=128 reason=ENETUNREACH: 网络不可达]: [Errno 128] ENOTCONN
+[00:01:28] [INFO ] [FSM] MQTT连接成功
+[00:01:28] [INFO ] [FSM] 进入 RUNNING 状态
+[00:01:28] [WARN ] [NET] MQTT连接丢失
+[00:01:28] [WARN ] [FSM] MQTT连接断开, 重新连接
+[00:01:28] [INFO ] [NET] 触发网络连接流程
+[00:01:32] [INFO ] [NET] MQTT连接成功
+[00:01:32] [ERROR] [MQTT] MQTT发布失败 [errno=128 reason=ENETUNREACH: 网络不可达]: [Errno 128] ENOTCONN
+[00:01:32] [INFO ] [FSM] MQTT连接成功
+[00:01:32] [INFO ] [FSM] 进入 RUNNING 状态
+[00:01:32] [WARN ] [NET] MQTT连接丢失
+[00:01:32] [WARN ] [FSM] MQTT连接断开, 重新连接
+[00:01:32] [INFO ] [NET] 触发网络连接流程
+
