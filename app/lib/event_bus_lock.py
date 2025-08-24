@@ -8,7 +8,10 @@
 """
 
 import gc
-import time
+try:
+    import utime as time
+except Exception:
+    import time
 
 from lib.logger import debug, info, warning, error
 
@@ -196,10 +199,10 @@ class EventBus:
             # 轻量维护: 仅更新系统状态
             self._check_system_status()
 
-    def _handle_processing_error(self, error):
+    def _handle_processing_error(self, exc):
         """处理事件处理错误"""
         self._error_count += 1
-        error_msg = str(error)
+        error_msg = str(exc)
         error("事件处理异常: {}", error_msg, module="EventBus")
         # 最小化副作用: 仅入队一个系统状态提示, 避免递归引用未定义变量
         try:
@@ -228,10 +231,10 @@ class EventBus:
             except Exception as e:
                 self._handle_callback_error(event_name, callback, e)
 
-    def _handle_callback_error(self, event_name, callback, error):
+    def _handle_callback_error(self, event_name, callback, exc):
         """处理回调错误"""
         self._error_count += 1
-        error("回调失败: {} - {}", event_name, str(error), module="EventBus")
+        error("回调失败: {} - {}", event_name, str(exc), module="EventBus")
 
         # 发布系统错误事件
         if event_name != EVENTS["SYSTEM_STATE_CHANGE"]:
@@ -239,21 +242,13 @@ class EventBus:
                 EVENTS["SYSTEM_STATE_CHANGE"],
                 ("callback_error",),
                 {
-                    "error": str(error),
+                    "error": str(exc),
                     "event": event_name,
                     "callback_name": getattr(callback, "__name__", "unknown"),
                 },
             )
             # 直接入队避免递归调用publish
             self.event_queue.enqueue(error_event)
-
-    @safe_log("error")
-    def _periodic_maintenance(self):
-        """定期维护任务"""
-        current_time = time.time()
-
-        # 检查系统状态
-        self._check_system_status()
 
     def _check_system_status(self):
         """检查并更新系统状态"""
@@ -267,42 +262,42 @@ class EventBus:
                 self._publish_direct_system_event(
                     "warning",
                     {
-                        "reason": "queue_usage_high",
-                        "usage_ratio": queue_stats["usage_ratio"],
+                        # 简化信息载荷, 避免过多日志
+                        "queue_usage": queue_stats["usage_ratio"],
+                        "drops": queue_stats["drops"],
                     },
                 )
-        # 恢复正常模式
-        elif self._system_status != SYSTEM_STATUS["NORMAL"]:
+        elif queue_stats["usage_ratio"] < 0.3 and old_status != SYSTEM_STATUS["NORMAL"]:
             self._system_status = SYSTEM_STATUS["NORMAL"]
+            self._publish_direct_system_event(
+                "normal",
+                {
+                    "queue_usage": queue_stats["usage_ratio"],
+                },
+            )
 
     def _publish_direct_system_event(self, state, info):
-        """直接发布系统状态事件(内部使用)"""
-        evt = (
-            EVENTS["SYSTEM_STATE_CHANGE"],
-            (state,),
-            {"info": info},
-        )
-        self.event_queue.enqueue(evt)
+        """直接入队系统事件, 避免递归发布"""
+        try:
+            evt = (EVENTS["SYSTEM_STATE_CHANGE"], (state,), info or {})
+            self.event_queue.enqueue(evt)
+        except Exception as e:
+            warning("系统事件入队失败: {}", str(e), module="EventBus")
 
     @safe_log("error")
     def subscribe(self, event_name, callback):
-        """订阅事件"""
         if event_name not in self.subscribers:
             self.subscribers[event_name] = []
         self.subscribers[event_name].append(callback)
-        debug("订阅事件: {}", event_name, module="EventBus")
 
     def unsubscribe(self, event_name, callback):
-        """取消订阅事件"""
         if event_name in self.subscribers and callback in self.subscribers[event_name]:
             self.subscribers[event_name].remove(callback)
-            debug("取消订阅事件: {}", event_name, module="EventBus")
 
     @safe_log("error")
     def publish(self, event_name, *args, **kwargs):
-        """发布事件: 入队待处理"""
-        event_item = (event_name, args, kwargs)
-        self.event_queue.enqueue(event_item)
+        # 松耦合: 仅入队, 由 process_events 批处理
+        self.event_queue.enqueue((event_name, args, kwargs))
 
     def has_subscribers(self, event_name):
         return event_name in self.subscribers and len(self.subscribers[event_name]) > 0
@@ -316,21 +311,13 @@ class EventBus:
 
     def _print_stats(self):
         stats = self.get_stats()
-        info(
-            "EventBus stats => processed: {}, errors: {}, queue: {}",
-            stats["processed"],
-            stats["errors"],
-            stats["queue"],
-            module="EventBus",
-        )
+        debug("EventBus统计: {}", stats, module="EventBus")
 
     @safe_log("error")
     def cleanup(self):
-        """清理资源: 清空队列、取消订阅"""
-        self.event_queue.clear()
+        # 清理资源
         self.subscribers.clear()
-        self._processed_count = 0
-        self._error_count = 0
+        self.event_queue.clear()
 
     def get_system_status(self):
         return self._system_status

@@ -29,30 +29,7 @@ COLOR_INDIGO = "\033[1;34m"  # 靛蓝色
 COLOR_RESET = "\033[0m"
 
 
-def _get_timestamp():
-    """获取简化的时间戳"""
-    try:
-        total_seconds = (time.ticks_ms() // 1000) % (24 * 3600)
-        hours = total_seconds // 3600
-        minutes = (total_seconds % 3600) // 60
-        secs = total_seconds % 60
-        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
-    except:
-        return "00:00:00"
 
-
-# 可选: INFO 级日志转发钩子(例如转发到 MQTT)
-# 注意: 应当由上层在网络就绪后注册, 避免启动阶段阻塞或异常
-_INFO_HOOK = None
-
-def set_info_hook(hook):
-    """
-    注册/移除 INFO 级日志的转发钩子。
-    hook: 可调用对象, 签名为 hook(formatted_line: str)
-    传入 None 表示移除钩子。
-    """
-    global _INFO_HOOK
-    _INFO_HOOK = hook
 
 
 def _log(level, level_name, msg, *args, module=None):
@@ -86,14 +63,6 @@ def _log(level, level_name, msg, *args, module=None):
 
     # 控制台输出
     print(line)
-
-    # 可选: INFO 级日志转发
-    if level == INFO and _INFO_HOOK:
-        try:
-            _INFO_HOOK(line)
-        except Exception:
-            # 转发钩子不应影响主日志流程, 静默失败
-            pass
 
 
 def debug(msg, *args, module=None):

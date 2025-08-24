@@ -18,185 +18,100 @@ import uasyncio as asyncio
 from lib.logger import info, error, debug
 from config import get_config
 from lib.event_bus_lock import EventBus, EVENTS
+from utils import check_memory, get_temperature
 
 
-# 内联的轻量工具函数, 避免对 app/utils
-def _check_memory():
-    try:
-        mem_free = gc.mem_free()
-        mem_alloc = gc.mem_alloc()
-        mem_total = mem_free + mem_alloc
-        percent_used = (mem_alloc / mem_total) * 100 if mem_total > 0 else 0
-        return {
-            "free": mem_free,
-            "allocated": mem_alloc,
-            "total": mem_total,
-            "percent": percent_used,
-            "free_kb": mem_free // 1024,
-            "allocated_kb": mem_alloc // 1024,
-            "total_kb": mem_total // 1024,
-        }
-    except Exception:
-        return {
-            "free": 0,
-            "allocated": 0,
-            "total": 0,
-            "percent": 0,
-            "free_kb": 0,
-            "allocated_kb": 0,
-            "total_kb": 0,
-        }
-
-
-def _get_temperature():
-    try:
-        import esp32
-        temp_c = esp32.mcu_temperature()
-        return round(temp_c, 1)
-    except Exception:
-        return None
 
 
 class MainController:
-    """
-    主控制器
-    统一管理系统初始化、状态机和网络连接
-    """
-    
+    """主控制器"""
     def __init__(self):
-        """初始化主控制器"""
-        self.config = None
-        self.event_bus = None
-        self.state_machine = None
-        self.network_manager = None
-        self.wdt = None
+        self.config = get_config()
+        self.event_bus = EventBus()
+        from net.network_manager import NetworkManager
+        self.network_manager = NetworkManager(self.config, self.event_bus)
         
-        # 维护任务定时
-        self.last_stats_time = 0
-
-    def _emit_system_error(self, where, err):
-        """集中上报系统错误到事件总线(若可用)"""
+        # 状态机
         try:
-            if self.event_bus:
-                self.event_bus.publish(EVENTS["SYSTEM_ERROR"], source=where, error=str(err))
+            from state_machine import FSM
+            self.state_machine = FSM(self.event_bus, self.config, self.network_manager)
         except Exception:
-            # 避免在异常路径上再次抛出
+            self.state_machine = None
+        
+        # 系统状态
+        self.last_stats_time = 0
+        
+        # 注册事件监听
+        self._register_event_handlers()
+    
+    def _emit_system_error(self, where, err):
+        try:
+            error("系统异常@{}: {}", where, err, module="MAIN")
+        except Exception:
             pass
- 
-    def _init_led(self):
-        """初始化LED"""
-        try:
-            from hw.led import play
-            # LED 控制器采用硬件定时器驱动, 完全独立于主循环
-            # 初始进入 blink 模式, 表示正在初始化
-            play('blink')
-        except Exception as e:
-            error("初始化LED失败: {}", e, module="MAIN")
 
-    def _init_watchdog(self):
-        """初始化硬件看门狗
-        说明: 
-        - 从配置读取 wdt_enabled 与 wdt_timeout 默认启用且 120000ms
-        - 仅在启用时创建 machine.WDT 实例
-        """
+    def _init_led(self):
+        """LED初始化(如存在)"""
         try:
-            enabled = get_config('daemon', 'wdt_enabled', True)
-            timeout = int(get_config('daemon', 'wdt_timeout', 120000))
-            if enabled:
-                self.wdt = machine.WDT(timeout=timeout)
+            if hasattr(machine, "Pin"):
+                self.led = machine.Pin(2, machine.Pin.OUT)
+                self.led.value(0)
+        except Exception:
+            self.led = None
+    
+    def _init_watchdog(self):
+        """看门狗初始化(如存在)"""
+        try:
+            if hasattr(machine, "WDT"):
+                self.wdt = machine.WDT(timeout=20000)
             else:
                 self.wdt = None
-        except Exception as e:
+        except Exception:
             self.wdt = None
-            error("初始化看门狗失败: {}", e, module="MAIN")
 
-    def initialize(self):
-        """初始化系统"""
+    def _register_event_handlers(self):
+        """注册事件处理器"""
+        def on_wifi_change(event_name, state=None, **kwargs):
+            debug("WIFI_STATE_CHANGE: {}", state, module="MAIN")
+        def on_mqtt_change(event_name, state=None, **kwargs):
+            debug("MQTT_STATE_CHANGE: {}", state, module="MAIN")
+        self.event_bus.subscribe(EVENTS["WIFI_STATE_CHANGE"], on_wifi_change)
+        self.event_bus.subscribe(EVENTS["MQTT_STATE_CHANGE"], on_mqtt_change)
+
+    async def run(self):
+        """运行主循环"""
         try:
-            info("=== ESP32C3系统启动 ===", module="MAIN")
-            
-            self.config = get_config()
-            info("配置加载完成", module="MAIN")
-            
-            # 初始化看门狗
+            # 初始化
+            self._init_led()
             self._init_watchdog()
             
-            # 初始化LED
-            self._init_led()
-            
-            # 初始化事件总线
-            self.event_bus = EventBus()
-            debug("事件总线初始化完成", module="MAIN")
-            
-            # 初始化网络管理器
-            from net.network_manager import NetworkManager
-            self.network_manager = NetworkManager(self.config, self.event_bus)
-            debug("网络管理器初始化完成", module="MAIN")
-            
-            # 初始化状态机
-            from state_machine import FSM
-            self.state_machine = FSM(
-                self.event_bus, 
-                self.config, 
-                self.network_manager
-            )
-            debug("状态机初始化完成", module="MAIN")
-            
-            info("=== 系统初始化完成 ===", module="MAIN")
-            return True
-            
+            # 主循环
+            while True:
+                current_time = time.ticks_ms()
+                
+                # 事件分发与状态机更新
+                try:
+                    if self.event_bus:
+                        self.event_bus.process_events()
+                    if self.state_machine:
+                        self.state_machine.update()
+                except Exception:
+                    pass
+                
+                # 看门狗喂狗
+                try:
+                    if getattr(self, "wdt", None):
+                        self.wdt.feed()
+                except Exception:
+                    pass
+                
+                # 定期维护
+                self._periodic_maintenance(current_time)
+                
+                await asyncio.sleep_ms(50)
         except Exception as e:
-            error("系统初始化失败: {}", e, module="MAIN")
-            self._emit_system_error("initialize", e)
-            return False
-            
-    async def run(self):
-        """异步主循环入口"""
-        if not self.initialize():
-            error("系统初始化失败, 无法启动", module="MAIN")
-            return
-        try:
-            await self._main_loop_async()
-        except asyncio.CancelledError:
-            info("主循环任务取消", module="MAIN")
-        except Exception as e:
-            error("主循环异常: {}", e, module="MAIN")
-            self._emit_system_error("run", e)
+            self._emit_system_error("main.run", e)
 
-    async def _main_loop_async(self):
-        """主控制循环 (异步)
-        职责: 
-        - 更新状态机
-        - 定期喂看门狗
-        - 周期性维护任务(内存回收、状态上报)
-        """
-        info("进入主控制循环(异步)", module="MAIN")
-        # 采用固定周期运行, 避免对CPU占用过高
-        loop_delay = get_config('system', 'main_loop_delay', 100)
-        
-        while True:
-            try:
-                # 分发事件队列中的事件(与EventBus手动调度模型对齐)
-                if self.event_bus:
-                    self.event_bus.process_events()
-                
-                # 状态机更新
-                if self.state_machine:
-                    self.state_machine.update()
-                
-                # 喂看门狗保持在主循环中, 避免掩盖死锁
-                if self.wdt:
-                    self.wdt.feed()
- 
-                await asyncio.sleep_ms(loop_delay)
-            except Exception as e:
-                error("主循环异常: {}", e, module="MAIN")
-                self._emit_system_error("main_loop", e)
-                await asyncio.sleep_ms(loop_delay)
-            # 6. 维护
-            current_time = time.ticks_ms()
-            self._periodic_maintenance(current_time)
-        
     def _periodic_maintenance(self, current_time):
         """定期维护任务"""
         # 每60秒执行一次
@@ -207,18 +122,18 @@ class MainController:
             gc.collect()
             
             # 输出统计信息(移除性能显示)
-            mem = _check_memory()
+            mem = check_memory()
             free_kb = mem.get("free_kb", gc.mem_free() // 1024)
             percent_used = mem.get("percent", 0)
             
             # 读取MCU内部温度
-            temp = _get_temperature()
+            temp = get_temperature()
             
             # 读取环境温湿度
             from hw.sht40 import read
             env_data = read()
             
-            state = self.state_machine.get_current_state()
+            state = self.state_machine.get_current_state() if self.state_machine else "INIT"
             net_status = self.network_manager.get_status()
             
             info("系统状态 - 状态:{}, 内存:{}KB({:.0f}%), 温度:{}, 环境:{}°C/{}%, WiFi:{}, MQTT:{}", 
@@ -227,6 +142,33 @@ class MainController:
                  env_data["humidity"] if env_data["humidity"] is not None else "N/A",
                  net_status['wifi'], net_status['mqtt'], 
                  module="MAIN")
+            
+            # 上报周期性指标到 MQTT, 默认以 JSON 格式
+            try:
+                payload = {
+                    # 设备运行时长(毫秒)
+                    "uptime_ms": current_time,
+                    # 若已完成NTP同步, 附加当前 1970-based UNIX 秒; 否则为 None
+                    "unix_s": self.network_manager.get_epoch_unix_s() if self.network_manager else None,
+                    "state": state,
+                    "mem": {
+                        "free_kb": free_kb,
+                        "percent": percent_used,
+                    },
+                    "temp_c": temp,
+                    "env": {
+                        "temperature": env_data.get("temperature") if isinstance(env_data, dict) else None,
+                        "humidity": env_data.get("humidity") if isinstance(env_data, dict) else None,
+                    },
+                    "net": net_status,
+                }
+                # 使用包含设备ID的标准主题 device/<client_id>/metrics
+                if self.network_manager:
+                    topic = self.network_manager.get_device_topic("metrics")
+                    self.network_manager.mqtt_publish(topic, payload, retain=False, qos=0)
+            except Exception:
+                # 指标上报失败不影响主流程
+                pass
 
 def main():
     """主函数"""

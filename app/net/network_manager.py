@@ -25,6 +25,7 @@ import uasyncio as asyncio
 from lib.logger import info, warning, error, debug
 from lib.event_bus_lock import EVENTS
 from lib.async_runtime import get_async_runtime
+from utils import json_dumps, get_epoch_unix_s as util_get_epoch_unix_s
 
 class NetworkManager:
     """
@@ -321,7 +322,7 @@ class NetworkManager:
         try:
             if not self.wifi_connected:
                 return False
-                
+            
             # 已连接则直接返回, 避免重复触发
             if self.mqtt_connected and self.mqtt_controller and self.mqtt_controller.is_connected():
                 return True
@@ -361,6 +362,20 @@ class NetworkManager:
                     self.mqtt_retry_attempts = 0
                     info("MQTT连接成功", module="NET")
                     self.event_bus.publish(EVENTS["MQTT_STATE_CHANGE"], state="connected")
+                    
+                      
+                    # 上线提示: 连接成功后发送一次 retained 的 online 消息
+                    try:
+                        online_payload = {
+                            "status": "online",
+                            "uptime_ms": time.ticks_ms(),
+                            # 若已完成NTP同步, 附加当前 1970-based UNIX 秒
+                            "unix_s": self.get_epoch_unix_s(),
+                        }
+                        # retained 以便后续订阅均可立即获知设备当前在线状态
+                        self.mqtt_publish(self.get_device_topic("online"), online_payload, retain=True, qos=0)
+                    except Exception:
+                        pass
                     return True
                 else:
                     # 连接失败, 递增退避计数(-1 表示无限制)
@@ -403,7 +418,7 @@ class NetworkManager:
         except Exception as e:
             error("异步NTP同步异常: {}", e, module="NET")
             return True  # NTP失败不阻止MQTT连接
-            
+
     async def _async_check_status(self):
         """异步状态检查方法"""
         try:
@@ -417,9 +432,7 @@ class NetworkManager:
                     self.wifi_connected = False
                     self.mqtt_connected = False  # WiFi断开时MQTT也会断开
                     self.event_bus.publish(EVENTS["WIFI_STATE_CHANGE"], state="disconnected")
-                elif not self.wifi_connected and wifi_is_connected:
-                    # 仅同步内部标志, 事件由连接流程负责
-                    self.wifi_connected = True
+                    info("WiFi状态变化: {}", self.wifi_connected, module="NET")
             
             # 检查MQTT状态
             if self.mqtt_controller:
@@ -441,7 +454,7 @@ class NetworkManager:
                     except Exception as _e:
                         # 由 MqttController 内部负责标记连接状态与日志, 这里避免重复日志
                         pass
-                    
+            
         except Exception as e:
             error("异步状态检查异常: {}", e, module="NET")
 
@@ -471,6 +484,18 @@ class NetworkManager:
         try:
             # 断开MQTT
             if self.mqtt_controller and self.mqtt_connected:
+                # 下线提示: 主动断开前发送一次 retained 的 offline 消息
+                try:
+                    offline_payload = {
+                        "status": "offline",
+                        "uptime_ms": time.ticks_ms(),
+                        # 若已完成NTP同步, 附加当前 1970-based UNIX 秒
+                        "unix_s": self.get_epoch_unix_s(),
+                    }
+                    self.mqtt_publish(self.get_device_topic("online"), offline_payload, retain=True, qos=0)
+                except Exception:
+                    pass
+            
                 self.mqtt_controller.disconnect()
                 self.mqtt_connected = False
                 self.event_bus.publish(EVENTS["MQTT_STATE_CHANGE"], state="disconnected")
@@ -500,3 +525,66 @@ class NetworkManager:
             "ntp": self.ntp_synced,
             "mqtt": self.mqtt_connected
         }
+
+    # ================================
+    # MQTT 对外发布接口
+    # ================================
+    def mqtt_publish(self, topic, data, retain=False, qos=0):
+        """MQTT 发布统一入口(默认JSON)
+        - 默认将对象序列化为 JSON 字符串; 若 data 为 str/bytes 则原样发送
+        返回: bool, 未连接时返回 False
+        """
+        try:
+            # 连接状态检查: 确保控制器存在且处于已连接
+            if (not self.mqtt_controller) or (not self.mqtt_connected):
+                return False
+            if hasattr(self.mqtt_controller, "is_connected") and (not self.mqtt_controller.is_connected()):
+                return False
+
+            payload = data if isinstance(data, (bytes, bytearray, str)) else json_dumps(data)
+            if self.mqtt_controller:
+                return self.mqtt_controller.publish(topic, payload, retain, qos)
+            return False
+        except Exception as e:
+            error("MQTT发布异常: {}", e, module="NET")
+            return False
+
+    # ================================
+    # 设备ID与主题工具
+    # ================================
+    def get_device_id(self):
+        """获取当前设备的 MQTT client_id(字符串, ASCII)
+        若不可用则返回 "unknown"
+        """
+        try:
+            if self.mqtt_controller and hasattr(self.mqtt_controller, "get_client_id"):
+                cid = self.mqtt_controller.get_client_id()
+                if cid:
+                    return str(cid)
+        except Exception:
+            pass
+        return "unknown"
+
+    def get_device_topic(self, suffix):
+        """根据后缀构造标准设备主题: device/{client_id}/{suffix}
+        例: get_device_topic("online") -> device/<id>/online
+        """
+        try:
+            tail = str(suffix).strip("/")
+            return "device/{}/{}".format(self.get_device_id(), tail)
+        except Exception:
+            return "device/{}/{}".format(self.get_device_id(), "unknown")
+
+    def get_epoch_unix_s(self):
+        """返回 1970-based UNIX 时间戳(秒)
+        - 若未完成 NTP 同步则返回 None
+        - MicroPython 大多数端口 time.time() 基于 2000-01-01, 需要加上 946684800 偏移
+        - 若底层已为 1970-based(> 946684800), 则直接返回
+        - 统一复用 utils.get_epoch_unix_s 转换逻辑
+        """
+        try:
+            if not self.ntp_synced:
+                return None
+            return util_get_epoch_unix_s()
+        except Exception:
+            return None

@@ -184,7 +184,7 @@ class FSM:
         """处理WiFi事件"""
         state = kwargs.get('state', 'unknown')
         
-        if state == 'connected' and self.current_state == STATE_INIT:
+        if state == 'connected' and self.current_state in (STATE_INIT, STATE_CONNECTING):
             # WiFi连接成功, 检查是否完全连接
             info("WiFi连接成功", module="FSM")
             if self.network_manager and self.network_manager.is_connected():
@@ -208,7 +208,7 @@ class FSM:
         """处理MQTT事件"""
         state = kwargs.get('state', 'unknown')
         
-        if state == 'connected' and self.current_state == STATE_INIT:
+        if state == 'connected' and self.current_state in (STATE_INIT, STATE_CONNECTING):
             # MQTT连接成功, 检查是否完全连接
             info("MQTT连接成功", module="FSM")
             if self.network_manager and self.network_manager.is_connected():
@@ -243,13 +243,12 @@ class FSM:
             elapsed = time.ticks_diff(current_time, self.state_start_time)
             
             # 根据当前状态执行相应逻辑
-            if self.current_state == STATE_INIT:
-                # INIT状态: 检查网络连接状态
+            if self.current_state in (STATE_INIT, STATE_CONNECTING):
+                # INIT/CONNECTING: 若网络已全连通, 切换到 RUNNING
                 if self.network_manager and self.network_manager.is_connected():
                     self._enter_state(STATE_RUNNING)
                 else:
-                    # 取消全局60秒超时切换到ERROR, 以避免与NET内部退避/重试策略冲突
-                    # 保持在 INIT, 等待 NetworkManager 自行管理重连与退避
+                    # 交由 NetworkManager 内部的退避/重试策略调度
                     pass
                 
             elif self.current_state == STATE_RUNNING:
@@ -262,8 +261,7 @@ class FSM:
                     self._enter_state(STATE_CONNECTING)
                     
             elif self.current_state == STATE_CONNECTING:
-                # 取消全局60秒超时切换到ERROR, 以避免与NET内部退避/重试策略冲突
-                # 保持在 CONNECTING, 由 NetworkManager 的 WiFi/MQTT 模块(各自10s超时)配合退避驱动连接流程
+                # CONNECTING 已包含在前面的分支中
                 pass
                     
         except Exception as e:

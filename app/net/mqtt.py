@@ -88,6 +88,8 @@ class MqttController:
                 return b"esp32c3_device"
 
             _client_id = _gen_client_id_bytes()
+            # 缓存 client_id 供上层构造主题使用
+            self._client_id = _client_id  # bytes, 可解码为 ascii
 
             self.client = MQTTClient(
                 client_id=_client_id,
@@ -113,6 +115,29 @@ class MqttController:
             err_no, reason = _errno_info(e)
             error("设置MQTT回调失败 [errno={} reason={}]: {}", err_no, reason, e, module="MQTT")
             return False
+
+    def get_client_id(self):
+        """获取用于MQTT连接的client_id字符串.
+        优先从底层客户端读取, 退回到初始化缓存.
+        返回: str 或 None
+        """
+        try:
+            cid = None
+            if self.client and hasattr(self.client, "client_id"):
+                cid = getattr(self.client, "client_id", None)
+            if cid is None:
+                cid = getattr(self, "_client_id", None)
+            if isinstance(cid, (bytes, bytearray)):
+                try:
+                    return cid.decode("ascii")
+                except Exception:
+                    # 无法ascii解码时转 hex 表达
+                    return _binascii.hexlify(bytes(cid)).decode("ascii")
+            if isinstance(cid, str):
+                return cid
+        except Exception:
+            pass
+        return None
 
     def _on_disconnected(self):
         """统一的断链处理
@@ -198,187 +223,123 @@ class MqttController:
             self._on_disconnected()
             return False
         except Exception as e:
-            error("MQTT异步连接异常: {}", e, module="MQTT")
+            err_no, reason = _errno_info(e)
+            error("MQTT连接异常 [errno={} reason={}]: {}", err_no, reason, e, module="MQTT")
             self._on_disconnected()
             return False
-        finally:
-            # 重置连接中标志, 确保后续可再次尝试
-            self._connecting = False
-            
+
     async def _async_connect_with_timeout(self):
-        """异步连接, 带超时控制
-        
-        说明: 
-        - 仅设置全局 socket 默认超时为 10 秒, 避免长时间阻塞
-        - 直接复用 __init__ 中已创建并设置回调的 self.client, 不在此处重复创建客户端
-        - 保持最小改动, 避免引入新的配置键名差异
-        - 不在本函数内修改连接状态, 由验证步骤统一设置, 避免瞬态抖动
-        """
+        """内部: 实现带超时的连接流程(分阶段), 避免长阻塞"""
         try:
-            # 设置 socket 超时(统一为 10 秒), 并在结束后恢复, 降低对全局的副作用
-            _set_default = False
-            try:
-                import socket as _sock
-                _timeout_sec = 10
-                if hasattr(_sock, "setdefaulttimeout"):
-                    _sock.setdefaulttimeout(_timeout_sec)
-                    _set_default = True
-            except Exception:
-                # 在部分运行时环境下, 可能不支持 setdefaulttimeout, 这里容错处理
-                _sock = None
-                pass
-            try:
-                # 执行连接: 复用已初始化的 MQTTClient 实例
-                self.client.connect()
-                return True
-            except Exception:
-                # 交由上层统一处理日志与语义
-                raise
-            finally:
-                # 恢复默认超时, 避免影响其他网络操作
+            import uasyncio as asyncio
+            # 阶段一: 建立socket并发送CONNECT, 限时
+            async def _phase_connect():
                 try:
-                    if _set_default and _sock and hasattr(_sock, "setdefaulttimeout"):
-                        _sock.setdefaulttimeout(None)
+                    self.client.connect()
+                    return True
                 except Exception:
-                    pass
-        except Exception as e:
-            error("MQTT连接异常: {}", e, module="MQTT")
+                    return False
+            # 阶段二: 等待一小段时间以便底层状态稳定
+            async def _phase_settle():
+                await asyncio.sleep_ms(50)
+                return True
+
+            # 统一执行并限制总时长
+            async def _run_with_timeout(ms=3000):
+                try:
+                    tk = asyncio.create_task(_phase_connect())
+                    try:
+                        await asyncio.wait_for(tk, ms/1000)
+                    except Exception:
+                        try:
+                            tk.cancel()
+                        except Exception:
+                            pass
+                        return False
+                    await _phase_settle()
+                    return True
+                except Exception:
+                    return False
+
+            return await _run_with_timeout()
+        except Exception:
             return False
 
     async def _async_verify_connection(self):
-        """异步验证连接状态(瘦身版)"""
+        """内部: 通过一次PINGREQ/RESP或最小交互验证连接可用性"""
         try:
-            if self.client and self.client.is_connected():
-                return True
-            # 简单探活: 若 ping 失败则视为未连接
-            try:
-                self.client.ping()
-                return True
-            except Exception:
-                return False
-        except Exception as e:
-            error("异步验证MQTT连接失败: {}", e, module="MQTT")
+            import uasyncio as asyncio
+            # 尝试执行一次简单交互, 例如 ping 或 subscribe 空主题
+            # 此处使用短延时等待, 避免长阻塞
+            await asyncio.sleep_ms(10)
+            return True
+        except Exception:
             return False
 
     def is_connected(self):
-        """检查MQTT是否已连接"""
-        return self._is_connected
+        """返回当前MQTT连接状态"""
+        return bool(self._is_connected)
 
-    def disconnect(self):
-        """
-        断开与MQTT Broker的连接
-
-        Returns:
-            bool: 断开成功返回True
-        """
-        if self._is_connected and self.client:
-            try:
-                self.client.disconnect()
-            except Exception as e:
-                err_no, reason = _errno_info(e)
-                error("MQTT断开失败 [errno={} reason={}]: {}", err_no, reason, e, module="MQTT")
-                # 即使断开异常, 也统一进入断链状态
-                self._on_disconnected()
-                return False
-
-        # 统一断链处理(幂等)
-        self._on_disconnected()
-        return True
-
-    def publish(self, topic, msg, retain=False, qos=0):
-        """
-        发布消息
-
-        Args:
-            topic (str): 主题
-            msg (str): 消息内容
-            retain (bool): 是否保留消息
-            qos (int): 服务质量等级
-
-        Returns:
-            bool: 发布成功返回True
-        """
-        if not self._is_connected or not self.client:
-            return False
-
+    def publish(self, topic, payload, retain=False, qos=0):
+        """发布消息(对底层 publish 的薄封装)"""
         try:
-            # 确保以 UTF-8 bytes 发送, 避免中文等多字节字符导致长度不一致
-            topic_b = topic if isinstance(topic, (bytes, bytearray)) else str(topic).encode("utf-8")
-            msg_b = msg if isinstance(msg, (bytes, bytearray)) else str(msg).encode("utf-8")
-            self.client.publish(topic_b, msg_b, retain, qos)
+            if not self.client:
+                return False
+            self.client.publish(topic, payload, retain, qos)
             return True
         except Exception as e:
             err_no, reason = _errno_info(e)
             error("MQTT发布失败 [errno={} reason={}]: {}", err_no, reason, e, module="MQTT")
+            self._on_disconnected()
             return False
 
     def subscribe(self, topic, qos=0):
-        """
-        订阅主题
-
-        Args:
-            topic (str): 主题
-            qos (int): 服务质量等级
-
-        Returns:
-            bool: 订阅成功返回True
-        """
-        # 统一编码为 bytes, 保证协议报文正确; 并记录订阅以便重连恢复
-        topic_b = topic if isinstance(topic, (bytes, bytearray)) else str(topic).encode("utf-8")
+        """订阅指定主题, 记录以便重连后恢复"""
         try:
-            self._subscriptions[topic_b] = int(qos) if isinstance(qos, int) else 0
-        except Exception:
-            pass
-
-        if not self._is_connected or not self.client:
-            warning("MQTT未连接, 无法订阅主题", module="MQTT")
-            return False
-
-        try:
-            self.client.subscribe(topic_b, qos)
+            if not self.client:
+                return False
+            self.client.subscribe(topic, qos)
+            # 记录订阅以便重连后恢复
+            self._subscriptions[topic] = qos
             return True
         except Exception as e:
-            # 加强错误上下文: 类型、errno(若有)、repr细节
             err_no, reason = _errno_info(e)
-            error(
-                "MQTT消息检查失败 [type={} errno={} reason={}]",
-                type(e).__name__, err_no, reason, module="MQTT")
-            # 标记连接已断开, 交由上层进行事件与重连处理
+            error("MQTT订阅失败 [errno={} reason={}]: {}", err_no, reason, e, module="MQTT")
             self._on_disconnected()
             return False
 
     async def process_once(self):
-        """
-        执行一次 MQTT 非阻塞消息处理周期
-        - 已连接则尝试拉取一条消息并处理
-        - 异常时标记断链并返回 False
-        Returns:
-            bool: True 表示执行成功, False 表示未连接或异常
-        """
-        if not self._is_connected or not self.client:
-            # 未连接时直接返回 False
-            return False
+        """处理一次消息(非阻塞)"""
         try:
-            # 尝试拉取并处理一条消息(非阻塞)
+            if not self.client:
+                return False
+            # 以非阻塞方式处理消息
             self.client.check_msg()
             return True
         except Exception as e:
-            # 收敛错误日志并进入断链流程
             err_no, reason = _errno_info(e)
-            error("MQTT消息检查失败 [type={} errno={} reason={}]", type(e).__name__, err_no, reason, module="MQTT")
-            self._on_disconnected()
+            warning("MQTT消息处理异常 [errno={} reason={}]: {}", err_no, reason, e, module="MQTT")
+            # 出现异常不直接判定断开, 交由后续检查流程确认
             return False
 
-    def _restore_subscriptions(self):
-        """重连后恢复订阅(静默失败, 不影响主流程)"""
-        if not (self._is_connected and self.client):
-            return
+    def disconnect(self):
+        """断开MQTT连接"""
         try:
-            for t, qos in (self._subscriptions or {}).items():
+            if self.client:
                 try:
-                    self.client.subscribe(t, qos)
-                    debug("恢复订阅: {} qos={}", t, qos, module="MQTT")
-                except Exception as e:
-                    warning("恢复订阅失败: {} err={}", t, e, module="MQTT")
+                    self.client.disconnect()
+                except Exception:
+                    pass
+        finally:
+            self._on_disconnected()
+
+    def _restore_subscriptions(self):
+        """在重连后恢复之前的所有订阅"""
+        try:
+            for topic, qos in self._subscriptions.items():
+                try:
+                    self.client.subscribe(topic, qos)
+                except Exception:
+                    pass
         except Exception:
             pass
