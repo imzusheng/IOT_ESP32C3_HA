@@ -2,8 +2,8 @@
 
 - ESP32C3 设备基础限制
     - 最多支持 2 个定时器(编号 0 至 1)
-    - 总RAM: 129536 字节 (126.50 KB)
-    - 总Flash: 2097152 字节 (2.00 MB)
+    - 总RAM: 264KB SRAM
+    - 总Flash: 4MB Flash
     - CPU频率: 160000000 Hz (160.00 MHz)
 - machine 模块
   - 支持:['__class__', '__name__', 'ADC', 'ADCBlock', 'DEEPSLEEP', 'DEEPSLEEP_RESET', 'EXT0_WAKE', 'EXT1_WAKE', 'HARD_RESET', 'I2C', 'I2S', 'PIN_WAKE', 'PWM', 'PWRON_RESET', 'Pin', 'RTC', 'SDCard', 'SLEEP', 'SOFT_RESET', 'SPI', 'Signal', 'SoftI2C', 'SoftSPI', 'TIMER_WAKE', 'TOUCHPAD_WAKE', 'Timer', 'UART', 'ULP_WAKE', 'WDT', 'WDT_RESET', '__dict__', 'bitstream', 'bootloader', 'deepsleep', 'dht_readinto', 'disable_irq', 'enable_irq', 'freq', 'idle', 'lightsleep', 'mem16', 'mem32', 'mem8', 'reset', 'reset_cause', 'sleep', 'soft_reset', 'time_pulse_us', 'unique_id', 'wake_reason']
@@ -62,83 +62,100 @@ IOT_ESP32C3/
 #### 1. 事件总线 (EventBus)
 - **位置**: [`app/lib/event_bus_lock.py`](app/lib/event_bus_lock.py)
 - **功能**: 模块间通信的核心枢纽, 支持发布-订阅模式
-- **特性**: 异步非阻塞事件处理、错误隔离、内存优化、计时器队列驱动
-- **实现**: 基于硬件计时器的循环队列系统, 避免 micropython.schedule 的 queue full 问题
+- **特性**: 
+  - 基于diff时间的软件定时系统, 节省硬件定时器资源
+  - 错误断路器机制, 防止系统级联故障
+  - 系统状态监控(正常/警告/严重错误)
+  - 批量事件处理和内存优化
+  - 自动垃圾回收和性能统计
+- **接口**: `subscribe(event_name, callback)`, `publish(event_name, *args, **kwargs)`, `process_events()`
+- **配置**: 队列大小64, 处理间隔25ms, 批处理数量5, 错误阈值10
 
-#### 2. 对象池管理器 (ObjectPoolManager)
-- **位置**: [`app/lib/object_pool.py`](app/lib/object_pool.py)
-- **功能**: 高效的对象复用和内存管理
-- **特性**: 减少GC压力、内存预分配、智能回收
-
-#### 3. 状态机系统 (FSM)
-- **位置**: [`app/fsm/core.py`](app/fsm/core.py)
+#### 2. 函数式状态机 (FunctionalStateMachine)
+- **位置**: [`app/state_machine.py`](app/state_machine.py)
 - **功能**: 清晰的系统状态管理和转换
 - **支持状态**: BOOT → INIT → NETWORKING → RUNNING → WARNING → ERROR → SAFE_MODE → RECOVERY → SHUTDOWN
+- **特性**: 
+  - 使用函数和字典替代类继承
+  - 事件驱动的状态转换
+  - 错误计数和自动恢复
+  - LED状态同步
+- **状态处理**: 每个状态有独立的enter/exit/update处理函数
 
-#### 4. 静态缓存系统 (StaticCache)
-- **位置**: [`app/lib/static_cache.py`](app/lib/static_cache.py)
-- **功能**: 防抖写入的持久化缓存
-- **特性**: 自动保存、内存优化、错误恢复
+#### 3. 网络管理器 (NetworkManager)
+- **位置**: [`app/net/network_manager.py`](app/net/network_manager.py)
+- **功能**: 极简网络连接管理, 封装WiFi、MQTT、NTP
+- **特性**: 
+  - 极简架构, 单一文件管理
+  - 异步非阻塞调用
+  - MQTT失败不影响WiFi连接
+  - 智能重连机制
+  - 事件驱动状态通知
+- **子模块**: 
+  - WiFi管理器 (`app/net/wifi.py`)
+  - MQTT控制器 (`app/net/mqtt.py`) 
+  - NTP同步 (`app/net/ntp.py`)
 
 ### 硬件抽象层
 
-#### 5. LED模式控制器
+#### 4. LED模式控制器
 - **位置**: [`app/hw/led.py`](app/hw/led.py)
 - **功能**: 丰富的LED状态指示和模式控制, 开箱即用
 - **特性**: 
   - 开箱即用: 无需初始化, 直接调用全局函数
   - 延迟初始化: 首次调用时自动初始化
   - 单例模式: 防止重复实例化
+  - 手动更新模式: 由主循环调用,节省硬件定时器
   - 多种预设模式: blink, pulse, cruise, sos, off
   - 状态可视化: 通过不同LED模式指示系统状态
-  - 低功耗设计: 优化的定时器和uasyncio支持
+- **使用方式**: 
+  ```python
+  from hw.led import play, cleanup, process_led_updates
+  play('blink')  # 播放闪烁模式
+  process_led_updates()  # 手动处理LED更新(主循环中调用)
+  cleanup()      # 清理资源
+  ```
 
 ### 网络通信层
 
-#### 6. WiFi管理器 (WifiManager)
+#### 5. WiFi管理器 (WifiManager)
 - **位置**: [`app/net/wifi.py`](app/net/wifi.py)
 - **功能**: 健壮的WiFi连接管理
 - **特性**: 扫描、连接、断开、连接状态检查
 
-#### 7. MQTT控制器 (MqttController)
+#### 6. MQTT控制器 (MqttController)
 - **位置**: [`app/net/mqtt.py`](app/net/mqtt.py)
 - **功能**: 高效的MQTT通信管理
 - **特性**: 心跳监控、内存优化
 
-### 工具和辅助模块
+### 系统服务层
 
-#### 8. 定时器工具 (Timers)
-- **位置**: [`app/utils/timers.py`](app/utils/timers.py)
-- **功能**: 丰富的定时器工具集
-- **包含**: 防抖定时器、周期定时器、超时定时器、硬件定时器管理器、性能分析器
-
-#### 9. 系统助手 (Helpers)
-- **位置**: [`app/utils/helpers.py`](app/utils/helpers.py)
-- **功能**: 系统监控和辅助函数
-- **包含**: 内存检查、环境温湿度(SHT40, 可选)、时间格式化、设备信息
-
-#### 10. 日志系统 (Logger)
-- **位置**: [`app/lib/logger.py`](app/lib/logger.py)
-- **功能**: 极简日志系统, 专为ESP32-C3嵌入式环境设计
-- **特性**: 零配置、拿来即用、固定格式、颜色支持、内存优化
-- **使用**: 直接导入 `debug`, `info`, `warning`, `error` 函数即可使用
-
-#### 11. 配置管理 (Config)
+#### 7. 配置管理 (Config)
 - **位置**: [`app/config.py`](app/config.py)
 - **功能**: 集中式配置管理
 - **特性**: 类型验证、默认值、运行时检查
+- **接口**: `get_config(section, key, default)`
+- **当前配置**: 包含daemon(看门狗、错误计数)和system(主循环延迟)配置段
 
-### 主应用程序
+#### 8. 日志系统 (Logger)
+- **位置**: [`app/lib/logger.py`](app/lib/logger.py)
+- **功能**: 极简日志系统, 专为ESP32-C3嵌入式环境设计
+- **特性**: 零配置、拿来即用、固定格式、颜色支持、内存优化
+- **级别**: DEBUG, INFO, WARNING, ERROR
+- **使用**: 直接导入 `debug`, `info`, `warning`, `error` 函数即可使用
+- **颜色支持**: ERROR级别显示为红色, WARNING级别显示为橙黄色, FSM模块显示为翠绿色, NET模块显示为靛蓝色
 
-#### 12. 主控制器 (Main)
+#### 9. 主控制器 (MainController)
 - **位置**: [`app/main.py`](app/main.py)
-- **功能**: 系统初始化和主循环控制
-- **特性**: 依赖注入、模块化管理、优雅启动
-
-#### 13. 启动引导 (Boot)
-- **位置**: [`app/boot.py`](app/boot.py)
-- **功能**: 系统启动引导
-- **特性**: 最小化启动、GC初始化
+- **功能**: 依赖注入容器和系统启动
+- **特性**: 模块化管理、优雅启动、资源清理、基于diff时间的主循环
+- **流程**: 加载配置 → 初始化核心服务 → 创建模块控制器 → 启动基于diff时间的主循环
+- **主循环特点**: 
+  - 使用 `time.ticks_ms()` 和 `time.ticks_diff()` 实现精确时间控制
+  - 集成EventBus手动事件处理, 节省硬件定时器
+  - 默认循环延迟50ms, 可通过配置调整
+  - 支持看门狗喂狗和状态监控
+  - 集成LED手动更新处理
 
 ## 🔄 事件驱动系统
 
@@ -159,13 +176,13 @@ WiFi连接成功 → NTP时间同步 → TIME_UPDATED事件 → 计时器队列�
   - 订阅方回调示例: def _on_time_updated(self, event_name, timestamp=None, **kwargs): ...
 
 ### 事件总线技术特性
-- **计时器队列驱动**: 使用硬件计时器实现精确的事件调度, 避免 micropython.schedule 的队列满问题
-- **循环队列系统**: 高效的内存管理, 支持可配置的队列大小(默认64个事件)
-- **事件优先级**: 5级优先级系统(0=最高, 4=最低), 关键事件立即处理
-- **智能事件丢弃**: 队列满时智能丢弃低优先级事件, 确保关键事件不丢失
-- **频率限制**: 内置事件频率限制机制, 防止事件风暴
-- **错误隔离**: 完善的错误处理和恢复机制, 避免级联故障
-- **统计监控**: 提供详细的队列使用统计和性能监控
+- **软件定时驱动**: 使用diff时间实现软件定时系统, 节省硬件定时器资源
+- **手动事件处理**: 主循环调用`process_events()`, 避免硬件定时器占用
+- **错误断路器**: 防止系统级联故障, 包含错误计数和系统状态监控
+- **批处理优化**: 每次处理5个事件, 平衡响应性和性能
+- **内存优化**: 单队列模式, 最大64个事件, 避免内存过度占用
+- **自动垃圾回收**: 100次处理后自动触发垃圾回收
+- **性能统计**: 提供队列使用率和处理性能监控
 
 ## ⚙️ 配置说明
 
@@ -440,11 +457,12 @@ python build.py --clean-cache
 
 ### ESP32-C3 规格
 - **内存**: 264KB SRAM
-- **存储**: 4MB Flash
-- **处理器**: RISC-V 双核 32位
+- **存储**: 4MB Flash  
+- **处理器**: RISC-V 双核 32位 @ 160MHz
 - **无线**: WiFi 802.11b/g/n
 - **GPIO**: 22个数字IO引脚
 - **接口**: SPI, I2C, UART, ADC
+- **定时器**: 2个硬件定时器(已被软件定时系统替代)
 
 ### 引脚分配
 - **LED1**: GPIO 12
@@ -475,14 +493,12 @@ python build.py --clean-cache
 
 ### 主循环流程
 ```
-MainController喂狗 → 状态机更新 → WiFi管理 → MQTT控制 → 传感器更新 → 
-缓存更新 → 健康检查 → 状态报告 → 垃圾回收 → 延迟
+喂看门狗 → 状态机更新 → EventBus事件处理 → LED更新 → 状态监控 → 固定延迟循环
 ```
 
 ### 事件处理流程
 ```
-事件发生 → EventBus发布 → 计时器队列调度 → 订阅者处理 → 状态更新 → 
-LED指示 → 日志记录 → MQTT发送
+事件发生 → EventBus.publish → 事件队列 → 主循环diff时间处理 → 订阅者回调 → 状态更新 → LED指示 → 日志记录
 ```
 
 ### 错误处理流程
@@ -493,25 +509,25 @@ LED指示 → 日志记录 → MQTT发送
 
 ## 📝 版本信息
 
-- **当前版本**: 2.2.0 (日志系统重构版)
-- **架构版本**: 事件驱动架构 v2.0 (计时器队列驱动)
+- **当前版本**: 2.3.0 (架构重构版)
+- **架构版本**: 事件驱动架构 v3.0 (软件定时驱动)
 - **国际化版本**: 中文本地化 v1.0 (✅ 已完成)
-- **最后更新**: 2025-08-14
+- **最后更新**: 2025-08-24
 - **维护者**: ESP32C3 开发团队
+
+### 版本 2.3.0 更新内容
+- **架构重构**: 从硬件定时器驱动改为软件定时系统, 完全释放硬件定时器资源
+- **事件总线简化**: 采用单队列模式, 集成错误断路器机制
+- **LED系统重构**: 改为开箱即用模式, 支持延迟初始化和手动更新
+- **内存优化**: 针对ESP32-C3的264KB内存限制进行全面优化
+- **网络管理**: 统一NetworkManager管理所有网络连接
+- **状态机**: 改为函数式状态机, 简化架构提高稳定性
 
 ### 版本 2.2.0 更新内容
 - **日志系统重构**: 简化为极简日志系统, 移除复杂配置和初始化
 - **使用简化**: 直接导入全局日志函数即可使用, 无需手动初始化
 - **颜色支持**: 为ERROR和WARNING级别添加ANSI颜色支持, 提高可读性
 - **内存优化**: 减少日志系统内存占用, 适合ESP32-C3的264KB内存限制
-- **架构简化**: 移除事件总线依赖, 日志系统独立工作
-
-### 版本 2.1.0 更新内容
-- **事件总线升级**: 从 micropython.schedule 升级为硬件计时器驱动的循环队列系统
-- **稳定性提升**: 完全避免队列满问题, 提升系统稳定性
-- **性能优化**: 更精确的事件调度和内存管理
-- **监控增强**: 新增队列统计和性能监控功能
-- **配置灵活**: 支持可配置的队列大小和计时器间隔
 
 ## 🤝 贡献
 
@@ -538,8 +554,8 @@ LED指示 → 日志记录 → MQTT发送
 
 ---
 
-**最后更新**: 2025-08-14  
-**版本**: 2.2.0 (日志系统重构版)  
-**架构**: 事件驱动架构 v2.0 (计时器队列驱动)  
+**最后更新**: 2025-08-24  
+**版本**: 2.3.0 (架构重构版)  
+**架构**: 事件驱动架构 v3.0 (软件定时驱动)  
 **国际化**: 中文本地化完成 ✅  
 **维护者**: ESP32C3 开发团队

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - 始终使用中文回答
 - app 内的所有代码都是在 ESP32C3 MicroPython 上运行的, 不需要在本地测试和运行
-- app/tests 的代码也是在 ESP32C3 MicroPython 上运行的,  用来测试 app 内的代码, 也不需要在本地测试和运行
+- app/tests 的代码也是在 ESP32C3 MicroPython 上运行的, 用来测试 app 内的代码, 也不需要在本地测试和运行
 - 若有差异以 README.md 为准
 
 ## 常用开发命令
@@ -95,11 +95,11 @@ pytest app/tests/ --cov=app
 - **接口**: `subscribe(event_name, callback)`, `publish(event_name, *args, **kwargs)`, `process_events()`
 - **配置**: 队列大小64, 处理间隔25ms, 批处理数量5, 错误阈值10
 
-### 2. 函数式状态机 (FunctionalStateMachine) - `app/fsm/core.py`
+### 2. 函数式状态机 (FunctionalStateMachine) - `app/state_machine.py`
 - **功能**: 清晰的系统状态管理和转换
 - **支持状态**: BOOT → INIT → NETWORKING → RUNNING → WARNING → ERROR → SAFE_MODE → RECOVERY → SHUTDOWN
 - **特性**: 
-  - 使用函数和字典查找替代类继承
+  - 使用函数和字典替代类继承
   - 事件驱动的状态转换
   - 错误计数和自动恢复
   - LED状态同步

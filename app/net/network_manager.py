@@ -117,7 +117,31 @@ class NetworkManager:
         """MQTT 失败标记: 更新时间戳并 attempts++"""
         self.mqtt_last_attempt = time.ticks_ms()
         self.mqtt_retry_attempts = self._inc_attempts(self.mqtt_retry_attempts, self.mqtt_max_retries)
-            
+
+    # 新增: 退避与抖动工具方法
+    def _get_jitter_factor(self):
+        """生成抖动因子 0.8~1.2"""
+        try:
+            import urandom
+            rnd = urandom.getrandbits(16) / 65535.0
+        except Exception:
+            rnd = (time.ticks_ms() & 0xFFFF) / 65535.0
+        return 0.8 + 0.4 * rnd
+
+    def _calc_backoff_delay(self, base_delay, attempts, max_delay):
+        """计算指数退避延迟并叠加抖动"""
+        try:
+            if attempts > 0:
+                calc_delay = base_delay << (attempts - 1)
+                delay = calc_delay if calc_delay < max_delay else max_delay
+            else:
+                delay = base_delay
+            jitter_factor = self._get_jitter_factor()
+            return int(delay * jitter_factor)
+        except Exception:
+            # 异常降级: 返回基础延迟
+            return int(base_delay)
+
     async def _wifi_connection_loop(self):
         """WiFi 连接循环"""
         while True:
@@ -167,20 +191,8 @@ class NetworkManager:
         
         now = time.ticks_ms()
         
-        # 延迟 = min(base * 2^(attempts-1), max)
-        if self.wifi_retry_attempts > 0:
-            calc_delay = self.wifi_base_delay << (self.wifi_retry_attempts - 1)
-            delay = calc_delay if calc_delay < self.wifi_max_delay else self.wifi_max_delay
-        else:
-            delay = self.wifi_base_delay
-        # 抖动 0.8x~1.2x
-        try:
-            import urandom
-            rnd = urandom.getrandbits(16) / 65535.0
-        except Exception:
-            rnd = (time.ticks_ms() & 0xFFFF) / 65535.0
-        jitter_factor = 0.8 + 0.4 * rnd
-        delay = int(delay * jitter_factor)
+        # 退避 + 抖动
+        delay = self._calc_backoff_delay(self.wifi_base_delay, self.wifi_retry_attempts, self.wifi_max_delay)
         
         if self.wifi_last_attempt > 0:
             elapsed = time.ticks_diff(now, self.wifi_last_attempt)
@@ -276,21 +288,9 @@ class NetworkManager:
             if self._mqtt_connecting:
                 return False
 
-            # 延迟 = min(base * 2^(attempts-1), max)
             now = time.ticks_ms()
-            if self.mqtt_retry_attempts > 0:
-                calc_delay = self.mqtt_base_delay << (self.mqtt_retry_attempts - 1)
-                delay = calc_delay if calc_delay < self.mqtt_max_delay else self.mqtt_max_delay
-            else:
-                delay = self.mqtt_base_delay
-            # 抖动 0.8x~1.2x
-            try:
-                import urandom
-                rnd = urandom.getrandbits(16) / 65535.0
-            except Exception:
-                rnd = (time.ticks_ms() & 0xFFFF) / 65535.0
-            jitter_factor = 0.8 + 0.4 * rnd
-            delay = int(delay * jitter_factor)
+            # 退避 + 抖动
+            delay = self._calc_backoff_delay(self.mqtt_base_delay, self.mqtt_retry_attempts, self.mqtt_max_delay)
             if self.mqtt_last_attempt > 0:
                 elapsed = time.ticks_diff(now, self.mqtt_last_attempt)
                 if delay - elapsed > 0:
@@ -375,13 +375,13 @@ class NetworkManager:
                     self.mqtt_connected = True
                     self.event_bus.publish(EVENTS["MQTT_STATE_CHANGE"], state="connected")
                     try:
-                        offline_payload = {
-                            "status": "offline",
+                        online_payload = {
+                            "status": "online",
                             "uptime_ms": time.ticks_ms(),
                             "unix_s": self.get_epoch_unix_s(),
                             "ip": self.wifi_manager.get_ip(),
                         }
-                        self.mqtt_publish(self.get_device_topic("online"), offline_payload, retain=True, qos=0)
+                        self.mqtt_publish(self.get_device_topic("online"), online_payload, retain=True, qos=0)
                     except Exception:
                         pass
                 if self.mqtt_connected:
