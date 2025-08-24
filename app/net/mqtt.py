@@ -1,16 +1,16 @@
 # app/net/mqtt.py
 """
 MQTT 控制器
-职责: 
-- 封装 MQTTClient 的连接/断开/发布/订阅/消息处理
+职责:
+- 封装 MQTTClient 的连接、断开、发布、订阅、消息处理
 
-设计边界: 
-- 不包含指数退避重连与复杂会话保持策略(由上层 NetworkManager/FSM 统一治理)
+设计边界:
+- 不包含指数退避或复杂会话保持策略, 由上层 NetworkManager/FSM 统一治理
 - 仅做轻量的连接状态管理, 避免在资源受限环境中过度占用内存
 
-扩展建议: 
-- 可引入心跳/遗嘱/自动重连等策略, 但需统一设计避免与FSM职责重叠
-- 可通过主题前缀/设备ID规范化上报主题
+扩展建议:
+- 可引入心跳/遗嘱/自动重连等策略, 但需统一设计避免与 FSM 职责重叠
+- 可通过主题前缀/设备 ID 规范化上报主题
 """
 from lib.umqtt_lock import MQTTClient
 import machine
@@ -19,6 +19,7 @@ import binascii as _binascii
 
 # 统一 errno 提取与语义映射
 # 返回 (errno, reason); errno 可能为 None, reason 为字符串
+
 def _errno_info(exc):
     try:
         err_no = getattr(exc, "errno", None)
@@ -35,7 +36,7 @@ def _errno_info(exc):
         111: "ECONNREFUSED: 连接被拒绝",
         113: "EHOSTUNREACH: 目标主机不可达",
         128: "ENETUNREACH: 网络不可达",
-        -1:  "UNKNOWN(-1): 驱动/底层返回-1, 常见于连接中断或未知错误",
+        -1:  "UNKNOWN(-1): 驱动或底层返回-1, 常见于连接中断或未知错误",
         None: "unknown",
     }
     return err_no, reasons.get(err_no, "unknown")
@@ -43,38 +44,39 @@ def _errno_info(exc):
 
 class MqttController:
     """
-    MQTT控制器
+    MQTT 控制器
 
-    只提供基本的MQTT操作功能:
-    - 连接/断开连接
-    - 发布/订阅消息
+    仅提供基本的 MQTT 操作能力:
+    - 连接、断开连接
+    - 发布、订阅消息
     - 基本的连接状态检查
     - 设置消息回调
     """
 
     def __init__(self, config=None):
         """
-        初始化MQTT控制器
-        :param config: MQTT配置字典
+        初始化 MQTT 控制器
+        Args:
+            config: MQTT 配置字典
         """
         self.config = config or {}
         self.client = None
         self._is_connected = False
-        
+
         # 并发控制: 防止并发连接重入
         self._connecting = False
-        
-        # 订阅恢复: 记录订阅的主题与qos, 以便重连后恢复
+
+        # 订阅恢复: 记录订阅的主题与 qos, 以便重连后恢复
         self._subscriptions = {}
 
-        # 根据配置初始化MQTT客户端
+        # 根据配置初始化 MQTT 客户端
         try:
             # 检查必需的配置项
             if not self.config.get("broker"):
                 warning("MQTT配置缺少broker地址, MQTT功能将不可用", module="MQTT")
                 return
 
-            # 生成稳健的 client_id: 使用 hex(uid) 的可打印ASCII, 避免非法字符
+            # 生成稳健的 client_id: 使用 hex(uid) 的可打印 ASCII, 避免非法字符
             def _gen_client_id_bytes():
                 try:
                     if hasattr(machine, "unique_id"):
@@ -101,11 +103,11 @@ class MqttController:
             )
             # 不在此处设置默认回调; 由上层通过 set_callback 明确指定
         except Exception as e:
-            error(f"创建MQTT客户端失败: {e}", module="MQTT")
+            error("创建MQTT客户端失败: {}", e, module="MQTT")
 
     # ------------------ 基础能力: 回调、连接、心跳 ------------------
     def set_callback(self, cb):
-        """设置消息回调: 与底层 MQTTClient.set_callback 等价"""
+        """设置消息回调, 与底层 MQTTClient.set_callback 等价"""
         try:
             if self.client:
                 self.client.set_callback(cb)
@@ -117,9 +119,10 @@ class MqttController:
             return False
 
     def get_client_id(self):
-        """获取用于MQTT连接的client_id字符串.
-        优先从底层客户端读取, 退回到初始化缓存.
-        返回: str 或 None
+        """获取用于 MQTT 连接的 client_id 字符串
+        优先从底层客户端读取, 退回到初始化缓存
+        Returns:
+            str 或 None
         """
         try:
             cid = None
@@ -131,7 +134,7 @@ class MqttController:
                 try:
                     return cid.decode("ascii")
                 except Exception:
-                    # 无法ascii解码时转 hex 表达
+                    # 无法 ascii 解码时转 hex 表达
                     return _binascii.hexlify(bytes(cid)).decode("ascii")
             if isinstance(cid, str):
                 return cid
@@ -140,10 +143,9 @@ class MqttController:
         return None
 
     def _on_disconnected(self):
-        """统一的断链处理
-        
-        - 标记内部连接状态为 False(幂等)
-        - 最佳努力关闭底层 socket, 避免残留半开连接(不发送协议层 DISCONNECT, 避免重复)
+        """统一断链处理
+        - 标记内部连接状态为 False
+        - 尝试关闭底层 socket, 避免残留半开连接
         """
         self._is_connected = False
         try:
@@ -160,14 +162,11 @@ class MqttController:
         except Exception:
             pass
 
-
     # ------------------ 连接与断开 ------------------
-
     async def connect_async(self):
-        """异步连接到MQTT Broker
-        
+        """异步连接到 MQTT Broker
         Returns:
-            bool: 连接成功返回True, 失败返回False
+            bool: 连接成功返回 True, 失败返回 False
         """
         if self._is_connected:
             return True
@@ -175,7 +174,7 @@ class MqttController:
         if not self.client:
             warning("MQTT客户端未初始化或配置不完整", module="MQTT")
             return False
-        
+
         # 避免并发重入导致重复连接与重复日志
         if self._connecting:
             return False
@@ -188,10 +187,10 @@ class MqttController:
                 self.config.get("port", 1883),
                 module="MQTT",
             )
-            
+
             # 异步连接, 分步骤进行以避免长时间阻塞
             success = await self._async_connect_with_timeout()
-            
+
             if success:
                 # 验证连接是否建立
                 if await self._async_verify_connection():
@@ -227,24 +226,25 @@ class MqttController:
             error("MQTT连接异常 [errno={} reason={}]: {}", err_no, reason, e, module="MQTT")
             self._on_disconnected()
             return False
+        finally:
+            self._connecting = False
 
     async def _async_connect_with_timeout(self):
-        """内部: 实现带超时的连接流程(分阶段), 避免长阻塞"""
+        """内部: 带超时的连接流程, 避免长阻塞"""
         try:
             import uasyncio as asyncio
-            # 阶段一: 建立socket并发送CONNECT, 限时
+
             async def _phase_connect():
                 try:
                     self.client.connect()
                     return True
                 except Exception:
                     return False
-            # 阶段二: 等待一小段时间以便底层状态稳定
+
             async def _phase_settle():
                 await asyncio.sleep_ms(50)
                 return True
 
-            # 统一执行并限制总时长
             async def _run_with_timeout(ms=3000):
                 try:
                     tk = asyncio.create_task(_phase_connect())
@@ -266,18 +266,16 @@ class MqttController:
             return False
 
     async def _async_verify_connection(self):
-        """内部: 通过一次PINGREQ/RESP或最小交互验证连接可用性"""
+        """内部: 通过一次最小交互验证连接可用性"""
         try:
             import uasyncio as asyncio
-            # 尝试执行一次简单交互, 例如 ping 或 subscribe 空主题
-            # 此处使用短延时等待, 避免长阻塞
             await asyncio.sleep_ms(10)
             return True
         except Exception:
             return False
 
     def is_connected(self):
-        """返回当前MQTT连接状态"""
+        """返回当前 MQTT 连接状态"""
         return bool(self._is_connected)
 
     def publish(self, topic, payload, retain=False, qos=0):
@@ -313,17 +311,15 @@ class MqttController:
         try:
             if not self.client:
                 return False
-            # 以非阻塞方式处理消息
             self.client.check_msg()
             return True
         except Exception as e:
             err_no, reason = _errno_info(e)
             warning("MQTT消息处理异常 [errno={} reason={}]: {}", err_no, reason, e, module="MQTT")
-            # 出现异常不直接判定断开, 交由后续检查流程确认
             return False
 
     def disconnect(self):
-        """断开MQTT连接"""
+        """断开 MQTT 连接"""
         try:
             if self.client:
                 try:
