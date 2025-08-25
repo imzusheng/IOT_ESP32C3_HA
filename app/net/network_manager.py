@@ -509,15 +509,35 @@ class NetworkManager:
                 "model": "ESP32-C3",
                 "name": "ESP32C3 {}".format(cid[-4:] if cid and len(cid) >= 4 else cid),
             }
+            availability_topic = self.get_availability_topic()
             availability = [{
-                "topic": self.get_availability_topic(),
+                "topic": availability_topic,
                 "payload_available": "online",
                 "payload_not_available": "offline",
             }]
+
+            # 读取可配置的 discovery 前缀, 默认 "homeassistant"
+            # 优先 ha.discovery_prefix, 其次 mqtt.discovery_prefix, 最后默认
+            try:
+                ha_cfg = (self.config or {}).get("ha", {}) or {}
+            except Exception:
+                ha_cfg = {}
+            discovery_prefix = (
+                ha_cfg.get("discovery_prefix")
+                or self.mqtt_config.get("discovery_prefix")
+                or "homeassistant"
+            )
+            # 规范化前缀, 去除首尾斜杠
+            try:
+                discovery_prefix = str(discovery_prefix).strip("/")
+            except Exception:
+                discovery_prefix = "homeassistant"
+
             # 温度配置
             temp_cfg = {
                 "name": "Temperature",
                 "state_topic": self.get_state_topic("temperature"),
+                # HA 兼容: 使用 availability 数组定义可用性
                 "availability": availability,
                 "unique_id": "{}_temperature".format(cid),
                 "unit_of_measurement": "°C",
@@ -529,6 +549,7 @@ class NetworkManager:
             hum_cfg = {
                 "name": "Humidity",
                 "state_topic": self.get_state_topic("humidity"),
+                # HA 兼容: 使用 availability 数组定义可用性
                 "availability": availability,
                 "unique_id": "{}_humidity".format(cid),
                 "unit_of_measurement": "%",
@@ -536,13 +557,14 @@ class NetworkManager:
                 "state_class": "measurement",
                 "device": device_info,
             }
-            # 主题: homeassistant/sensor/<cid>/temperature|humidity/config
-            base = "homeassistant"
+            # 主题: <discovery_prefix>/sensor/<cid>/temperature|humidity/config
+            base = discovery_prefix
             t_topic = "{}/sensor/{}/temperature/config".format(base, cid)
             h_topic = "{}/sensor/{}/humidity/config".format(base, cid)
             self.mqtt_publish(t_topic, temp_cfg, retain=True, qos=0)
             self.mqtt_publish(h_topic, hum_cfg, retain=True, qos=0)
-            debug("已发布 Home Assistant Discovery 配置", module="NET")
+            info("已发布 Home Assistant Discovery 配置", module="NET")
+            info("HA Discovery 详细: t_topic={} h_topic={} retain=True; t_payload={} h_payload={}", t_topic, h_topic, temp_cfg, hum_cfg, module="NET")
         except Exception as e:
             warning("发布 Home Assistant Discovery 失败: {}", e, module="NET")
 

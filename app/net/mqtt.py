@@ -97,12 +97,30 @@ class MqttController:
             # 缓存 client_id 供上层构造主题使用
             self._client_id = _client_id  # bytes, 可解码为 ascii
 
+            # 规范化用户名与密码: 空字符串视为未配置, 避免发送空凭据或类型错误
+            _user = self.config.get("user") or None
+            _password = self.config.get("password") or None
+            if isinstance(_user, str) and _user == "":
+                _user = None
+            if isinstance(_password, str) and _password == "":
+                _password = None
+            if isinstance(_user, str):
+                try:
+                    _user = _user.encode("utf-8")
+                except Exception:
+                    _user = None
+            if isinstance(_password, str):
+                try:
+                    _password = _password.encode("utf-8")
+                except Exception:
+                    _password = None
+
             self.client = MQTTClient(
                 client_id=_client_id,
                 server=self.config["broker"],
                 port=self.config.get("port", 1883),
-                user=self.config.get("user"),
-                password=self.config.get("password"),
+                user=_user,
+                password=_password,
                 keepalive=self.config.get("keepalive", 60),
             )
             # 不在此处设置默认回调; 由上层通过 set_callback 明确指定
@@ -181,73 +199,33 @@ class MqttController:
                     self.client.sock.close()
                 except Exception:
                     pass
-                # 确保句柄置空, 避免后续误判连接状态
-                try:
-                    self.client.sock = None
-                except Exception:
-                    pass
         except Exception:
             pass
 
-    # ------------------ 连接与断开 ------------------
     async def connect_async(self):
-        """异步连接到 MQTT Broker
-        Returns:
-            bool: 连接成功返回 True, 失败返回 False
-        """
-        if self._is_connected:
-            return True
-
-        if not self.client:
-            warning("MQTT客户端未初始化或配置不完整", module="MQTT")
-            return False
-
-        # 避免并发重入导致重复连接与重复日志
+        """异步连接到 MQTT 服务器"""
         if self._connecting:
             return False
-
         self._connecting = True
         try:
-            debug(
-                "异步尝试连接MQTT服务器: {}:{}",
-                self.config["broker"],
-                self.config.get("port", 1883),
-                module="MQTT",
-            )
-
-            # 异步连接, 分步骤进行以避免长时间阻塞
-            success = await self._async_connect_with_timeout()
-
-            if success:
-                # 验证连接是否建立
-                if await self._async_verify_connection():
-                    self._is_connected = True
-                    # 重连后恢复订阅
-                    self._restore_subscriptions()
-                    debug("MQTT异步连接成功", module="MQTT")
-                    return True
-                else:
-                    self._on_disconnected()
-                    warning("MQTT连接状态验证失败", module="MQTT")
-                    return False
-            else:
-                self._on_disconnected()
-                warning("MQTT连接失败", module="MQTT")
+            if not self.client:
+                warning("MQTT客户端未初始化", module="MQTT")
                 return False
-        except OSError as e:
-            # 统一错误码语义并增强可观测性
-            err_no, reason = _errno_info(e)
-            error(
-                "MQTT连接失败: {}:{} [errno={} reason={}] {}",
-                self.config["broker"],
-                self.config.get("port", 1883),
-                err_no,
-                reason,
-                e,
-                module="MQTT",
-            )
-            self._on_disconnected()
-            return False
+
+            # 设置 LWT: 若底层支持 set_last_will
+            self._is_connected = False
+            ok = await self._async_connect_with_timeout()
+            if not ok:
+                self._on_disconnected()
+                return False
+
+            # 连接成功
+            self._is_connected = True
+            try:
+                self._restore_subscriptions()
+            except Exception:
+                pass
+            return True
         except Exception as e:
             err_no, reason = _errno_info(e)
             error("MQTT连接异常 [errno={} reason={}]: {}", err_no, reason, e, module="MQTT")
@@ -266,9 +244,15 @@ class MqttController:
                     # 若底层支持 LWT, 在连接前设置
                     if self._lwt and hasattr(self.client, "set_last_will"):
                         try:
+                            _topic = self._lwt["topic"]
+                            _payload = self._lwt["payload"]
+                            if isinstance(_topic, str):
+                                _topic = _topic.encode("utf-8")
+                            if isinstance(_payload, str):
+                                _payload = _payload.encode("utf-8")
                             self.client.set_last_will(
-                                self._lwt["topic"],
-                                self._lwt["payload"],
+                                _topic,
+                                _payload,
                                 self._lwt.get("retain", True),
                                 self._lwt.get("qos", 0),
                             )
@@ -320,11 +304,20 @@ class MqttController:
         return bool(self._is_connected)
 
     def publish(self, topic, payload, retain=False, qos=0):
-        """发布消息(对底层 publish 的薄封装)"""
+        """发布消息(对底层 publish 的薄封装)
+        注意: 底层客户端要求 topic 与 payload 为 bytes; 这里做统一转换。
+        """
         try:
             if not self.client:
                 return False
-            self.client.publish(topic, payload, retain, qos)
+            _topic = topic.encode("utf-8") if isinstance(topic, str) else topic
+            if isinstance(payload, (bytes, bytearray)):
+                _payload = payload
+            elif isinstance(payload, str):
+                _payload = payload.encode("utf-8")
+            else:
+                _payload = str(payload).encode("utf-8")
+            self.client.publish(_topic, _payload, retain, qos)
             return True
         except Exception as e:
             err_no, reason = _errno_info(e)
@@ -333,11 +326,14 @@ class MqttController:
             return False
 
     def subscribe(self, topic, qos=0):
-        """订阅指定主题, 记录以便重连后恢复"""
+        """订阅指定主题, 记录以便重连后恢复
+        注意: 统一将主题转换为 bytes
+        """
         try:
             if not self.client:
                 return False
-            self.client.subscribe(topic, qos)
+            _topic = topic.encode("utf-8") if isinstance(topic, str) else topic
+            self.client.subscribe(_topic, qos)
             # 记录订阅以便重连后恢复
             self._subscriptions[topic] = qos
             return True
@@ -375,7 +371,7 @@ class MqttController:
         try:
             for topic, qos in self._subscriptions.items():
                 try:
-                    self.client.subscribe(topic, qos)
+                    self.client.subscribe(topic.encode("utf-8") if isinstance(topic, str) else topic, qos)
                 except Exception:
                     pass
         except Exception:
