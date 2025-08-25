@@ -67,6 +67,9 @@ class NetworkManager:
         self._wifi_task = None
         self._mqtt_task = None
         self._status_check_task = None
+
+        # LWT 设置标记(避免重复设置)
+        self._lwt_configured = False
         
         self._init_components()
         self._register_async_tasks()
@@ -299,6 +302,17 @@ class NetworkManager:
             if not self.ntp_synced:
                 await self._async_sync_ntp()
 
+            # 在首次连接前配置 LWT(若支持), 使用 availability 主题
+            try:
+                if (not self._lwt_configured) and self.mqtt_controller and hasattr(self.mqtt_controller, "set_last_will"):
+                    avail_topic = self.get_availability_topic()
+                    self.mqtt_controller.set_last_will(avail_topic, "offline", qos=0, retain=True)
+                    self._lwt_configured = True
+                    debug("已设置MQTT LWT: {} -> offline", avail_topic, module="NET")
+            except Exception as _e:
+                warning("设置MQTT LWT失败(降级为显式offline): {}", _e, module="NET")
+                # 继续连接流程
+
             self._mqtt_connecting = True
             try:
                 success = await self.mqtt_controller.connect_async()
@@ -309,13 +323,12 @@ class NetworkManager:
                     info("MQTT连接成功", module="NET")
                     self.event_bus.publish(EVENTS["MQTT_STATE_CHANGE"], state="connected")
                     try:
-                        online_payload = {
-                            "status": "online",
-                            "uptime_ms": time.ticks_ms(),
-                            "unix_s": self.get_epoch_unix_s(),
-                            "ip": self.wifi_manager.get_ip(),
-                        }
-                        self.mqtt_publish(self.get_device_topic("online"), online_payload, retain=True, qos=0)
+                        # HA 可用性: 连接成功后发布 retained 可用性为 online
+                        self.mqtt_publish(self.get_availability_topic(), "online", retain=True, qos=0)
+                        # 发布 Home Assistant Discovery 配置
+                        self.publish_ha_discovery()
+                        # 可选: 设备 announce
+                        self.publish_announce()
                     except Exception:
                         pass
                     return True
@@ -357,6 +370,12 @@ class NetworkManager:
                     # WiFi 掉线时显式断开 MQTT 并发布事件
                     if self.mqtt_connected:
                         try:
+                            # 尝试在断开前发布 offline
+                            if self.mqtt_controller and hasattr(self.mqtt_controller, "is_connected") and self.mqtt_controller.is_connected():
+                                self.mqtt_publish(self.get_availability_topic(), "offline", retain=True, qos=0)
+                        except Exception:
+                            pass
+                        try:
                             if self.mqtt_controller:
                                 self.mqtt_controller.disconnect()
                         except Exception:
@@ -375,13 +394,12 @@ class NetworkManager:
                     self.mqtt_connected = True
                     self.event_bus.publish(EVENTS["MQTT_STATE_CHANGE"], state="connected")
                     try:
-                        online_payload = {
-                            "status": "online",
-                            "uptime_ms": time.ticks_ms(),
-                            "unix_s": self.get_epoch_unix_s(),
-                            "ip": self.wifi_manager.get_ip(),
-                        }
-                        self.mqtt_publish(self.get_device_topic("online"), online_payload, retain=True, qos=0)
+                        # HA 可用性: 连接成功后发布 retained 可用性为 online
+                        self.mqtt_publish(self.get_availability_topic(), "online", retain=True, qos=0)
+                        # 发布 Home Assistant Discovery 配置
+                        self.publish_ha_discovery()
+                        # 可选: 设备 announce
+                        self.publish_announce()
                     except Exception:
                         pass
                 if self.mqtt_connected:
@@ -407,13 +425,8 @@ class NetworkManager:
         try:
             if self.mqtt_controller and self.mqtt_connected:
                 try:
-                    offline_payload = {
-                        "status": "offline",
-                        "uptime_ms": time.ticks_ms(),
-                        "unix_s": self.get_epoch_unix_s(),
-                        "ip": self.wifi_manager.get_ip(),
-                    }
-                    self.mqtt_publish(self.get_device_topic("online"), offline_payload, retain=True, qos=0)
+                    # 发布可用性为 offline (retained)
+                    self.mqtt_publish(self.get_availability_topic(), "offline", retain=True, qos=0)
                 except Exception:
                     pass
                 self.mqtt_controller.disconnect()
@@ -469,6 +482,82 @@ class NetworkManager:
             return "device/{}/{}".format(self.get_device_id(), tail)
         except Exception:
             return "device/{}/{}".format(self.get_device_id(), "unknown")
+
+    # ===== 新增: HA 友好的主题辅助 =====
+    def get_availability_topic(self):
+        """返回 HA 可用性主题: device/<id>/availability"""
+        return self.get_device_topic("availability")
+
+    def get_state_topic(self, sub):
+        """返回设备状态子主题: device/<id>/state/<sub>"""
+        try:
+            sub_tail = str(sub).strip("/")
+            return self.get_device_topic("state/{}".format(sub_tail))
+        except Exception:
+            return self.get_device_topic("state/unknown")
+
+    def publish_ha_discovery(self):
+        """发布 Home Assistant Discovery 配置(temperature, humidity)
+        注意: 不依赖 LWT, 通过 availability 主题指示在线/离线
+        """
+        try:
+            cid = self.get_device_id()
+            # 设备信息
+            device_info = {
+                "identifiers": [cid],
+                "manufacturer": "Custom",
+                "model": "ESP32-C3",
+                "name": "ESP32C3 {}".format(cid[-4:] if cid and len(cid) >= 4 else cid),
+            }
+            availability = [{
+                "topic": self.get_availability_topic(),
+                "payload_available": "online",
+                "payload_not_available": "offline",
+            }]
+            # 温度配置
+            temp_cfg = {
+                "name": "Temperature",
+                "state_topic": self.get_state_topic("temperature"),
+                "availability": availability,
+                "unique_id": "{}_temperature".format(cid),
+                "unit_of_measurement": "°C",
+                "device_class": "temperature",
+                "state_class": "measurement",
+                "device": device_info,
+            }
+            # 湿度配置
+            hum_cfg = {
+                "name": "Humidity",
+                "state_topic": self.get_state_topic("humidity"),
+                "availability": availability,
+                "unique_id": "{}_humidity".format(cid),
+                "unit_of_measurement": "%",
+                "device_class": "humidity",
+                "state_class": "measurement",
+                "device": device_info,
+            }
+            # 主题: homeassistant/sensor/<cid>/temperature|humidity/config
+            base = "homeassistant"
+            t_topic = "{}/sensor/{}/temperature/config".format(base, cid)
+            h_topic = "{}/sensor/{}/humidity/config".format(base, cid)
+            self.mqtt_publish(t_topic, temp_cfg, retain=True, qos=0)
+            self.mqtt_publish(h_topic, hum_cfg, retain=True, qos=0)
+            debug("已发布 Home Assistant Discovery 配置", module="NET")
+        except Exception as e:
+            warning("发布 Home Assistant Discovery 失败: {}", e, module="NET")
+
+    def publish_announce(self):
+        """发布设备 announce 信息, 供服务器侧自动注册"""
+        try:
+            info_payload = {
+                "id": self.get_device_id(),
+                "unix_s": self.get_epoch_unix_s(),
+                "ip": self.wifi_manager.get_ip() if self.wifi_manager else None,
+                "features": ["sht40", "ha_discovery"],
+            }
+            self.mqtt_publish(self.get_device_topic("announce"), info_payload, retain=False, qos=0)
+        except Exception:
+            pass
 
     def get_epoch_unix_s(self):
         """获取当前 Unix 时间戳(秒), 异常或不可用时返回 "N/A"""

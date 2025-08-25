@@ -127,45 +127,64 @@ class MainController:
             percent_used = mem.get("percent", 0)
             
             # 读取MCU内部温度
-            temp = get_temperature()
+            temp_mcu = get_temperature()
             
             # 读取环境温湿度
             from hw.sht40 import read
             env_data = read()
+            env_temp = env_data["temperature"] if isinstance(env_data, dict) else None
+            env_hum = env_data["humidity"] if isinstance(env_data, dict) else None
             
             state = self.state_machine.get_current_state() if self.state_machine else "INIT"
             net_status = self.network_manager.get_status()
             
-            info("系统状态 - 状态:{}, 内存:{}KB({:.0f}%), 温度:{}, 环境:{}°C/{}%, WiFi:{}, MQTT:{}", 
-                 state, free_kb, percent_used, temp,
-                 env_data["temperature"] if env_data["temperature"] is not None else "N/A",
-                 env_data["humidity"] if env_data["humidity"] is not None else "N/A",
+            info("系统状态 - 状态:{}, 内存:{}KB({:.0f}%), MCU温度:{}, 环境:{}°C/{}%, WiFi:{}, MQTT:{}", 
+                 state, free_kb, percent_used, temp_mcu,
+                 env_temp if env_temp is not None else "N/A",
+                 env_hum if env_hum is not None else "N/A",
                  net_status['wifi'], net_status['mqtt'], 
                  module="MAIN")
             
-            # 上报周期性指标到 MQTT, 默认以 JSON 格式
+            # 上报周期性指标到 MQTT
             try:
-                payload = {
-                    # 设备运行时长(毫秒)
+                metrics = {
                     "uptime_ms": current_time,
-                    # 若已完成NTP同步, 附加当前 1970-based UNIX 秒; 否则为 None
                     "unix_s": self.network_manager.get_epoch_unix_s() if self.network_manager else None,
                     "state": state,
                     "mem": {
                         "free_kb": free_kb,
                         "percent": percent_used,
                     },
-                    "temp_c": temp,
+                    "mcu_temp_c": temp_mcu,
                     "env": {
-                        "temperature": env_data.get("temperature") if isinstance(env_data, dict) else None,
-                        "humidity": env_data.get("humidity") if isinstance(env_data, dict) else None,
+                        "temperature": env_temp,
+                        "humidity": env_hum,
                     },
                     "net": net_status,
                 }
-                # 使用包含设备ID的标准主题 device/<client_id>/metrics
                 if self.network_manager:
-                    topic = self.network_manager.get_device_topic("metrics")
-                    self.network_manager.mqtt_publish(topic, payload, retain=False, qos=0)
+                    # 1) 聚合指标: device/<id>/state/metrics (不保留)
+                    self.network_manager.mqtt_publish(
+                        self.network_manager.get_state_topic("metrics"),
+                        metrics,
+                        retain=False,
+                        qos=0,
+                    )
+                    # 2) 分离的温湿度主题, 便于 HA 直接订阅
+                    if env_temp is not None:
+                        self.network_manager.mqtt_publish(
+                            self.network_manager.get_state_topic("temperature"),
+                            env_temp,
+                            retain=True,
+                            qos=0,
+                        )
+                    if env_hum is not None:
+                        self.network_manager.mqtt_publish(
+                            self.network_manager.get_state_topic("humidity"),
+                            env_hum,
+                            retain=True,
+                            qos=0,
+                        )
             except Exception:
                 # 指标上报失败不影响主流程
                 pass

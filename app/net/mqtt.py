@@ -51,6 +51,7 @@ class MqttController:
     - 发布、订阅消息
     - 基本的连接状态检查
     - 设置消息回调
+    - 配置 LWT(若底层实现支持)
     """
 
     def __init__(self, config=None):
@@ -68,6 +69,9 @@ class MqttController:
 
         # 订阅恢复: 记录订阅的主题与 qos, 以便重连后恢复
         self._subscriptions = {}
+
+        # LWT 配置(控制器层面的抽象, 底层不支持则降级)
+        self._lwt = None  # dict: {topic, payload, qos, retain}
 
         # 根据配置初始化 MQTT 客户端
         try:
@@ -116,6 +120,29 @@ class MqttController:
         except Exception as e:
             err_no, reason = _errno_info(e)
             error("设置MQTT回调失败 [errno={} reason={}]: {}", err_no, reason, e, module="MQTT")
+            return False
+
+    def set_last_will(self, topic, payload="offline", qos=0, retain=True):
+        """配置 LWT(遗嘱). 若底层客户端支持 set_last_will, 将在下次连接时设置; 否则降级为仅在正常断开时发布 offline。
+        Args:
+            topic: LWT 主题
+            payload: LWT 消息
+            qos: QoS 等级
+            retain: 是否保留
+        """
+        try:
+            if not topic:
+                return False
+            self._lwt = {
+                "topic": topic,
+                "payload": payload if isinstance(payload, (bytes, bytearray, str)) else str(payload),
+                "qos": int(qos) if qos in (0, 1, 2) else 0,
+                "retain": bool(retain),
+            }
+            debug("已设置LWT @{}", topic, module="MQTT")
+            return True
+        except Exception as e:
+            warning("设置LWT失败: {}", e, module="MQTT")
             return False
 
     def get_client_id(self):
@@ -236,6 +263,20 @@ class MqttController:
 
             async def _phase_connect():
                 try:
+                    # 若底层支持 LWT, 在连接前设置
+                    if self._lwt and hasattr(self.client, "set_last_will"):
+                        try:
+                            self.client.set_last_will(
+                                self._lwt["topic"],
+                                self._lwt["payload"],
+                                self._lwt.get("retain", True),
+                                self._lwt.get("qos", 0),
+                            )
+                            debug("已在底层客户端设置LWT", module="MQTT")
+                        except Exception as _e:
+                            warning("底层LWT设置失败(将降级): {}", _e, module="MQTT")
+                    elif self._lwt:
+                        debug("底层客户端不支持LWT, 将通过正常断开发布offline进行降级", module="MQTT")
                     self.client.connect()
                     return True
                 except Exception:
