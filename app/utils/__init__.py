@@ -10,10 +10,10 @@ from .timers import get_hardware_timer_manager
 from .json_utils import json_dumps
 from .time_utils import get_epoch_unix_s
 
-# ===== 通用工具函數: 內存與溫度 =====
+# ===== 通用工具函数: 内存与温度 =====
 
 def check_memory():
-    """檢查內存狀況
+    """检查内存状况
     返回 dict: { free_kb, total_kb, used_kb, percent }
     - 在部分端口上 mem_alloc 不可用時做降級
     """
@@ -43,7 +43,7 @@ def check_memory():
 
 
 def get_temperature():
-    """讀取 MCU 內部溫度, 如不支持則返回 None"""
+    """读取 MCU 内部温度, 如不支持则返回 None"""
     try:
         import esp32
         if hasattr(esp32, "mcu_temperature"):

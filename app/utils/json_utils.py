@@ -2,8 +2,8 @@
 # app/utils/json_utils.py
 """
 JSON 序列化工具
-- 優先使用 ujson 確保體積與性能
-- 回退標準 json
+- 优先使用 ujson
+- 回退标准 json
 - 最終兜底 str(data)
 """
 
