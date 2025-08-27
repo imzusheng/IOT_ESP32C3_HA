@@ -7,7 +7,7 @@ JSON 序列化工具
 - 最終兜底 str(data)
 """
 
-# 輕量 JSON 序列化工具
+# 轻量 JSON 序列化工具
 try:
     import ujson as _json
 except Exception:
@@ -17,7 +17,7 @@ except Exception:
         _json = None
 
 def json_dumps(data):
-    """將 Python 數據序列化為 JSON 字符串"""
+    """将 Python 数据序列化为 JSON 字符串"""
     if _json is not None:
         try:
             return _json.dumps(data)

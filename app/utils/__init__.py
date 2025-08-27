@@ -2,8 +2,8 @@
 # app/utils/__init__.py
 """
 工具函数库
-- 聚合常用工具入口, 便于對外 import 簡化
-- JSON 序列化與時間戳工具已拆分至子模塊 json_utils 與 time_utils
+- 聚合常用工具入口, 便于对外 import 简化
+- JSON 序列化与时间戳工具已拆分至子模块 json_utils 与 time_utils
 """
 
 from .timers import get_hardware_timer_manager
