@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ESP32-C3 蓝牙控制面板</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, Arial, sans-serif; margin: 0; padding: 24px; line-height: 1.6; }
+    h1 { font-size: 20px; margin: 0 0 16px; }
+    .card { max-width: 960px; margin: 0 auto; background: rgba(0,0,0,0.03); border: 1px solid rgba(0,0,0,0.08); border-radius: 12px; padding: 16px; }
+    .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+    button { appearance: none; border: 1px solid rgba(0,0,0,0.2); border-radius: 8px; padding: 10px 14px; cursor: pointer; background: #0b5; color: #fff; font-weight: 600; }
+    button.secondary { background: #555; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .kv { display: grid; grid-template-columns: 120px 1fr; gap: 8px 12px; margin: 12px 0; }
+    .section { margin-top: 16px; padding-top: 12px; border-top: 1px dashed rgba(0,0,0,0.15); }
+    label { font-weight: 600; }
+    input, select { padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.2); min-width: 220px; }
+    #log { white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: rgba(0,0,0,0.06); border-radius: 8px; padding: 12px; min-height: 120px; max-height: 260px; overflow: auto; }
+    .tip { font-size: 13px; opacity: .8; }
+    .ok { color: #0a7; }
+    .warn { color: #c60; }
+    .err { color: #d33; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>ESP32-C3 蓝牙控制面板</h1>
+    <div class="row">
+      <button id="btnConnect">连接设备</button>
+      <button id="btnQuick">快速重连</button>
+      <button id="btnDisconnect" class="secondary" disabled>断开连接</button>
+    </div>
+    <div class="tip" style="margin-top:8px;">
+      提示: 如果系统已通过设置与 ESP32-C3 配对并保持连接, 浏览器无法再次连接该设备. 请先在系统蓝牙设置中断开或忽略设备, 然后重新点击连接. 确保设备正在广播且未被其他设备占用.
+    </div>
+
+    <div class="kv section">
+      <div>连接状态</div><div id="status">未连接</div>
+      <div>设备名称</div><div id="devName">-</div>
+      <div>电池电量</div><div id="battery">-</div>
+    </div>
+
+    <div class="section">
+      <strong>蓝牙操作</strong>
+      <div class="row" style="margin-top:8px;">
+        <button id="btnReadBatt" class="secondary" disabled>读取电量</button>
+        <button id="btnSubBatt" class="secondary" disabled>订阅电量通知</button>
+        <button id="btnUnsubBatt" class="secondary" disabled>取消订阅</button>
+      </div>
+      <div class="tip" style="margin-top:6px;">
+        如果页面无法读取电量, 请在设备端启用基础电池服务(而非 HID), 以便浏览器通过 Web Bluetooth 访问 Battery Service (0x180F).
+      </div>
+    </div>
+
+    <div class="section">
+      <strong>HID 遥控(可选)</strong>
+      <div class="row" style="margin-top:8px;">
+        <select id="hidAction" disabled>
+          <option value="">选择一个操作</option>
+          <option value="power">电源</option>
+          <option value="vol_up">音量+</option>
+          <option value="vol_down">音量-</option>
+          <option value="mute">静音</option>
+          <option value="play_pause">播放/暂停</option>
+          <option value="next">下一曲</option>
+          <option value="prev">上一曲</option>
+          <option value="stop">停止</option>
+          <option value="custom">自定义 Usage (0-65535)</option>
+        </select>
+        <input id="customUsage" type="number" min="0" max="65535" placeholder="输入 Usage 数值" disabled />
+        <button id="btnSendHid" class="secondary" disabled>发送</button>
+      </div>
+      <div class="tip" style="margin-top:6px;">
+        说明: 浏览器通常限制直接访问 HID 服务(0x1812). 若此区域保持禁用状态, 请切换设备端为基础服务模式再试.
+      </div>
+    </div>
+
+    <div class="section">
+      <strong>日志</strong>
+      <div id="log"></div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const log = (msg, cls) => {
+      const el = document.createElement('div');
+      el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      if (cls) el.className = cls;
+      $('log').appendChild(el);
+      $('log').scrollTop = $('log').scrollHeight;
+    };
+
+    let device = null;       // 当前选择或已授权的设备引用
+    let server = null;       // GATT Server
+    let batteryService = null;
+    let batteryChar = null;  // 0x2A19
+    let hidService = null;   // 0x1812
+    let hidOutChar = null;   // 0x2A4D with write
+
+    const HID_ALIASES = {
+      power: 0x0030,
+      vol_up: 0x00E9,
+      vol_down: 0x00EA,
+      mute: 0x00E2,
+      play_pause: 0x00CD,
+      next: 0x00B5,
+      prev: 0x00B6,
+      stop: 0x00B7,
+    };
+
+    // 连接到已选设备的通用流程, 供首次连接与快速重连复用
+    async function connectToDevice(selected) {
+      try {
+        device = selected;
+        $('devName').textContent = device.name || '(未命名)';
+        device.addEventListener('gattserverdisconnected', onDisconnected);
+
+        log('正在连接 GATT 服务器...');
+        server = await device.gatt.connect();
+        $('status').textContent = '已连接';
+        $('btnDisconnect').disabled = false;
+
+        // Battery Service
+        try {
+          batteryService = await server.getPrimaryService(0x180F);
+          batteryChar = await batteryService.getCharacteristic(0x2A19);
+          $('btnReadBatt').disabled = false;
+          $('btnSubBatt').disabled = false;
+          log('Battery Service 可用.', 'ok');
+        } catch (e) {
+          log('Battery Service 不可用(可能设备端未启用基础服务).', 'warn');
+        }
+
+        // HID Service (may be blocked by browser)
+        try {
+          hidService = await server.getPrimaryService(0x1812);
+          const chars = await hidService.getCharacteristics(0x2A4D).catch(async () => hidService.getCharacteristics());
+          for (const ch of chars) {
+            try {
+              const uuid = ch.uuid.toLowerCase();
+              const canWrite = ch.properties?.write || ch.properties?.writeWithoutResponse;
+              if (uuid.includes('2a4d') && canWrite) { hidOutChar = ch; break; }
+            } catch (e) {}
+          }
+          if (hidOutChar) {
+            $('hidAction').disabled = false;
+            $('btnSendHid').disabled = false;
+            $('customUsage').disabled = false;
+            log('HID 服务可用, 已找到可写的 Out Report.', 'ok');
+          } else {
+            log('HID 服务存在, 但未找到可写的 Out Report(或浏览器限制).', 'warn');
+          }
+        } catch (e) {
+          log('HID 服务不可用或被浏览器限制.', 'warn');
+        }
+      } catch (err) {
+        log('连接失败: ' + (err?.message || err), 'err');
+        await disconnect();
+      }
+    }
+
+    // 触发系统选择框进行配对授权
+    async function connect() {
+      try {
+        if (!navigator.bluetooth) {
+          log('此浏览器不支持 Web Bluetooth, 请使用最新版 Chrome/Edge.', 'err');
+          return;
+        }
+        log('请求选择蓝牙设备...');
+        const selected = await navigator.bluetooth.requestDevice({
+          acceptAllDevices: true,
+          optionalServices: [0x180F, 0x1812]
+        });
+        await connectToDevice(selected);
+      } catch (err) {
+        if (err?.name === 'NotFoundError') {
+          log('未选择设备. 请在弹出的列表中选择你的 ESP32-C3.', 'warn');
+        } else if (err?.name === 'NotAllowedError') {
+          log('你取消了设备选择. 请在弹出的蓝牙选择框中选择 ESP32-C3.', 'warn');
+        } else {
+          log('连接失败: ' + err.message, 'err');
+        }
+        await disconnect();
+      }
+    }
+
+    // 尝试重用之前授权过的设备, 避免再次弹出选择器
+    async function quickReconnect() {
+      try {
+        if (!navigator.bluetooth?.getDevices) {
+          log('当前浏览器不支持快速重连, 请使用 115+ 版本的 Chrome/Edge.', 'warn');
+          return;
+        }
+        log('查找已授权设备...');
+        const devices = await navigator.bluetooth.getDevices();
+        // 先按名称筛选 ESP32, 若没有则回退到第一个设备
+        let candidate = devices.find(d => (d.name || '').toUpperCase().includes('ESP32')) || devices[0];
+        if (!candidate) {
+          log('未找到已授权设备. 请点击 连接设备 进行首次授权.', 'warn');
+          return;
+        }
+        await connectToDevice(candidate);
+      } catch (err) {
+        log('快速重连失败: ' + (err?.message || err), 'err');
+      }
+    }
+
+    function onDisconnected() {
+      log('设备已断开连接.', 'warn');
+      $('status').textContent = '未连接';
+      $('btnDisconnect').disabled = true;
+      $('btnReadBatt').disabled = true;
+      $('btnSubBatt').disabled = true;
+      $('btnUnsubBatt').disabled = true;
+      $('hidAction').disabled = true;
+      $('btnSendHid').disabled = true;
+      $('customUsage').disabled = true;
+      server = null; batteryService = null; batteryChar = null; hidService = null; hidOutChar = null;
+    }
+
+    async function disconnect() {
+      try { if (device && device.gatt.connected) await device.gatt.disconnect(); } catch {}
+      onDisconnected();
+    }
+
+    async function readBattery() {
+      if (!batteryChar) return;
+      try {
+        const v = await batteryChar.readValue();
+        const level = v.getUint8(0);
+        $('battery').textContent = level + '%';
+        log('电量读取: ' + level + '%');
+      } catch (e) { log('读取电量失败: ' + e.message, 'err'); }
+    }
+
+    async function subBattery() {
+      if (!batteryChar) return;
+      try {
+        await batteryChar.startNotifications();
+        batteryChar.addEventListener('characteristicvaluechanged', (ev) => {
+          const dv = ev.target.value; const lvl = dv.getUint8(0);
+          $('battery').textContent = lvl + '%';
+          log('电量通知: ' + lvl + '%');
+        });
+        $('btnUnsubBatt').disabled = false;
+        log('已订阅电量通知.', 'ok');
+      } catch (e) { log('订阅失败: ' + e.message, 'err'); }
+    }
+
+    async function unsubBattery() {
+      if (!batteryChar) return;
+      try {
+        await batteryChar.stopNotifications();
+        $('btnUnsubBatt').disabled = true;
+        log('已取消电量通知.', 'ok');
+      } catch (e) { log('取消订阅失败: ' + e.message, 'err'); }
+    }
+
+    function resolveUsage() {
+      const act = $('hidAction').value;
+      if (!act) return null;
+      if (act === 'custom') {
+        const n = Number($('customUsage').value);
+        if (Number.isInteger(n) && n >= 0 && n <= 0xFFFF) return n;
+        return null;
+      }
+      return HID_ALIASES[act] ?? null;
+    }
+
+    async function sendHid() {
+      if (!hidOutChar) { log('未找到可写 HID Out Report.', 'warn'); return; }
+      const usage = resolveUsage();
+      if (usage == null) { log('请选择一个操作或输入有效的自定义 Usage.', 'warn'); return; }
+      const press = new Uint8Array([usage & 0xFF, (usage >> 8) & 0xFF]);
+      const release = new Uint8Array([0x00, 0x00]);
+      try {
+        await hidOutChar.writeValueWithoutResponse?.(press).catch(() => hidOutChar.writeValue(press));
+        await new Promise(r => setTimeout(r, 40));
+        await hidOutChar.writeValueWithoutResponse?.(release).catch(() => hidOutChar.writeValue(release));
+        log('已发送 HID 操作: 0x' + usage.toString(16).padStart(4,'0'), 'ok');
+      } catch (e) { log('发送失败: ' + e.message, 'err'); }
+    }
+
+    $('btnConnect').addEventListener('click', connect);
+    $('btnQuick').addEventListener('click', quickReconnect);
+    $('btnDisconnect').addEventListener('click', disconnect);
+    $('btnReadBatt').addEventListener('click', readBattery);
+    $('btnSubBatt').addEventListener('click', subBattery);
+    $('btnUnsubBatt').addEventListener('click', unsubBattery);
+    $('btnSendHid').addEventListener('click', sendHid);
+  </script>
+</body>
+</html>

@@ -124,6 +124,69 @@ CONFIG = {
         "temp_name": "Temperature",
         "hum_name": "Humidity",
     },
+    # ==========================
+    # BLE 配置段（新增）
+    # ==========================
+    "ble": {
+        # 描述: 是否启用 BLE 功能
+        # 影响: 关闭后不初始化 BLE 子系统, 节约资源
+        # 建议: 开发与演示阶段保持 True, 量产可按需关闭
+        "enabled": True,
+        # 描述: 是否启用 HID 模式（HID over GATT）
+        # 影响: 开启 HID 可作为遥控器/键鼠等; 但某些 Web Bluetooth 环境与 HID 并不兼容
+        # 建议: 默认为 False 以兼容 Web Bluetooth
+        "use_hid": False,
+        # 描述: BLE GAP 设备名称
+        # 影响: 影响被扫描与识别时的显示名称
+        # 建议: 短而有辨识度, 避免占用过多广播字节
+        "device_name": "ESP32-C3",
+        # 描述: 广播参数
+        # 影响: 广播间隔越短越容易被发现, 但更耗电
+        # 建议: 100-1000ms, Demo 使用 150ms 比较灵敏
+        "adv": {
+            "interval_ms": 150,
+        },
+        # 描述: 服务开关
+        # 影响: 控制标准与自定义服务是否注册
+        # 建议: 根据需求按需开启
+        "services": {
+            "battery": True,         # 电池服务 (0x180F)
+            "device_info": True,     # 设备信息服务 (0x180A)
+            "env_sensing": False,    # 环境感知服务 (温湿度等)
+            "uart": False,           # 自定义 UART/配置服务（后续实现）
+            "ota": False,            # OTA 服务（后续实现）
+        },
+        # 描述: 安全配置（用于 BLE 配置服务的写入权限控制）
+        # 影响: 决定是否需要鉴权才能修改配置/触发敏感操作
+        # 建议: 开发阶段可为 "none"; 上线建议切换到 "token"
+        "security": {
+            "auth": "none",         # "none" | "token"
+            "token": "changeme",    # 示例 token（请勿用于生产）
+            "allowlist": [],         # 可选: 允许的中心设备地址列表
+        },
+        # 描述: 电量模拟配置（用于演示/测试通知）
+        # 影响: 按周期调整电量并向订阅者通知
+        # 建议: 开发演示可开启, 生产可关闭
+        "simulation": {
+            "battery": {
+                "enabled": True,
+                "start": 100,
+                "step": -1,
+                "min": 0,
+                "period_ms": 10000,
+                "strategy": "hardware",  # "hardware" | "software"
+                "timer_id": 0,
+            }
+        },
+        # 描述: 配置服务（通过 Web Bluetooth 修改配置）
+        # 影响: 打开后将注册自定义服务, 接受 GET/SET/SAVE/REBOOT 等命令
+        # 建议: 开发阶段开启; 生产按需启用并配合鉴权
+        "config_service": {
+            "enabled": True,
+            "persistence_path": "/config.json",
+            "allow_reboot": True,
+        },
+    },
 }
 
 

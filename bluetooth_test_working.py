@@ -1,12 +1,12 @@
 """
-ESP32-C3 蓝牙模块测试 (极简版)
-专注于最基础的连接功能
+ESP32-C3 蓝牙模块
 """
 
 import bluetooth
 import time
-import uasyncio as asyncio
 from micropython import const
+import micropython
+from machine import Timer
 
 # 蓝牙常量
 _IRQ_CENTRAL_CONNECT = const(1)
@@ -14,7 +14,7 @@ _IRQ_CENTRAL_DISCONNECT = const(2)
 _IRQ_GATTS_WRITE = const(3)
 
 class ESP32C3BluetoothWorking:
-    """ESP32-C3蓝牙测试类 (极简版)"""
+    """ESP32-C3蓝牙类"""
     
     def __init__(self, name="ESP32-C3", use_hid=True):
         self.name = name
@@ -33,6 +33,11 @@ class ESP32C3BluetoothWorking:
         self._char_handle = None
         self._use_hid = use_hid
         self._hid_handles = {}
+        # 电量模拟定时器相关
+        self._sim_timer = None
+        self._sim_batt = 100
+        self._sim_step = -1
+        self._sim_min = 0
         
         # 初始化服务
         try:
@@ -56,7 +61,7 @@ class ESP32C3BluetoothWorking:
         return None
         
     def _init_service_working(self):
-        """极简版的服务初始化"""
+        """服务初始化"""
         try:
             print("尝试初始化蓝牙服务...")
             
@@ -142,7 +147,7 @@ class ESP32C3BluetoothWorking:
         return bytes(sr)
     
     def _start_advertising_working(self):
-        """极简版的广播设置"""
+        """广播设置"""
         try:
             # 将名称放到扫描响应里, 主广播仅携带 Flags+HID UUID+Appearance, 以提升被发现速度
             adv = self._build_adv_payload("", include_hid=self._use_hid)
@@ -281,7 +286,7 @@ class ESP32C3BluetoothWorking:
         self._start_advertising_working()
     
     def _irq_handler(self, event, data):
-        """基础版BLE事件处理"""
+        """BLE事件处理"""
         try:
             if event == _IRQ_CENTRAL_CONNECT:
                 # 设备连接
@@ -473,6 +478,8 @@ class ESP32C3BluetoothWorking:
     def stop(self):
         """停止蓝牙服务"""
         try:
+            # 先停止电量模拟
+            self.stop_battery_simulation()
             # 断开所有连接
             for conn_handle in list(self._connections):
                 self.ble.gap_disconnect(conn_handle)
@@ -488,128 +495,88 @@ class ESP32C3BluetoothWorking:
         except Exception as e:
             print(f"停止服务失败: {e}")
 
-# 测试函数
-async def test_bluetooth_working():
-    """极简版蓝牙测试"""
-    print("=== ESP32-C3 蓝牙测试 (极简版) ===")
-    print("专注于最基础的连接功能")
-    print()
-    
-    try:
-        # 创建蓝牙测试实例, 默认启用 HID
-        bt = ESP32C3BluetoothWorking("ESP32 Sensor", use_hid=True)
-        
-        print("蓝牙初始化完成")
-        print("请使用手机蓝牙APP搜索 'ESP32 Sensor'")
-        print("按 Ctrl+C 停止测试")
-        print()
-        
-        # 只显示状态, 不发送数据
-        while True:
+    # 电量模拟: 使用硬件定时器触发, 在 IRQ 中仅调度到主上下文执行
+    def start_battery_simulation(self, start=100, step=-1, min_level=0, period_ms=10000):
+        """启动电量模拟与通知
+        start: 初始电量百分比
+        step: 每次变化步长, 默认每次 -1
+        min_level: 最低电量值, 低于该值则回到 100
+        period_ms: 触发周期, 默认 10000ms
+        """
+        self._sim_batt = int(start)
+        self._sim_step = int(step)
+        self._sim_min = int(min_level)
+        if self._sim_timer:
             try:
-                status = bt.get_status()
-                if bt.is_connected():
-                    print(f"状态: 连接={status['connections']}, 设备={status['devices']}")
-                else:
-                    print(f"状态: 广播中={status['advertising']}, 等待连接...")
-                
-                await asyncio.sleep(3)
-                
-            except KeyboardInterrupt:
-                print("测试被用户中断")
-                break
-            except Exception as e:
-                print(f"测试错误: {e}")
-                await asyncio.sleep(1)
-        
-        # 停止服务
-        bt.stop()
-        print("测试完成")
-        
-    except Exception as e:
-        print(f"蓝牙初始化失败: {e}")
-        await simple_test()
+                self._sim_timer.deinit()
+            except Exception:
+                pass
+        self._sim_timer = Timer(0)
+        try:
+            self._sim_timer.init(period=period_ms, mode=Timer.PERIODIC, callback=self._on_timer_batt)
+            print(f"电量模拟已启动: start={self._sim_batt}, step={self._sim_step}, period={period_ms}ms")
+        except Exception as e:
+            print(f"电量模拟启动失败: {e}")
+            try:
+                self._sim_timer.deinit()
+            except Exception:
+                pass
+            self._sim_timer = None
 
-async def simple_test():
-    """极简蓝牙测试"""
-    print("=== 极简蓝牙测试 ===")
-    
-    try:
-        print("步骤1: 检查蓝牙模块...")
-        ble = bluetooth.BLE()
-        print(f"蓝牙对象创建成功: {type(ble)}")
-        
-        print("步骤2: 激活蓝牙...")
-        ble.active(True)
-        print(f"蓝牙激活状态: {ble.active()}")
-        
-        print("步骤3: 检查可用方法...")
-        methods = [method for method in dir(ble) if not method.startswith('_')]
-        print(f"可用方法: {methods}")
-        
-        print("步骤4: 测试不同广播方式...")
-        
-        # 测试方式1: 最简单的广播
-        print("测试方式1: 仅 Flags 广播...")
-        ble.gap_advertise(500_000, adv_data=b"\x02\x01\x06")
-        print("仅 Flags 广播已启动")
-        await asyncio.sleep(5)
-        ble.gap_advertise(None)
-        print("仅 Flags 广播已停止")
-        await asyncio.sleep(2)
-        
-        # 测试方式2: 带设备名称的广播
-        print("测试方式2: 带名称广播...")
-        name_bytes = "ESP32-C3".encode('utf-8')
-        max_name_len = 31 - 3 - 2
-        if len(name_bytes) > max_name_len:
-            name_bytes = name_bytes[:max_name_len]
-        adv = bytearray(b"\x02\x01\x06")
-        adv.append(len(name_bytes) + 1)
-        adv.append(0x09)
-        adv.extend(name_bytes)
-        ble.gap_advertise(500_000, adv_data=bytes(adv))
-        print("带名称广播已启动")
-        await asyncio.sleep(5)
-        ble.gap_advertise(None)
-        print("带名称广播已停止")
-        await asyncio.sleep(2)
-        
-        # 测试方式3: 标准广播数据
-        print("测试方式3: 标准广播数据...")
-        adv_data = bytearray(b"\x02\x01\x06")
-        name_bytes = "ESP32C3".encode('utf-8')
-        adv_data.append(len(name_bytes) + 1)
-        adv_data.append(0x09)
-        adv_data.extend(name_bytes)
-        
-        ble.gap_advertise(500_000, adv_data=bytes(adv_data))
-        print("标准广播数据已启动")
-        await asyncio.sleep(5)
-        ble.gap_advertise(None)
-        print("标准广播数据已停止")
-        
-        print("步骤5: 清理...")
-        ble.active(False)
-        print("蓝牙已停用")
-        
-        print("极简测试完成")
-        
-    except Exception as e:
-        print(f"极简测试失败: {e}")
-        import traceback
-        traceback.print_exc()
+    def stop_battery_simulation(self):
+        """停止电量模拟定时器"""
+        if self._sim_timer:
+            try:
+                self._sim_timer.deinit()
+            except Exception:
+                pass
+            self._sim_timer = None
+            print("电量模拟已停止")
 
-# 主函数
-async def main():
+    def _on_timer_batt(self, t):
+        # 将电量更新任务调度到主上下文, 避免在中断里直接操作 BLE
+        try:
+            micropython.schedule(self._scheduled_batt_update, 0)
+        except Exception:
+            pass
+
+    def _scheduled_batt_update(self, _):
+        try:
+            # 计算下一次电量
+            next_lvl = self._sim_batt + self._sim_step
+            if next_lvl < self._sim_min:
+                next_lvl = 100
+            if next_lvl > 100:
+                next_lvl = 100
+            self._sim_batt = next_lvl
+            # 写入并通知
+            self.update_battery(self._sim_batt)
+        except Exception as e:
+            print(f"电量模拟更新失败: {e}")
+
+def main():
     """主函数"""
-    print("ESP32-C3 蓝牙模块测试 (极简版)")
-    await test_bluetooth_working()
+    print("ESP32-C3 蓝牙模块")
+    
+    # 创建蓝牙实例(关闭 HID, 启用基础电池服务, 便于 Web Bluetooth 访问 0x180F/0x2A19)
+    bt = ESP32C3BluetoothWorking("ESP32-C3", use_hid=False)
+    
+    print("蓝牙初始化完成")
+    print("设备名称: ESP32-C3")
+    print(f"状态: {bt.get_status()}")
+    
+    # 启动电量模拟: 每 10s 下降 1%, 低于 0 回到 100
+    try:
+        bt.start_battery_simulation(start=100, step=-1, min_level=0, period_ms=10000)
+    except Exception as e:
+        print(f"启动电量模拟失败: {e}")
+    
+    return bt
 
-# 直接运行
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        bt = main()
+        print("蓝牙模块已启动")
     except KeyboardInterrupt:
         print("程序被中断")
     except Exception as e:
