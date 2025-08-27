@@ -22,6 +22,7 @@ from lib.logger import info, warning, error, debug
 from lib.event_bus_lock import EVENTS
 from lib.async_runtime import get_async_runtime
 from utils import json_dumps, get_epoch_unix_s as util_get_epoch_unix_s
+from ha import HomeAssistantHelper
 
 class NetworkManager:
     """网络管理器: 负责 WiFi -> NTP -> MQTT 连接流程与状态维护"""
@@ -72,6 +73,8 @@ class NetworkManager:
         self._lwt_configured = False
         
         self._init_components()
+        # 初始化 HA 助手
+        self.ha = HomeAssistantHelper(self.config, self.get_device_id, self.mqtt_publish)
         self._register_async_tasks()
 
     def _register_async_tasks(self):
@@ -305,7 +308,7 @@ class NetworkManager:
             # 在首次连接前配置 LWT(若支持), 使用 availability 主题
             try:
                 if (not self._lwt_configured) and self.mqtt_controller and hasattr(self.mqtt_controller, "set_last_will"):
-                    avail_topic = self.get_availability_topic()
+                    avail_topic = self.ha.availability_topic()
                     self.mqtt_controller.set_last_will(avail_topic, "offline", qos=0, retain=True)
                     self._lwt_configured = True
                     debug("已设置MQTT LWT: {} -> offline", avail_topic, module="NET")
@@ -324,9 +327,9 @@ class NetworkManager:
                     self.event_bus.publish(EVENTS["MQTT_STATE_CHANGE"], state="connected")
                     try:
                         # HA 可用性: 连接成功后发布 retained 可用性为 online
-                        self.mqtt_publish(self.get_availability_topic(), "online", retain=True, qos=0)
+                        self.ha.publish_availability(True)
                         # 发布 Home Assistant Discovery 配置
-                        self.publish_ha_discovery()
+                        self.ha.publish_discovery()
                         # 可选: 设备 announce
                         self.publish_announce()
                     except Exception:
@@ -372,7 +375,7 @@ class NetworkManager:
                         try:
                             # 尝试在断开前发布 offline
                             if self.mqtt_controller and hasattr(self.mqtt_controller, "is_connected") and self.mqtt_controller.is_connected():
-                                self.mqtt_publish(self.get_availability_topic(), "offline", retain=True, qos=0)
+                                self.ha.publish_availability(False)
                         except Exception:
                             pass
                         try:
@@ -395,11 +398,9 @@ class NetworkManager:
                     self.event_bus.publish(EVENTS["MQTT_STATE_CHANGE"], state="connected")
                     try:
                         # HA 可用性: 连接成功后发布 retained 可用性为 online
-                        self.mqtt_publish(self.get_availability_topic(), "online", retain=True, qos=0)
+                        self.ha.publish_availability(True)
                         # 发布 Home Assistant Discovery 配置
-                        self.publish_ha_discovery()
-                        # 可选: 设备 announce
-                        self.publish_announce()
+                        self.ha.publish_discovery()
                     except Exception:
                         pass
                 if self.mqtt_connected:
@@ -426,7 +427,7 @@ class NetworkManager:
             if self.mqtt_controller and self.mqtt_connected:
                 try:
                     # 发布可用性为 offline (retained)
-                    self.mqtt_publish(self.get_availability_topic(), "offline", retain=True, qos=0)
+                    self.ha.publish_availability(False)
                 except Exception:
                     pass
                 self.mqtt_controller.disconnect()
@@ -483,90 +484,7 @@ class NetworkManager:
         except Exception:
             return "device/{}/{}".format(self.get_device_id(), "unknown")
 
-    # ===== 新增: HA 友好的主题辅助 =====
-    def get_availability_topic(self):
-        """返回 HA 可用性主题: device/<id>/availability"""
-        return self.get_device_topic("availability")
 
-    def get_state_topic(self, sub):
-        """返回设备状态子主题: device/<id>/state/<sub>"""
-        try:
-            sub_tail = str(sub).strip("/")
-            return self.get_device_topic("state/{}".format(sub_tail))
-        except Exception:
-            return self.get_device_topic("state/unknown")
-
-    def publish_ha_discovery(self):
-        """发布 Home Assistant Discovery 配置(temperature, humidity)
-        注意: 不依赖 LWT, 通过 availability 主题指示在线/离线
-        """
-        try:
-            cid = self.get_device_id()
-            # 设备信息
-            device_info = {
-                "identifiers": [cid],
-                "manufacturer": "Custom",
-                "model": "ESP32-C3",
-                "name": "ESP32C3 {}".format(cid[-4:] if cid and len(cid) >= 4 else cid),
-            }
-            availability_topic = self.get_availability_topic()
-            availability = [{
-                "topic": availability_topic,
-                "payload_available": "online",
-                "payload_not_available": "offline",
-            }]
-
-            # 读取可配置的 discovery 前缀, 默认 "homeassistant"
-            # 优先 ha.discovery_prefix, 其次 mqtt.discovery_prefix, 最后默认
-            try:
-                ha_cfg = (self.config or {}).get("ha", {}) or {}
-            except Exception:
-                ha_cfg = {}
-            discovery_prefix = (
-                ha_cfg.get("discovery_prefix")
-                or self.mqtt_config.get("discovery_prefix")
-                or "homeassistant"
-            )
-            # 规范化前缀, 去除首尾斜杠
-            try:
-                discovery_prefix = str(discovery_prefix).strip("/")
-            except Exception:
-                discovery_prefix = "homeassistant"
-
-            # 温度配置
-            temp_cfg = {
-                "name": "Temperature",
-                "state_topic": self.get_state_topic("temperature"),
-                # HA 兼容: 使用 availability 数组定义可用性
-                "availability": availability,
-                "unique_id": "{}_temperature".format(cid),
-                "unit_of_measurement": "°C",
-                "device_class": "temperature",
-                "state_class": "measurement",
-                "device": device_info,
-            }
-            # 湿度配置
-            hum_cfg = {
-                "name": "Humidity",
-                "state_topic": self.get_state_topic("humidity"),
-                # HA 兼容: 使用 availability 数组定义可用性
-                "availability": availability,
-                "unique_id": "{}_humidity".format(cid),
-                "unit_of_measurement": "%",
-                "device_class": "humidity",
-                "state_class": "measurement",
-                "device": device_info,
-            }
-            # 主题: <discovery_prefix>/sensor/<cid>/temperature|humidity/config
-            base = discovery_prefix
-            t_topic = "{}/sensor/{}/temperature/config".format(base, cid)
-            h_topic = "{}/sensor/{}/humidity/config".format(base, cid)
-            self.mqtt_publish(t_topic, temp_cfg, retain=True, qos=0)
-            self.mqtt_publish(h_topic, hum_cfg, retain=True, qos=0)
-            info("已发布 Home Assistant Discovery 配置", module="NET")
-            info("HA Discovery 详细: t_topic={} h_topic={} retain=True; t_payload={} h_payload={}", t_topic, h_topic, temp_cfg, hum_cfg, module="NET")
-        except Exception as e:
-            warning("发布 Home Assistant Discovery 失败: {}", e, module="NET")
 
     def publish_announce(self):
         """发布设备 announce 信息, 供服务器侧自动注册"""
@@ -588,3 +506,11 @@ class NetworkManager:
             return val if val is not None else "N/A"
         except Exception:
             return "N/A"
+
+    def state_topic(self, sub: str) -> str:
+        """统一的状态主题, 仅使用 HA 助手"""
+        return self.ha.state_topic(sub)
+
+    def availability_topic(self) -> str:
+        """统一的可用性主题, 仅使用 HA 助手"""
+        return self.ha.availability_topic()

@@ -42,31 +42,28 @@ python build.py --clean-cache
 python build.py --upload --port COM3
 ```
 
+### 开发环境准备
+```bash
+# 安装构建工具依赖
+pip install pyserial mpremote mpy-cross
+
+# 代码格式化(可选)
+pip install black
+
+# 代码检查(可选)
+pip install flake8
+```
+
 ### 代码质量检查
 ```bash
-# 安装依赖
-pip install -r requirements.txt
-
 # 代码格式化
 black app/
 
 # 代码检查
 flake8 app/
 
-# 类型检查
-mypy app/
-```
-
-### 测试
-```bash
-# 运行所有测试
-pytest app/tests/
-
-# 运行特定测试
-pytest app/tests/test_event_bus.py
-
-# 带覆盖率报告
-pytest app/tests/ --cov=app
+# 运行 MicroPython 语法检查
+python -m py_compile app/main.py
 ```
 
 ## 项目架构概述
@@ -95,15 +92,15 @@ pytest app/tests/ --cov=app
 - **接口**: `subscribe(event_name, callback)`, `publish(event_name, *args, **kwargs)`, `process_events()`
 - **配置**: 队列大小64, 处理间隔25ms, 批处理数量5, 错误阈值10
 
-### 2. 函数式状态机 (FunctionalStateMachine) - `app/state_machine.py`
+### 2. 函数式状态机 (FSM) - `app/state_machine.py`
 - **功能**: 清晰的系统状态管理和转换
-- **支持状态**: BOOT → INIT → NETWORKING → RUNNING → WARNING → ERROR → SAFE_MODE → RECOVERY → SHUTDOWN
+- **支持状态**: INIT → CONNECTING → RUNNING → ERROR (简化为4个核心状态)
 - **特性**: 
-  - 使用函数和字典替代类继承
   - 事件驱动的状态转换
   - 错误计数和自动恢复
   - LED状态同步
-- **状态处理**: 每个状态有独立的enter/exit/update处理函数
+  - 网络连接状态监控
+- **状态处理**: 每个状态有独立的进入逻辑和更新处理
 
 ### 3. 网络管理器 (NetworkManager) - `app/net/network_manager.py`
 - **功能**: 极简网络连接管理, 封装WiFi、MQTT、NTP
@@ -257,10 +254,11 @@ object_pool.add_pool("system_events", lambda: {"event": "", "state": ""}, 5)
 ## 配置管理
 
 ### 核心配置段
-- **mqtt**: MQTT服务器连接配置
-- **wifi**: WiFi网络配置(当前为单SSID连接；多网络选择由上层实现)
-- **daemon**: 系统守护进程配置(LED引脚、监控间隔等)
-- **system**: 系统行为配置(调试模式、主循环延迟等)
+- **mqtt**: MQTT服务器连接配置(broker、port、user、password、keepalive等)
+- **wifi**: WiFi网络配置(支持多网络列表，按RSSI强度排序连接)
+- **ntp**: NTP时间同步配置
+- **daemon**: 系统守护进程配置(看门狗、错误计数等)
+- **system**: 系统行为配置(主循环延迟等)
 - **device**: 设备信息配置(名称、位置、版本等)
 
 ### 配置访问接口
@@ -282,32 +280,32 @@ timeout = get_config('wifi', 'timeout', 15)
 app/                        # 开发源代码目录(编译后上传到设备根目录)
 ├── lib/                    # 核心库模块
 │   ├── lock/              # 不可编辑的外部库
-│   │   ├── event_bus.py   # 事件总线核心实现(含事件常量)
+│   │   ├── event_bus.py   # 事件总线核心实现
 │   │   ├── umqtt.py       # MQTT客户端库
 │   │   └── ulogging.py    # 轻量级日志库
+│   ├── event_bus_lock.py  # 事件总线(含事件常量)
 │   ├── logger.py          # 极简日志系统
-│   ├── object_pool.py     # 对象池管理器
-│   ├── static_cache.py    # 静态缓存系统
-│   └── helpers.py         # 通用辅助函数
-├── fsm/                    # 函数式状态机
-│   ├── core.py           # 状态机核心实现
-│   ├── handlers.py       # 状态处理函数
-│   ├── context.py        # 状态机上下文管理
-│   └── state_const.py    # 状态常量定义
+│   ├── async_runtime.py   # 异步运行时
+│   └── ulogging_lock.py   # 日志库包装
 ├── hw/                     # 硬件抽象层
 │   ├── led.py            # LED控制器(开箱即用)
+│   └── sht40.py          # SHT40温湿度传感器
 ├── net/                    # 网络通信层
 │   ├── __init__.py       # 网络模块导入
-│   ├── index.py          # 网络管理器(统一入口)
+│   ├── network_manager.py # 网络管理器
 │   ├── wifi.py           # WiFi管理器
 │   ├── mqtt.py           # MQTT控制器
 │   └── ntp.py            # NTP时间同步
 ├── utils/                  # 工具函数
-│   ├── helpers.py        # 系统助手函数
+│   ├── __init__.py       # 工具模块导入
+│   ├── json_utils.py     # JSON工具函数
+│   ├── time_utils.py     # 时间工具函数
 │   └── timers.py         # 定时器工具集
 ├── main.py                # 主程序入口
+├── state_machine.py       # 状态机实现
 ├── config.py              # 配置管理
 └── boot.py                # 启动引导
+└── tests/                 # 单元测试目录
 ```
 
 ### 开发原则
@@ -363,9 +361,32 @@ class MyModule:
 - **状态管理**: 使用函数式状态机管理系统状态, 支持自动错误恢复
 - **内存优化**: 使用对象池、静态缓存等技术优化内存使用
 - **事件总线**: EventBus 已简化为单队列模式, 集成错误断路器机制, 使用手动处理节省硬件定时器
-- **网络管理**: 使用统一的 NetworkManager 管理所有网络连接
+- **网络管理**: 使用统一的 NetworkManager 管理所有网络连接，支持WiFi多网络选择和指数退避重连
 - **配置系统**: 配置集中在 `config.py` 中, 支持运行时验证和默认值
 - **日志系统**: 已重构为极简日志系统, 直接导入全局函数使用, 支持颜色输出和模块标识
 - **LED系统**: 已重构为开箱即用模式, 无需实例化, 直接调用全局函数使用, 支持延迟初始化和手动更新
 - **软件定时**: 主循环、EventBus和LED控制器都使用diff时间实现, 节省硬件定时器资源
 - **错误处理**: 集成错误断路器和分级错误恢复机制, 提高系统稳定性
+- **异步运行时**: 使用 `lib.async_runtime` 管理异步任务，支持任务生命周期管理
+- **温湿度监控**: 集成SHT40传感器，支持环境温湿度数据采集和MQTT上报
+- **WiFi多网络**: 支持配置多个WiFi网络，按信号强度自动选择最优网络连接
+
+## 项目实际特性
+
+### 网络连接特性
+- **WiFi多网络支持**: 配置文件中可设置多个WiFi网络，系统会扫描并按RSSI强度排序连接
+- **指数退避重连**: WiFi和MQTT都支持指数退避重连机制，避免频繁重连
+- **连接状态监控**: 实时监控WiFi和MQTT连接状态，自动处理断线重连
+- **LWT支持**: MQTT支持Last Will and Testament功能
+
+### 系统监控特性
+- **内存监控**: 实时监控内存使用情况，支持垃圾回收触发
+- **温度监控**: 监控MCU内部温度和环境温湿度(SHT40)
+- **状态报告**: 定期通过MQTT上报系统状态和传感器数据
+- **看门狗保护**: 支持硬件看门狗，防止系统死锁
+
+### 开发调试特性
+- **详细日志**: 支持分级日志输出，包含模块标识和时间戳
+- **LED状态指示**: 通过LED模式显示系统运行状态
+- **REPL支持**: 支持通过串口进行交互式调试
+- **构建系统**: 支持智能增量上传，提高开发效率

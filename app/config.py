@@ -107,6 +107,23 @@ CONFIG = {
         # 建议: 5-10秒
         "timeout": 5000,
     },
+    "ha": {
+        # 描述: Home Assistant discovery 前缀
+        # 影响: 构建 discovery 主题的根路径
+        # 建议: 保持为 'homeassistant' 或与你的 HA 配置一致
+        "discovery_prefix": "homeassistant",
+        # 描述: 设备在 HA 中显示的名称(可选)
+        "device_name": "Zusheng's ESP32C3",
+        # 描述: 生产厂家(可选)
+        "manufacturer": "Zusheng STU",
+        # 描述: 型号(可选)
+        "model": "C3",
+        # 描述: 固件版本(可选)
+        "sw_version": "2.3.0",
+        # 描述: 传感器展示名称(可选)
+        "temp_name": "Temperature",
+        "hum_name": "Humidity",
+    },
 }
 
 

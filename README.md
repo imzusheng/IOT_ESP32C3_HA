@@ -1,561 +1,288 @@
 # ESP32-C3 MicroPython IoT 项目 (重构版)
 
 - ESP32C3 设备基础限制
-    - 最多支持 2 个定时器(编号 0 至 1)
-    - 总RAM: 264KB SRAM
-    - 总Flash: 4MB Flash
-    - CPU频率: 160000000 Hz (160.00 MHz)
+  - 最多支持 2 个定时器(编号 0 至 1)
+  - 总RAM: 264KB SRAM
+  - 总Flash: 4MB Flash
+  - CPU频率: 160000000 Hz (160.00 MHz)
 - machine 模块
+  - 支持: ADC, I2C, I2S, PWM, Pin, RTC, SPI, UART, WDT 等
+  - machine.ADC: 支持 12位精度，多种衰减模式
   - 支持:['__class__', '__name__', 'ADC', 'ADCBlock', 'DEEPSLEEP', 'DEEPSLEEP_RESET', 'EXT0_WAKE', 'EXT1_WAKE', 'HARD_RESET', 'I2C', 'I2S', 'PIN_WAKE', 'PWM', 'PWRON_RESET', 'Pin', 'RTC', 'SDCard', 'SLEEP', 'SOFT_RESET', 'SPI', 'Signal', 'SoftI2C', 'SoftSPI', 'TIMER_WAKE', 'TOUCHPAD_WAKE', 'Timer', 'UART', 'ULP_WAKE', 'WDT', 'WDT_RESET', '__dict__', 'bitstream', 'bootloader', 'deepsleep', 'dht_readinto', 'disable_irq', 'enable_irq', 'freq', 'idle', 'lightsleep', 'mem16', 'mem32', 'mem8', 'reset', 'reset_cause', 'sleep', 'soft_reset', 'time_pulse_us', 'unique_id', 'wake_reason']
   - machine.ADC:['__class__', '__name__', 'read', 'ATTN_0DB', 'ATTN_11DB', 'ATTN_2_5DB', 'ATTN_6DB', 'WIDTH_12BIT', '__bases__', '__dict__', 'atten', 'block', 'init', 'read_u16', 'read_uv', 'width']
-- 在开发过程中 MQTT 服务器失败为正常现象, 只需要代码中做好异常处理即可
+- **重要**: 在开发过程中 MQTT 服务器失败为正常现象，代码中已做好异常处理
 
 ## 📋 项目概述
 
-这是一个基于ESP32-C3的MicroPython物联网设备项目, 专为Home Assistant智能家居系统设计。项目采用**事件驱动架构**和**模块化设计**, 提供WiFi连接、MQTT通信、系统监控、LED状态指示和错误恢复等功能, 确保设备在资源受限的嵌入式环境中稳定运行。
-
-## ✨ 主要特性
-
-- **🔄 事件驱动架构**: 基于EventBus的松耦合设计, 支持模块间通信
-- **📡 WiFi连接管理**: 网络扫描、连接、状态检查和信号强度评估
-- **📡 MQTT通信**: 高效的MQTT客户端, 支持简化连接管理和内存优化
-- **📊 系统监控**: 内存使用与系统健康；环境温湿度(可选)
-- **🛠️ 智能错误恢复**: 分级错误处理和自动恢复机制
-- **💾 内存优化**: 对象池模式和智能垃圾回收, 适合ESP32C3的264KB内存限制
-- **🐕 看门狗保护**: 防止系统死锁, 确保设备稳定运行
-- **💡 LED状态指示**: 通过LED显示设备运行状态, 支持多种预设模式
-- **⚙️ 配置管理**: 集中式配置系统, 支持运行时验证
-- **🌐 Web配置界面**: 基于Web Bluetooth的配置工具, 支持Apple设计风格
+这是一个基于ESP32-C3的MicroPython物联网设备项目，专为Home Assistant智能家居系统设计。采用**事件驱动架构**和**模块化设计**，提供WiFi连接、MQTT通信、系统监控、LED状态指示和错误恢复等功能，确保设备在资源受限的嵌入式环境中稳定运行。
 
 ## 📁 项目结构
 
 ```
 IOT_ESP32C3/
 ├── app/                    # 开发源代码目录(编译后直接上传到设备根目录)
-│   ├── lib/               # 通用库和工具模块
-│   │   ├── object_pool.py # 对象池管理器(废弃,  请勿使用)
-│   │   ├── static_cache.py # 静态缓存系统(废弃,  请勿使用)
-│   │   ├── logger.py      # 日志系统
-│   │   └── lock/          # 不可编辑的外部库
-│   │       ├── event_bus.py   # 事件总线
-│   │       ├── umqtt.py   # MQTT客户端库
-│   │       └── ulogging.py # 轻量级日志库
-│   ├── hw/                # 硬件相关模块
-│   ├── net/               # 网络通信模块
-│   ├── utils/             # 工具函数模块
-│   ├── boot.py           # 启动引导
-│   ├── config.py         # 配置管理
-│   ├── event_const.py    # 事件常量定义
-│   ├── fsm.py            # 系统状态机
-│   ├── main.py           # 主程序入口
-│   └── logger.py         # 日志系统
-├── app/tests/             # 单元测试
-├── docs/                  # 文档
-├── build.py              # 构建脚本
-└── requirements.txt      # Python依赖
+│   ├── lib/               # 核心库模块
+│   │   ├── event_bus_lock.py  # 事件总线(含事件常量)
+│   │   ├── logger.py          # 极简日志系统
+│   │   ├── async_runtime.py   # 异步运行时
+│   │   └── lock/              # 不可编辑的外部库
+│   ├── hw/                # 硬件抽象层
+│   │   ├── led.py            # LED控制器
+│   │   └── sht40.py          # SHT40温湿度传感器
+│   ├── net/               # 网络通信层
+│   │   ├── network_manager.py # 网络管理器
+│   │   ├── wifi.py           # WiFi管理器
+│   │   ├── mqtt.py           # MQTT控制器
+│   │   └── ntp.py            # NTP时间同步
+│   ├── utils/             # 工具函数
+│   ├── state_machine.py   # 状态机实现
+│   ├── config.py          # 配置管理
+│   ├── main.py            # 主程序入口
+│   └── boot.py            # 启动引导
+├── build.py               # 构建脚本
+└── README.md              # 项目说明
 ```
 
-## 🏗️ 重构架构设计
+## 🏗️ 核心模块
 
-### 核心架构组件
-
-#### 1. 事件总线 (EventBus)
-- **位置**: [`app/lib/event_bus_lock.py`](app/lib/event_bus_lock.py)
-- **功能**: 模块间通信的核心枢纽, 支持发布-订阅模式
+### 事件总线 (EventBus)
+- **位置**: `app/lib/event_bus_lock.py`
+- **功能**: 模块间异步通信的核心枢纽
 - **特性**: 
-  - 基于diff时间的软件定时系统, 节省硬件定时器资源
-  - 错误断路器机制, 防止系统级联故障
-  - 系统状态监控(正常/警告/严重错误)
+  - 基于diff时间的软件定时系统
+  - 错误断路器机制，防止系统级联故障
   - 批量事件处理和内存优化
-  - 自动垃圾回收和性能统计
-- **接口**: `subscribe(event_name, callback)`, `publish(event_name, *args, **kwargs)`, `process_events()`
-- **配置**: 队列大小64, 处理间隔25ms, 批处理数量5, 错误阈值10
+  - 支持发布-订阅模式
 
-#### 2. 函数式状态机 (FunctionalStateMachine)
-- **位置**: [`app/state_machine.py`](app/state_machine.py)
-- **功能**: 清晰的系统状态管理和转换
-- **支持状态**: BOOT → INIT → NETWORKING → RUNNING → WARNING → ERROR → SAFE_MODE → RECOVERY → SHUTDOWN
-- **特性**: 
-  - 使用函数和字典替代类继承
-  - 事件驱动的状态转换
-  - 错误计数和自动恢复
-  - LED状态同步
-- **状态处理**: 每个状态有独立的enter/exit/update处理函数
+### 状态机 (FSM)
+- **位置**: `app/state_machine.py`
+- **功能**: 系统状态管理和转换
+- **支持状态**: INIT → CONNECTING → RUNNING → ERROR
+- **特性**: 事件驱动的状态转换、错误计数和自动恢复
 
-#### 3. 网络管理器 (NetworkManager)
-- **位置**: [`app/net/network_manager.py`](app/net/network_manager.py)
-- **功能**: 极简网络连接管理, 封装WiFi、MQTT、NTP
+### 网络管理器 (NetworkManager)
+- **位置**: `app/net/network_manager.py`
+- **功能**: 统一管理WiFi、MQTT、NTP连接
 - **特性**: 
-  - 极简架构, 单一文件管理
+  - 支持多WiFi网络自动选择
+  - 指数退避重连机制
   - 异步非阻塞调用
-  - MQTT失败不影响WiFi连接
-  - 智能重连机制
-  - 事件驱动状态通知
-- **子模块**: 
-  - WiFi管理器 (`app/net/wifi.py`)
-  - MQTT控制器 (`app/net/mqtt.py`) 
-  - NTP同步 (`app/net/ntp.py`)
 
-### 硬件抽象层
+### LED控制器
+- **位置**: `app/hw/led.py`
+- **功能**: 丰富的LED状态指示和模式控制
+- **特性**: 开箱即用、延迟初始化、多种预设模式
 
-#### 4. LED模式控制器
-- **位置**: [`app/hw/led.py`](app/hw/led.py)
-- **功能**: 丰富的LED状态指示和模式控制, 开箱即用
-- **特性**: 
-  - 开箱即用: 无需初始化, 直接调用全局函数
-  - 延迟初始化: 首次调用时自动初始化
-  - 单例模式: 防止重复实例化
-  - 手动更新模式: 由主循环调用,节省硬件定时器
-  - 多种预设模式: blink, pulse, cruise, sos, off
-  - 状态可视化: 通过不同LED模式指示系统状态
-- **使用方式**: 
-  ```python
-  from hw.led import play, cleanup, process_led_updates
-  play('blink')  # 播放闪烁模式
-  process_led_updates()  # 手动处理LED更新(主循环中调用)
-  cleanup()      # 清理资源
-  ```
+### 日志系统
+- **位置**: `app/lib/logger.py`
+- **功能**: 极简日志系统，专为ESP32-C3设计
+- **特性**: 零配置、颜色支持、模块标识
 
-### 网络通信层
+## ⚙️ 常用配置
 
-#### 5. WiFi管理器 (WifiManager)
-- **位置**: [`app/net/wifi.py`](app/net/wifi.py)
-- **功能**: 健壮的WiFi连接管理
-- **特性**: 扫描、连接、断开、连接状态检查
-
-#### 6. MQTT控制器 (MqttController)
-- **位置**: [`app/net/mqtt.py`](app/net/mqtt.py)
-- **功能**: 高效的MQTT通信管理
-- **特性**: 心跳监控、内存优化
-
-### 系统服务层
-
-#### 7. 配置管理 (Config)
-- **位置**: [`app/config.py`](app/config.py)
-- **功能**: 集中式配置管理
-- **特性**: 类型验证、默认值、运行时检查
-- **接口**: `get_config(section, key, default)`
-- **当前配置**: 包含daemon(看门狗、错误计数)和system(主循环延迟)配置段
-
-#### 8. 日志系统 (Logger)
-- **位置**: [`app/lib/logger.py`](app/lib/logger.py)
-- **功能**: 极简日志系统, 专为ESP32-C3嵌入式环境设计
-- **特性**: 零配置、拿来即用、固定格式、颜色支持、内存优化
-- **级别**: DEBUG, INFO, WARNING, ERROR
-- **使用**: 直接导入 `debug`, `info`, `warning`, `error` 函数即可使用
-- **颜色支持**: ERROR级别显示为红色, WARNING级别显示为橙黄色, FSM模块显示为翠绿色, NET模块显示为靛蓝色
-
-#### 9. 主控制器 (MainController)
-- **位置**: [`app/main.py`](app/main.py)
-- **功能**: 依赖注入容器和系统启动
-- **特性**: 模块化管理、优雅启动、资源清理、基于diff时间的主循环
-- **流程**: 加载配置 → 初始化核心服务 → 创建模块控制器 → 启动基于diff时间的主循环
-- **主循环特点**: 
-  - 使用 `time.ticks_ms()` 和 `time.ticks_diff()` 实现精确时间控制
-  - 集成EventBus手动事件处理, 节省硬件定时器
-  - 默认循环延迟50ms, 可通过配置调整
-  - 支持看门狗喂狗和状态监控
-  - 集成LED手动更新处理
-
-## 🔄 事件驱动系统
-
-### 事件类型定义
-- **位置**: 事件常量当前由各模块内联定义, 后续如抽离将放置于 `app/event_const.py`
-- **包含**: 系统事件、网络事件、传感器事件、错误事件
-
-### 事件流程示例
-```
-WiFi连接成功 → NTP时间同步 → TIME_UPDATED事件 → 计时器队列调度 → 时间相关模块开始工作
-```
-
-### 事件载荷与回调签名约定
-- 回调优先采用新签名: callback(event_name, *args, **kwargs), 事件名作为第一个参数, 便于统一处理与日志追踪。
-- 兼容旧签名: 若回调不接受 event_name, 将自动降级为 callback(*args, **kwargs)；仍不兼容则尝试 callback(), 确保向后兼容。
-- TIME_UPDATED 事件载荷: 从"完成B"起, 事件将附带关键字参数 timestamp(秒级Unix时间戳)。示例: 
-  - 发布方: event_bus.publish(EVENT.TIME_UPDATED, timestamp=timestamp)
-  - 订阅方回调示例: def _on_time_updated(self, event_name, timestamp=None, **kwargs): ...
-
-### 事件总线技术特性
-- **软件定时驱动**: 使用diff时间实现软件定时系统, 节省硬件定时器资源
-- **手动事件处理**: 主循环调用`process_events()`, 避免硬件定时器占用
-- **错误断路器**: 防止系统级联故障, 包含错误计数和系统状态监控
-- **批处理优化**: 每次处理5个事件, 平衡响应性和性能
-- **内存优化**: 单队列模式, 最大64个事件, 避免内存过度占用
-- **自动垃圾回收**: 100次处理后自动触发垃圾回收
-- **性能统计**: 提供队列使用率和处理性能监控
-
-## ⚙️ 配置说明
-
-### 配置文件结构
-项目使用纯Python配置系统: 
-- [`app/config.py`](app/config.py): Python字典配置(主要配置和验证规则)
-
-### 主要配置项
-
-#### MQTT配置
+### MQTT配置 (Home Assistant)
 ```python
+# app/config.py
 "mqtt": {
-    "broker": "192.168.3.15",        # MQTT服务器地址
-    "port": 1883,                   # MQTT端口
-    "topic": "lzs/esp32c3",         # MQTT主题
-    "keepalive": 60,                # 心跳间隔(秒)
-    "reconnect_delay": 5,           # 重连延迟(秒)
-
-
+    "broker": "your-home-assistant-ip",  # Home Assistant服务器地址
+    "port": 1883,                         # MQTT端口
+    "user": "your-mqtt-username",         # MQTT用户名
+    "password": "your-mqtt-password",     # MQTT密码
+    "keepalive": 60,                      # 心跳间隔(秒)
+    "base_delay_ms": 3000,                # 重连基础延迟
+    "max_delay_ms": 60000,                # 最大重连延迟
 }
 ```
 
-#### WiFi配置
+### WiFi配置
 ```python
+# app/config.py
 "wifi": {
-    # 说明: 当前实现基于单个SSID连接；如需多网络选择, 请在上层管理器中实现按RSSI或优先级选择逻辑
-    "ssid": "your-ssid",
-    "password": "your-password",
-    "config": {
-        "timeout": 15,              # 连接超时(秒)
-        "scan_interval": 30,        # 扫描间隔(秒)
-        "retry_delay": 2,           # 重试延迟(秒)
-        "max_attempts": 3           # 最大尝试次数
-    }
+    "networks": [
+        {"ssid": "your-home-wifi", "password": "your-password"},
+        {"ssid": "backup-wifi", "password": "backup-password"},
+    ],
+    "scan_timeout_ms": 10000,             # 扫描超时时间
+    "base_delay_ms": 3000,                # 重连基础延迟
+    "max_delay_ms": 60000,                # 最大重连延迟
+    "max_retries": 3,                     # 最大重试次数
 }
 ```
 
-#### 守护进程配置
+### 设备配置
 ```python
-"daemon": {
-    "config": {
-        "timer_id": 0,              # 定时器ID
-        "monitor_interval": 5000,   # 监控间隔(毫秒)
-        "temp_threshold": 65,       # 温度阈值(°C)
-        "temp_hysteresis": 5,       # 温度迟滞(°C)
-        "memory_threshold": 50000,  # 内存阈值(字节)
-        "memory_gc_trigger": 30000, # GC触发阈值(字节)
-        "status_report_interval": 30000, # 状态报告间隔(毫秒)
-        "error_recovery_timeout": 120000 # 错误恢复超时(毫秒)
-    }
-}
-```
-
-#### 系统配置
-```python
-"system": {
-    "debug_mode": False,            # 调试模式
-    "log_level": "INFO",            # 日志级别
-    "main_loop_delay": 300,         # 主循环延迟(毫秒)
-    "status_report_interval": 30,  # 状态报告间隔(秒)
-    "auto_restart_enabled": False   # 自动重启开关
-}
-```
-
-#### 设备配置
-```python
+# app/config.py
 "device": {
-    "name": "ESP32C3-IOT",          # 设备名称
-    "location": "未知位置",         # 设备位置
-    "firmware_version": "2.0.0"     # 固件版本
+    "name": "ESP32C3-IOT",                 # 设备名称
+    "location": "客厅",                   # 设备位置
+    "firmware_version": "2.3.0"           # 固件版本
 }
 ```
 
 ## 🚀 快速开始
 
-### 硬件要求
-- ESP32-C3开发板
-- LED指示灯(连接到GPIO 12和13)
-- USB数据线
-
-### 软件依赖
-- **MicroPython固件**: ESP32-C3支持的MicroPython版本
-- **umqtt.simple**: 轻量级MQTT客户端库 ([`app/lib/umqtt_lock.py`](app/lib/umqtt_lock.py))
-- **ulogging**: 轻量级日志库 ([`app/lib/ulogging_lock.py`](app/lib/ulogging_lock.py))
-- **MicroPython标准库**: network, time, machine, ntptime, gc
-
-### 安装步骤
-
-1. **刷写MicroPython固件**
-   ```bash
-   # 使用esptool刷写固件
-   esptool.py --chip esp32c3 --port COMx erase_flash
-   esptool.py --chip esp32c3 --port COMx write_flash -z 0x0 firmware.bin
-   ```
-
-2. **上传项目文件**
-   ```bash
-   # 使用构建脚本
-   python build.py --upload
-   
-   # 或手动上传
-   mpremote connect COMx fs cp -r app/ /
-   ```
-
-3. **配置设备**
-   - 修改 [`app/config.py`](app/config.py) 中的配置项
-   - 或使用Web配置界面进行配置
-
-4. **重启设备**
-   ```bash
-   # 重启设备
-   mpremote connect COMx reset
-   ```
-
-### 构建和部署
-
-使用 [`build.py`](build.py) 脚本构建和部署项目: 
-
+### 1. 环境准备
 ```bash
-# 构建项目(排除测试文件)
-python build.py
+# 安装依赖
+pip install pyserial mpremote mpy-cross
 
-# 构建项目(包含测试文件)
-python build.py --test
-
-# 仅编译不部署
-python build.py --compile
-
-# 上传并监听设备输出
-python build.py --upload
-
-# 指定端口上传
-python build.py --upload --port COM3
-
-# 启用完整REPL交互模式
-python build.py --upload --repl
-
-# 使用原始REPL模式(调试用)
-python build.py --upload --raw-repl
-
-# 诊断设备安全模式状态
+# 连接设备并查看端口
 python build.py --diagnose
-
-# 清理本地缓存
-python build.py --clean-cache
 ```
 
-## 📊 系统状态和监控
+### 2. 配置设备
+编辑 `app/config.py` 文件，修改MQTT和WiFi配置。
 
-### 状态机系统
-系统支持以下状态: 
-- **INIT**: 系统初始化
-- **NETWORKING**: 网络连接
-- **RUNNING**: 正常运行
-- **WARNING**: 警告状态
-- **ERROR**: 错误状态
-- **SAFE_MODE**: 安全模式
-- **RECOVERY**: 恢复模式
-- **SHUTDOWN**: 关机状态
+### 3. 构建和部署
+```bash
+# 编译并上传
+python build.py
 
-### LED状态指示
-- **normal**: 正常运行(LED1亮, LED2灭)
-- **warning**: 警告状态(LED1亮, LED2亮)
-- **error**: 错误状态(LED1灭, LED2亮)
-- **off**: 关闭状态(LED1灭, LED2灭)
-- **safe_mode**: 安全模式(SOS闪烁模式)
+# 监控设备输出
+python build.py --monitor
 
-### 预设闪烁模式
-- **快闪三下**: 快速闪烁三次
-- **一长两短**: 一个长闪加两个短闪
-- **SOS求救信号**: 标准的SOS摩尔斯电码
-- **心跳模式**: 模拟心跳节奏的闪烁
-- **警灯模式**: 双LED交替闪烁
-- **霹雳游侠**: 来回扫描效果
-- **计数闪烁**: 数字计数闪烁
-- **呼吸灯**: 渐变呼吸效果
+# 启动REPL调试
+python build.py --repl
+```
 
-## 🛠️ 开发和调试
+## 📖 常见问题 (FAQ)
 
-### 系统监控指标
-- 内存使用率(实时监控)
-- 环境温湿度(SHT40, 可选)
-- 错误计数和统计
-- 网络连接状态
-- MQTT连接状态
-- 系统运行时间
+### 目录
+- [连接问题](#连接问题)
+- [配置问题](#配置问题)
+- [性能问题](#性能问题)
+- [开发问题](#开发问题)
 
-### 调试技巧
-- 通过串口查看详细日志
-- 监控内存使用情况
+### 连接问题
+
+**Q: 设备无法连接WiFi？**
+A: 检查WiFi配置是否正确，确保：
+- SSID和密码正确
+- 路由器在工作范围内
+- 尝试重启设备
+
+**Q: MQTT连接失败？**
+A: 检查MQTT配置：
+- 服务器地址和端口正确
+- 用户名和密码正确
+- Home Assistant的MQTT集成已启用
+
+**Q: 设备频繁断线重连？**
+A: 可能原因：
+- WiFi信号弱
+- MQTT服务器不稳定
+- 配置的重连参数过于激进
+
+### 配置问题
+
+**Q: 如何修改LED引脚？**
+A: 在 `app/hw/led.py` 中修改LED引脚定义。
+
+**Q: 如何添加新的传感器？**
+A: 在 `app/hw/` 目录下创建新的传感器模块，并在主程序中集成。
+
+**Q: 如何调整日志级别？**
+A: 在 `app/lib/logger.py` 中修改日志级别设置。
+
+### 性能问题
+
+**Q: 内存不足怎么办？**
+A: 优化建议：
+- 减少不必要的变量和对象
+- 使用生成器替代列表
+- 及时释放大对象
+- 调整垃圾回收频率
+
+**Q: 设备运行缓慢？**
+A: 检查：
+- 主循环延迟是否过长
+- 是否有阻塞操作
+- 内存使用情况
+
+### 开发问题
+
+**Q: 如何调试设备？**
+A: 调试方法：
+- 使用 `python build.py --monitor` 查看日志
+- 使用 `python build.py --repl` 进行交互式调试
 - 检查LED状态指示
-- 查看错误统计信息
-- 使用状态机监控系统状态
 
-### 串口日志
-设备通过串口输出详细日志: 
-- WiFi连接状态
-- MQTT连接状态
-- 内存使用报告
-- 系统日志
-- LED状态指示
-
-## 💾 内存管理优化
-
-### 对象池系统
-- **字典对象池**: 避免频繁创建销毁字典对象
-- **字符串缓存**: 缓存常用字符串减少内存分配
-- **缓冲区管理**: 预分配缓冲区管理器
-- **内存优化器**: 提供内存监控和优化功能
-
-### 关键内存优化技术
-- 全局变量减少实例化开销
-- 智能垃圾回收(根据内存使用动态调整)
-- 轻量级数据结构
-- 避免复杂对象创建
-- 定期内存清理和监控
-
-### 静态缓存系统
-- **防抖写入**: 避免频繁的Flash写入
-- **自动保存**: 定期保存缓存数据
-- **内存优化**: 高效的内存使用
-- **错误恢复**: 系统重启后自动恢复
-
-## 🌐 网络行为
-
-### 启动流程
-1. **boot.py** → 系统启动引导
-2. **main.py** → 主程序初始化
-3. **配置验证** → 加载系统配置
-4. **WiFi连接** → 连接最优网络
-5. **时间同步** → NTP服务器同步
-6. **MQTT连接** → 连接MQTT代理
-7. **守护进程启动** → 系统监控开始
-8. **主循环** → 系统稳定运行
-
-### MQTT 重连机制
-当前实现采用简化的重连策略: 
-- 在WiFi已连接的前提下, 周期性检查MQTT连接状态
-- 断开时尝试直接重连(固定等待间隔), 未实现指数退避
-- 后续可在 NetworkManager/FSM 层统一引入退避与分级重连策略
-- **第5轮**: 等待40秒后重试3次
-- **第6轮**: 等待80秒后重试3次
-- **第7轮**: 等待160秒后重试3次
-- **第8轮及以后**: 等待300秒(最大值)后重试3次
-
-## 🛡️ 错误处理和恢复
-
-### 错误类型分类
-- **NETWORK**: 网络连接错误
-- **HARDWARE**: 硬件故障
-- **MEMORY**: 内存不足
-- **CONFIG**: 配置错误
-- **SYSTEM**: 系统错误
-- **MQTT**: MQTT通信错误
-- **WIFI**: WiFi连接错误
-- **DAEMON**: 守护进程错误
-- **FATAL**: 致命错误
-
-### 恢复管理器
-- **网络恢复**: WiFi重连 + MQTT重连
-- **内存恢复**: 深度清理 + 对象池重建
-- **服务恢复**: 守护进程重启
-- **系统恢复**: 状态机管理 + 安全模式
-- **硬件恢复**: 系统重启
-
-### 安全模式特性
-- **触发条件**: 温度过高、内存不足、错误过多
-- **行为模式**: LED显示SOS、禁用自动恢复、深度清理
-- **恢复方式**: 必须手动重启设备
-
-## 📖 硬件资源
-
-### ESP32-C3 规格
-- **内存**: 264KB SRAM
-- **存储**: 4MB Flash  
-- **处理器**: RISC-V 双核 32位 @ 160MHz
-- **无线**: WiFi 802.11b/g/n
-- **GPIO**: 22个数字IO引脚
-- **接口**: SPI, I2C, UART, ADC
-- **定时器**: 2个硬件定时器(已被软件定时系统替代)
-
-### 引脚分配
-- **LED1**: GPIO 12
-- **LED2**: GPIO 13
-- **温度传感器**: GPIO 4 (ADC4)
-- **看门狗**: 软件实现
-
-## 🌐 Web配置界面
-
-项目包含基于Web Bluetooth的配置界面: 
-- **状态**: 规划中(当前仓库未包含 web/index.html 文件)
-- **功能**: 蓝牙连接、WiFi配置、MQTT配置、设备配置
-- **设计**: Apple设计风格, 响应式布局
-- **浏览器要求**: 支持Web Bluetooth API的现代浏览器
-
-## ⚠️ 重要说明
-
-- **内存限制**: ESP32C3只有264KB内存, 必须时刻注意内存使用
-- **文件位置**: 主要代码位于 `./app` 目录, 但上传到设备时直接位于根目录
-- **路径引用**: 设备上使用 `from lib.event_bus_lock import EventBus` 等相对导入, MicroPython自动识别 `lib/` 目录
-- **MicroPython导入机制**: 由于`build.py`脚本会将`app/`目录下的所有文件直接上传到设备的根目录, 因此在设备上不存在`app`这个包。所有的导入都必须从根目录开始
-- **配置管理**: 所有配置项都在 `config.py` 中定义
-- **语言**: 代码注释和文档使用中文 (✅ 已完成全面中文化)
-- **架构重构**: 已完成事件驱动架构重构, 提升了系统的可维护性和扩展性
-- **国际化**: 所有用户界面消息、错误提示、日志输出已完全中文化, 提供完整的中文用户体验
+**Q: 如何添加新功能？**
+A: 开发流程：
+1. 创建新模块
+2. 在EventBus中注册事件
+3. 在状态机中添加处理逻辑
+4. 测试和部署
 
 ## 🔄 系统工作流程
 
+### 启动流程
+```
+boot.py → main.py → 配置加载 → 网络连接 → 主循环
+```
+
 ### 主循环流程
 ```
-喂看门狗 → 状态机更新 → EventBus事件处理 → LED更新 → 状态监控 → 固定延迟循环
+喂看门狗 → 状态机更新 → 事件处理 → LED更新 → 状态监控 → 循环
 ```
 
 ### 事件处理流程
 ```
-事件发生 → EventBus.publish → 事件队列 → 主循环diff时间处理 → 订阅者回调 → 状态更新 → LED指示 → 日志记录
+事件发生 → EventBus.publish → 事件队列 → 主循环处理 → 订阅者回调
 ```
 
-### 错误处理流程
+## 📊 系统状态
+
+### LED状态指示
+- **INIT**: 快速闪烁 (系统初始化)
+- **CONNECTING**: 脉冲模式 (连接中)
+- **RUNNING**: 常亮 (正常运行)
+- **ERROR**: SOS模式 (错误状态)
+
+### MQTT主题结构
 ```
-错误发生 → 错误分类 → 严重程度判断 → 执行恢复动作 → 
-记录日志 → 发布事件 → 状态转换 → 继续运行/安全模式
+device/{device_id}/state/metrics     # 系统指标
+device/{device_id}/state/temperature # 温度数据
+device/{device_id}/state/humidity    # 湿度数据
 ```
+
+## 🛠️ 开发命令
+
+```bash
+# 构建和部署
+python build.py                    # 编译并上传
+python build.py --compile          # 仅编译
+python build.py --upload           # 仅上传
+python build.py --full-upload      # 强制全量上传
+
+# 调试和监控
+python build.py --monitor          # 监控设备输出
+python build.py --repl             # 启动REPL
+python build.py --diagnose         # 诊断设备状态
+
+# 其他功能
+python build.py --test             # 包含测试文件编译
+python build.py --clean-cache      # 清理本地缓存
+```
+
+## ⚠️ 重要说明
+
+- **内存限制**: ESP32C3只有264KB内存，必须时刻注意内存使用
+- **文件位置**: 所有代码位于 `app/` 目录，编译后上传到设备根目录
+- **导入机制**: 设备上从根目录导入，不存在 `app` 包
+- **配置管理**: 所有配置在 `config.py` 中统一管理
+- **语言**: 代码注释和文档使用中文
 
 ## 📝 版本信息
 
 - **当前版本**: 2.3.0 (架构重构版)
 - **架构版本**: 事件驱动架构 v3.0 (软件定时驱动)
-- **国际化版本**: 中文本地化 v1.0 (✅ 已完成)
 - **最后更新**: 2025-08-24
 - **维护者**: ESP32C3 开发团队
-
-### 版本 2.3.0 更新内容
-- **架构重构**: 从硬件定时器驱动改为软件定时系统, 完全释放硬件定时器资源
-- **事件总线简化**: 采用单队列模式, 集成错误断路器机制
-- **LED系统重构**: 改为开箱即用模式, 支持延迟初始化和手动更新
-- **内存优化**: 针对ESP32-C3的264KB内存限制进行全面优化
-- **网络管理**: 统一NetworkManager管理所有网络连接
-- **状态机**: 改为函数式状态机, 简化架构提高稳定性
-
-### 版本 2.2.0 更新内容
-- **日志系统重构**: 简化为极简日志系统, 移除复杂配置和初始化
-- **使用简化**: 直接导入全局日志函数即可使用, 无需手动初始化
-- **颜色支持**: 为ERROR和WARNING级别添加ANSI颜色支持, 提高可读性
-- **内存优化**: 减少日志系统内存占用, 适合ESP32-C3的264KB内存限制
-
-## 🤝 贡献
-
-欢迎贡献代码、报告问题或提出改进建议！
-
-### 贡献方式
-1. Fork 本项目
-2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 创建Pull Request
-
-## 📄 许可证
-
-本项目采用 MIT 许可证。
-
-## 📞 支持
-
-如果您在使用过程中遇到任何问题, 请通过以下方式获取支持: 
-
-- 📧 **邮件支持**: [your-email@example.com](mailto:your-email@example.com)
-- 🐛 **问题报告**: [GitHub Issues](https://github.com/your-username/IOT_ESP32C3_HA/issues)
-- 📖 **文档**: [项目 Wiki](https://github.com/your-username/IOT_ESP32C3_HA/wiki)
 
 ---
 
 **最后更新**: 2025-08-24  
 **版本**: 2.3.0 (架构重构版)  
-**架构**: 事件驱动架构 v3.0 (软件定时驱动)  
-**国际化**: 中文本地化完成 ✅  
+**架构**: 事件驱动架构 v3.0  
 **维护者**: ESP32C3 开发团队

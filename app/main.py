@@ -43,12 +43,6 @@ class MainController:
         
         # 注册事件监听
         self._register_event_handlers()
-    
-    def _emit_system_error(self, where, err):
-        try:
-            error("系统异常@{}: {}", where, err, module="MAIN")
-        except Exception:
-            pass
 
     def _init_led(self):
         """LED初始化(如存在)"""
@@ -110,7 +104,7 @@ class MainController:
                 
                 await asyncio.sleep_ms(50)
         except Exception as e:
-            self._emit_system_error("main.run", e)
+            error("系统异常@{}: {}", "run", e, module="MAIN")
 
     def _periodic_maintenance(self, current_time):
         """定期维护任务"""
@@ -163,28 +157,20 @@ class MainController:
                     "net": net_status,
                 }
                 if self.network_manager:
-                    # 1) 聚合指标: device/<id>/state/metrics (不保留)
-                    self.network_manager.mqtt_publish(
-                        self.network_manager.get_state_topic("metrics"),
-                        metrics,
-                        retain=False,
-                        qos=0,
-                    )
-                    # 2) 分离的温湿度主题, 便于 HA 直接订阅
-                    if env_temp is not None:
-                        self.network_manager.mqtt_publish(
-                            self.network_manager.get_state_topic("temperature"),
-                            env_temp,
+                    # 统一的 metrics 发布: device/<id>/state/metrics
+                    try:
+                        self.network_manager.ha.publish_metrics(metrics, retain=False, qos=0)
+                    except Exception:
+                        pass
+                    # 分离的温湿度主题 -> 统一走 HA 助手发布
+                    try:
+                        self.network_manager.ha.publish_state(
+                            temperature=env_temp if env_temp is not None else None,
+                            humidity=env_hum if env_hum is not None else None,
                             retain=True,
-                            qos=0,
                         )
-                    if env_hum is not None:
-                        self.network_manager.mqtt_publish(
-                            self.network_manager.get_state_topic("humidity"),
-                            env_hum,
-                            retain=True,
-                            qos=0,
-                        )
+                    except Exception:
+                        pass
             except Exception:
                 # 指标上报失败不影响主流程
                 pass

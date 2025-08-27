@@ -290,14 +290,6 @@ class MqttController:
         except Exception:
             return False
 
-    async def _async_verify_connection(self):
-        """内部: 通过一次最小交互验证连接可用性"""
-        try:
-            import uasyncio as asyncio
-            await asyncio.sleep_ms(10)
-            return True
-        except Exception:
-            return False
 
     def is_connected(self):
         """返回当前 MQTT 连接状态"""
