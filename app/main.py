@@ -19,14 +19,14 @@ from lib.logger import info, error, debug
 from config import get_config
 from lib.event_bus_lock import EventBus, EVENTS
 from utils import check_memory, get_temperature
-
-
+from daemon import Daemon
 
 
 class MainController:
     """主控制器"""
     def __init__(self):
         self.config = get_config()
+        self.daemon = Daemon()
         self.event_bus = EventBus()
         from net.network_manager import NetworkManager
         self.network_manager = NetworkManager(self.config, self.event_bus)
@@ -79,6 +79,9 @@ class MainController:
             self._init_led()
             self._init_watchdog()
             
+            # Start daemon service only once
+            self.daemon.start()
+            
             # 主循环
             while True:
                 current_time = time.ticks_ms()
@@ -90,9 +93,10 @@ class MainController:
                     if self.state_machine:
                         self.state_machine.update()
                 except Exception:
-                    pass
+                    # 记录错误计数 - Only daemon interaction needed
+                    self.daemon.incr_error(1)
                 
-                # 看门狗喂狗
+                # 看门狗喂狗 - Main.py drives WDT as requested
                 try:
                     if getattr(self, "wdt", None):
                         self.wdt.feed()

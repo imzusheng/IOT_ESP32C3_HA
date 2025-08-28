@@ -13,10 +13,20 @@ _IRQ_CENTRAL_CONNECT = const(1)
 _IRQ_CENTRAL_DISCONNECT = const(2)
 _IRQ_GATTS_WRITE = const(3)
 
+# 新增: 从配置读取支持
+try:
+    from app.config import get_config as _get_config
+except Exception:
+    _get_config = None
+try:
+    from app.utils.json_utils import load_json_file as _load_json
+except Exception:
+    _load_json = None
+
 class ESP32C3BluetoothWorking:
     """ESP32-C3蓝牙类"""
     
-    def __init__(self, name="ESP32-C3", use_hid=True):
+    def __init__(self, name="ESP32-C3", use_hid=True, adv_interval_ms=150):
         self.name = name
         self.ble = bluetooth.BLE()
         self.ble.active(True)
@@ -38,6 +48,14 @@ class ESP32C3BluetoothWorking:
         self._sim_batt = 100
         self._sim_step = -1
         self._sim_min = 0
+        # 新增: 支持通过 HardwareTimerManager 管理电量模拟定时器
+        self._sim_timer_manager = None
+        self._sim_timer_managed = False
+        # 新增: 广播间隔(微秒)
+        try:
+            self._adv_interval_us = int(adv_interval_ms) * 1000
+        except Exception:
+            self._adv_interval_us = 150_000
         
         # 初始化服务
         try:
@@ -152,8 +170,8 @@ class ESP32C3BluetoothWorking:
             # 将名称放到扫描响应里, 主广播仅携带 Flags+HID UUID+Appearance, 以提升被发现速度
             adv = self._build_adv_payload("", include_hid=self._use_hid)
             sr = self._build_scan_resp_payload(self.name)
-            # 使用更快的广播间隔以更快被发现, 150ms
-            self.ble.gap_advertise(150_000, adv_data=adv, resp_data=sr)
+            # 使用配置的广播间隔(默认 150ms)
+            self.ble.gap_advertise(self._adv_interval_us, adv_data=adv, resp_data=sr)
             self._is_advertising = True
             print(f"广播已启动: {self.name}")
             
@@ -496,41 +514,74 @@ class ESP32C3BluetoothWorking:
             print(f"停止服务失败: {e}")
 
     # 电量模拟: 使用硬件定时器触发, 在 IRQ 中仅调度到主上下文执行
-    def start_battery_simulation(self, start=100, step=-1, min_level=0, period_ms=10000):
+    def start_battery_simulation(self, start=100, step=-1, min_level=0, period_ms=10000, timer_id=0):
         """启动电量模拟与通知
         start: 初始电量百分比
         step: 每次变化步长, 默认每次 -1
         min_level: 最低电量值, 低于该值则回到 100
         period_ms: 触发周期, 默认 10000ms
+        timer_id: 定时器编号, 默认 0; 传入 <0 时使用 HardwareTimerManager 自动分配
         """
         self._sim_batt = int(start)
         self._sim_step = int(step)
         self._sim_min = int(min_level)
+        # 先停止已有定时器
         if self._sim_timer:
             try:
-                self._sim_timer.deinit()
-            except Exception:
-                pass
-        self._sim_timer = Timer(0)
-        try:
-            self._sim_timer.init(period=period_ms, mode=Timer.PERIODIC, callback=self._on_timer_batt)
-            print(f"电量模拟已启动: start={self._sim_batt}, step={self._sim_step}, period={period_ms}ms")
-        except Exception as e:
-            print(f"电量模拟启动失败: {e}")
-            try:
-                self._sim_timer.deinit()
+                if self._sim_timer_managed and self._sim_timer_manager:
+                    self._sim_timer_manager.release_timer(self._sim_timer)
+                else:
+                    self._sim_timer.deinit()
             except Exception:
                 pass
             self._sim_timer = None
+            self._sim_timer_managed = False
+
+        # 选择创建方式: 管理器或直接 Timer
+        if timer_id is not None and int(timer_id) < 0:
+            try:
+                from app.utils import get_hardware_timer_manager
+                self._sim_timer_manager = get_hardware_timer_manager()
+                self._sim_timer = self._sim_timer_manager.create_timer(int(period_ms), self._on_timer_batt)
+                if self._sim_timer:
+                    self._sim_timer_managed = True
+                    print(f"电量模拟(管理器)已启动: start={self._sim_batt}, step={self._sim_step}, period={period_ms}ms")
+                    return
+                else:
+                    print("电量模拟(管理器)启动失败: 无可用硬件定时器")
+            except Exception as e:
+                print(f"电量模拟(管理器)异常: {e}")
+                self._sim_timer = None
+                self._sim_timer_managed = False
+
+        # 回退: 使用指定的硬件定时器编号
+        try:
+            self._sim_timer = Timer(int(timer_id))
+            self._sim_timer.init(period=int(period_ms), mode=Timer.PERIODIC, callback=self._on_timer_batt)
+            self._sim_timer_managed = False
+            print(f"电量模拟已启动: start={self._sim_batt}, step={self._sim_step}, period={period_ms}ms, timer_id={timer_id}")
+        except Exception as e:
+            print(f"电量模拟启动失败: {e}")
+            try:
+                if self._sim_timer:
+                    self._sim_timer.deinit()
+            except Exception:
+                pass
+            self._sim_timer = None
+            self._sim_timer_managed = False
 
     def stop_battery_simulation(self):
         """停止电量模拟定时器"""
         if self._sim_timer:
             try:
-                self._sim_timer.deinit()
+                if self._sim_timer_managed and self._sim_timer_manager:
+                    self._sim_timer_manager.release_timer(self._sim_timer)
+                else:
+                    self._sim_timer.deinit()
             except Exception:
                 pass
             self._sim_timer = None
+            self._sim_timer_managed = False
             print("电量模拟已停止")
 
     def _on_timer_batt(self, t):
@@ -558,16 +609,64 @@ def main():
     """主函数"""
     print("ESP32-C3 蓝牙模块")
     
-    # 创建蓝牙实例(关闭 HID, 启用基础电池服务, 便于 Web Bluetooth 访问 0x180F/0x2A19)
-    bt = ESP32C3BluetoothWorking("ESP32-C3", use_hid=False)
+    # 读取 BLE 配置(默认层来自 app/config.py, 运行时层来自 /config.json)
+    ble_defaults = None
+    if _get_config:
+        try:
+            ble_defaults = _deep_copy(_get_config('ble'))
+        except Exception:
+            ble_defaults = None
+    if not isinstance(ble_defaults, dict):
+        ble_defaults = {
+            "enabled": True,
+            "use_hid": False,
+            "device_name": "ESP32-C3",
+            "adv": {"interval_ms": 150},
+            "simulation": {"battery": {"enabled": False, "start": 100, "step": -1, "min": 0, "period_ms": 10000, "timer_id": 0}},
+            "config_service": {"persistence_path": "/config.json"},
+        }
+    # 加载运行时覆盖
+    try:
+        persistence_path = ble_defaults.get("config_service", {}).get("persistence_path", "/config.json")
+    except Exception:
+        persistence_path = "/config.json"
+    runtime_overlay = {}
+    if _load_json:
+        try:
+            runtime_overlay = _load_json(persistence_path, {})
+        except Exception:
+            runtime_overlay = {}
+    overlay_ble = runtime_overlay.get("ble") if isinstance(runtime_overlay, dict) else None
+    if isinstance(overlay_ble, dict):
+        _deep_merge(ble_defaults, overlay_ble)
+    ble_conf = ble_defaults
+    
+    # 配置未启用时直接返回
+    if not ble_conf.get("enabled", True):
+        print("BLE 功能未启用, 退出")
+        return None
+    
+    # 创建蓝牙实例
+    name = ble_conf.get("device_name", "ESP32-C3")
+    use_hid = ble_conf.get("use_hid", False)
+    adv_ms = int(ble_conf.get("adv", {}).get("interval_ms", 150))
+    bt = ESP32C3BluetoothWorking(name, use_hid=use_hid, adv_interval_ms=adv_ms)
     
     print("蓝牙初始化完成")
-    print("设备名称: ESP32-C3")
+    print(f"设备名称: {name}")
     print(f"状态: {bt.get_status()}")
     
-    # 启动电量模拟: 每 10s 下降 1%, 低于 0 回到 100
+    # 启动电量模拟(可选)
     try:
-        bt.start_battery_simulation(start=100, step=-1, min_level=0, period_ms=10000)
+        sim = ble_conf.get("simulation", {}).get("battery", {})
+        if sim.get("enabled", True):
+            bt.start_battery_simulation(
+                start=int(sim.get("start", 100)),
+                step=int(sim.get("step", -1)),
+                min_level=int(sim.get("min", 0)),
+                period_ms=int(sim.get("period_ms", 10000)),
+                timer_id=int(sim.get("timer_id", 0)),
+            )
     except Exception as e:
         print(f"启动电量模拟失败: {e}")
     
@@ -583,3 +682,25 @@ if __name__ == "__main__":
         print(f"运行错误: {e}")
         import traceback
         traceback.print_exc()
+
+# 新增: 配置合并工具
+def _deep_copy(obj):
+    try:
+        if isinstance(obj, dict):
+            return {k: _deep_copy(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [ _deep_copy(x) for x in obj ]
+    except Exception:
+        pass
+    return obj
+
+def _deep_merge(dst, src):
+    try:
+        for k, v in src.items():
+            if isinstance(v, dict) and isinstance(dst.get(k), dict):
+                _deep_merge(dst[k], v)
+            else:
+                dst[k] = v
+    except Exception:
+        pass
+    return dst
