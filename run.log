@@ -1,62 +1,60 @@
-我提供了一个 Report Map， 尝试整合进代码中， 为了正确显示图标：
+结论先说:
 
-from micropython import const
+- 我没有添加任何“加密”逻辑, 代码里也不存在任何与加密相关的实现
+- 你无法读取设备文件列表的最可能原因是“阻塞”, 而阻塞点很可能来自安全模式逻辑在启动阶段占用主线程, 使 REPL 或文件系统访问工具无法拿回控制权
+重点检查 `daemon.py` 的阻塞点如下:
 
-# UUIDs
-UUID_HID_SERVICE     = const(0x1812)
-UUID_REPORT_MAP      = const(0x2A4B)
-UUID_HID_INFO        = const(0x2A4A)
-UUID_HID_CONTROL     = const(0x2A4C)
-UUID_PROTOCOL_MODE   = const(0x2A4E)
-UUID_REPORT          = const(0x2A4D)
+1. 1.
+   安全模式主循环为无限循环
+- 函数 enter_safe_mode 中存在 while True + sleep(1), 一旦触发安全模式将一直占用主线程, 外部工具便无法通过 REPL 执行 os.listdir 等操作来列目录
+- 触发 enter_safe_mode 的入口是 boot_safe_mode_check → check_safe_mode → 三种触发检查之一命中就会进入无限循环
+- 这就是最典型的“上电后能看到日志, 但无法列出文件”的场景
+2. 1.
+   上电早期的短时阻塞(非致命)
+- _check_double_reset 使用 utime.sleep_ms(CONFIG["double_reset_window_ms"]), 默认 1500 ms, 会在上电时短暂停 1.5s
+- _check_pin_hold 当检测到引脚为高电平时会等待 safe_boot_delay_ms, 默认 3000 ms, 这段时间也会阻塞主线程
+- _request_safe_mode_and_reboot 在重启前 sleep(2), 这会延迟复位 2 秒
+  上述 3 个点只是短时阻塞, 一般不会导致“完全无法列目录”, 但会让文件列表请求在启动早期卡住或超时
+3. 1.
+   更隐蔽但常见的“误触发安全模式”原因
+- GPIO 默认电平问题: 你的 CONFIG["safe_boot_pin"] = 12, 代码用 machine.Pin(..., PULL_DOWN) 读取。如果硬件上该脚被外部上拉或内部下拉无效, 上电测得就是 1, 则会持续 3 秒确认长按成立, 直接进入安全模式的无限循环
+- 双击复位标志持久化问题: _check_double_reset 使用 NVS 记录上次状态。如果某次上电刚写入 dr=1 后异常断电/复位, 下次上电会被误判为“双击复位”, 也会直接进入安全模式的无限循环
+可以用日志或现象快速判断是否卡在安全模式
 
-def hid_services():
-    # ---- HID Information ----
-    hid_info = (UUID_HID_INFO, const(0x02), const(0x02))  # v1.11, country code=0, flags=normal
+- 若串口或日志中出现以下输出之一, 就表明已进入安全模式:
+  - "Safe mode flag detected"
+  - "Double reset detected"
+  - "Safe mode pin detected, waiting for confirmation..."
+  - "Entering safe mode - LED SOS only"
+  - "Safe mode active: LED SOS running. Please reset manually."
+- 若看到 LED 一直在播放 SOS, 也说明处于安全模式无限循环
+为什么这会影响“读取文件列表”
 
-    # ---- Report Map ----
-    # 这里定义了一个最简单的 HID 报告描述符 (键盘输入)
-    report_map_data = bytes([
-        0x05, 0x01,       # Usage Page (Generic Desktop)
-        0x09, 0x06,       # Usage (Keyboard)
-        0xA1, 0x01,       # Collection (Application)
-        0x05, 0x07,       #   Usage Page (Key Codes)
-        0x19, 0xE0,       #   Usage Minimum (224)
-        0x29, 0xE7,       #   Usage Maximum (231)
-        0x15, 0x00,       #   Logical Minimum (0)
-        0x25, 0x01,       #   Logical Maximum (1)
-        0x75, 0x01,       #   Report Size (1)
-        0x95, 0x08,       #   Report Count (8)
-        0x81, 0x02,       #   Input (Data,Var,Abs)
-        0x95, 0x01,       #   Report Count (1)
-        0x75, 0x08,       #   Report Size (8)
-        0x81, 0x01,       #   Input (Const,Array,Abs)
-        0x95, 0x05,       #   Report Count (5)
-        0x75, 0x01,       #   Report Size (1)
-        0x05, 0x08,       #   Usage Page (LEDs)
-        0x19, 0x01,       #   Usage Minimum (1)
-        0x29, 0x05,       #   Usage Maximum (5)
-        0x91, 0x02,       #   Output (Data,Var,Abs)
-        0x95, 0x01,       #   Report Count (1)
-        0x75, 0x03,       #   Report Size (3)
-        0x91, 0x01,       #   Output (Const,Array,Abs)
-        0x95, 0x06,       #   Report Count (6)
-        0x75, 0x08,       #   Report Size (8)
-        0x15, 0x00,       #   Logical Minimum (0)
-        0x25, 0x65,       #   Logical Maximum (101)
-        0x05, 0x07,       #   Usage Page (Key Codes)
-        0x19, 0x00,       #   Usage Minimum (0)
-        0x29, 0x65,       #   Usage Maximum (101)
-        0x81, 0x00,       #   Input (Data,Array)
-        0xC0              # End Collection
-    ])
+- 大多数 PC 端工具是通过 REPL 或者半交互方式去执行 os.listdir 等命令来拿到目录。主线程被安全模式 while True 占用后, 工具无法在设备端得到执行机会, 于是呈现“无法列出文件”或超时的现象
+如何快速解除阻塞, 便于你先读到文件列表
+不改代码的办法(推荐先试):
 
-    hid_report_map = (UUID_REPORT_MAP, const(0x02), report_map_data)
+- 串口中按 Ctrl-C 打断当前脚本, 看能否回到 REPL, 然后执行 os.listdir("/")
+- 断电重上一次, 避免在 1.5s 内再次复位, 以免触发“双击复位”逻辑
+- 确认安全模式引脚 GPIO12 上电为低电平: 硬件上不要接到上拉或按钮按下状态, 让其默认为 0
+- 如果怀疑 NVS 标志未清除导致反复进入安全模式, 进入 REPL 后可执行一段清理 NVS 的小片段(不运行 app 下的文件, 手动输入即可):
+  - from esp32 import NVS; n=NVS("boot");
+  - for k in ("safe","dr"):
+    - try: n.erase_key(k); n.commit()
+    - except: pass
+需要代码级的“最小改动”(如你希望我来改, 我再提交补丁):
 
-    # ---- Report Characteristic ----
-    hid_report = (UUID_REPORT, const(0x0A), None)  # 可读+通知
+- 将 enter_safe_mode 的无限循环改为可中断或有限时长, 比如运行 60 秒后 return 或 raise SystemExit, 避免长期占用主线程
+- 将 _check_pin_hold 的默认引脚改为你板子上空闲且默认低电平的 GPIO, 或增加输入极性配置, 避免默认上电即为 1
+- 缩短 double_reset_window_ms 或在异常恢复后主动清理 dr 标志, 降低误触发概率
+确认点
 
-    return (
-        UUID_HID_SERVICE,
-        (hid_info, hid_report_map, hid_report),
-    )
+- 我没有添加任何与加密相关的逻辑
+- 阻塞相关的唯一长期阻塞点是 enter_safe_mode 的 while True 循环, 其余均为短时等待
+- 你的“无法列出文件”高概率是因为设备在启动流程中进入了安全模式的无限循环或正在进行引脚/双击检测的等待窗口
+如果你希望我做“最小改动”的修复, 我可以按你的偏好选择以下其一:
+
+- 方案 A: 仅让 enter_safe_mode 变为可中断/限时, 不改任何触发条件
+- 方案 B: 保持无限循环, 但默认关闭引脚触发或改为一个默认低电平且你板上未占用的 GPIO
+- 方案 C: 缩短双击复位窗口, 并在上电早期先清理一次历史 dr 标志, 降低误触发
+告诉我你的倾向, 我即可按“最小改动、保持风格一致”的原则提交修改并再跑一次 build.py -c 验证编译通过。
