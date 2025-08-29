@@ -1,0 +1,62 @@
+我提供了一个 Report Map， 尝试整合进代码中， 为了正确显示图标：
+
+from micropython import const
+
+# UUIDs
+UUID_HID_SERVICE     = const(0x1812)
+UUID_REPORT_MAP      = const(0x2A4B)
+UUID_HID_INFO        = const(0x2A4A)
+UUID_HID_CONTROL     = const(0x2A4C)
+UUID_PROTOCOL_MODE   = const(0x2A4E)
+UUID_REPORT          = const(0x2A4D)
+
+def hid_services():
+    # ---- HID Information ----
+    hid_info = (UUID_HID_INFO, const(0x02), const(0x02))  # v1.11, country code=0, flags=normal
+
+    # ---- Report Map ----
+    # 这里定义了一个最简单的 HID 报告描述符 (键盘输入)
+    report_map_data = bytes([
+        0x05, 0x01,       # Usage Page (Generic Desktop)
+        0x09, 0x06,       # Usage (Keyboard)
+        0xA1, 0x01,       # Collection (Application)
+        0x05, 0x07,       #   Usage Page (Key Codes)
+        0x19, 0xE0,       #   Usage Minimum (224)
+        0x29, 0xE7,       #   Usage Maximum (231)
+        0x15, 0x00,       #   Logical Minimum (0)
+        0x25, 0x01,       #   Logical Maximum (1)
+        0x75, 0x01,       #   Report Size (1)
+        0x95, 0x08,       #   Report Count (8)
+        0x81, 0x02,       #   Input (Data,Var,Abs)
+        0x95, 0x01,       #   Report Count (1)
+        0x75, 0x08,       #   Report Size (8)
+        0x81, 0x01,       #   Input (Const,Array,Abs)
+        0x95, 0x05,       #   Report Count (5)
+        0x75, 0x01,       #   Report Size (1)
+        0x05, 0x08,       #   Usage Page (LEDs)
+        0x19, 0x01,       #   Usage Minimum (1)
+        0x29, 0x05,       #   Usage Maximum (5)
+        0x91, 0x02,       #   Output (Data,Var,Abs)
+        0x95, 0x01,       #   Report Count (1)
+        0x75, 0x03,       #   Report Size (3)
+        0x91, 0x01,       #   Output (Const,Array,Abs)
+        0x95, 0x06,       #   Report Count (6)
+        0x75, 0x08,       #   Report Size (8)
+        0x15, 0x00,       #   Logical Minimum (0)
+        0x25, 0x65,       #   Logical Maximum (101)
+        0x05, 0x07,       #   Usage Page (Key Codes)
+        0x19, 0x00,       #   Usage Minimum (0)
+        0x29, 0x65,       #   Usage Maximum (101)
+        0x81, 0x00,       #   Input (Data,Array)
+        0xC0              # End Collection
+    ])
+
+    hid_report_map = (UUID_REPORT_MAP, const(0x02), report_map_data)
+
+    # ---- Report Characteristic ----
+    hid_report = (UUID_REPORT, const(0x0A), None)  # 可读+通知
+
+    return (
+        UUID_HID_SERVICE,
+        (hid_info, hid_report_map, hid_report),
+    )
