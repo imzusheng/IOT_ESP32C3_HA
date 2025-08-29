@@ -102,15 +102,30 @@ def check_safe_mode() -> bool:
 
 
 def enter_safe_mode():
-    """进入安全模式: 仅运行LED SOS模式"""
+    """进入安全模式: 运行LED SOS模式并启动守护服务监控温度"""
     print("Entering safe mode - LED SOS only")
 
     try:
+        # 启动LED SOS模式
         from hw.led import play
         play("sos")
         print("Safe mode active: LED SOS running. Please reset manually.")
+        
+        # 启动守护服务以监控温度(安全模式下)
+        try:
+            from daemon import Daemon
+            daemon = Daemon()
+            # 启动守护服务但标记为安全模式
+            daemon._in_safe_mode = True
+            daemon.start()
+            print("Safe mode daemon started for temperature monitoring")
+        except Exception as e:
+            print(f"Safe mode daemon failed: {e}")
+        
+        # 主循环: LED已由硬件定时器驱动，仅需保持系统运行
         while True:
-            utime.sleep(1)
+            utime.sleep(1)  # 1秒间隔
+            
     except Exception as e:
         print(f"Safe mode initialization failed: {e}")
         while True:
