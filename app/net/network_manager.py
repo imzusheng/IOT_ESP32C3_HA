@@ -23,6 +23,7 @@ from lib.event_bus_lock import EVENTS
 from lib.async_runtime import get_async_runtime
 from utils import json_dumps, get_epoch_unix_s as util_get_epoch_unix_s
 from ha import HomeAssistantHelper
+from config import apply_overlay, save_overlay
 
 class NetworkManager:
     """网络管理器: 负责 WiFi -> NTP -> MQTT 连接流程与状态维护"""
@@ -332,6 +333,8 @@ class NetworkManager:
                         self.ha.publish_discovery()
                         # 可选: 设备 announce
                         self.publish_announce()
+                        # 新增: 配置通道订阅与回调
+                        self._setup_mqtt_config_channel()
                     except Exception:
                         pass
                     return True
@@ -344,7 +347,7 @@ class NetworkManager:
             self._mqtt_mark_failure()
             error("异步MQTT连接异常: {}", e, module="NET")
             return False
-            
+
     async def _async_sync_ntp(self):
         """NTP 同步"""
         try:
@@ -401,6 +404,8 @@ class NetworkManager:
                         self.ha.publish_availability(True)
                         # 发布 Home Assistant Discovery 配置
                         self.ha.publish_discovery()
+                        # 新增: 配置通道订阅与回调
+                        self._setup_mqtt_config_channel()
                     except Exception:
                         pass
                 if self.mqtt_connected:
@@ -514,3 +519,179 @@ class NetworkManager:
     def availability_topic(self) -> str:
         """统一的可用性主题, 仅使用 HA 助手"""
         return self.ha.availability_topic()
+
+
+
+    # 新增: MQTT 配置通道与回调处理
+    def _config_stat_topic(self):
+        try:
+            return "stat/{}/config".format(self.get_device_id())
+        except Exception:
+            return "stat/{}/config".format("unknown")
+
+    def _setup_mqtt_config_channel(self):
+        """设置配置通道的回调与订阅
+        订阅主题:
+        - cmnd/<device_id>/config/set
+        - cmnd/<device_id>/config/save
+        - cmnd/<device_id>/config/reboot
+        - cmnd/<device_id>/reboot (兼容)
+        """
+        try:
+            if (not self.mqtt_controller) or (not self.mqtt_controller.is_connected()):
+                return False
+            # 设置回调(幂等)
+            self.mqtt_controller.set_callback(self._on_mqtt_message)
+            base = "cmnd/{}".format(self.get_device_id())
+            topics = [
+                base + "/config/set",
+                base + "/config/save",
+                base + "/config/reboot",
+                base + "/reboot",
+            ]
+            for tp in topics:
+                try:
+                    self.mqtt_controller.subscribe(tp, qos=0)
+                except Exception:
+                    pass
+            debug("MQTT配置通道订阅完成", module="NET")
+            return True
+        except Exception as e:
+            warning("配置通道订阅失败: {}", e, module="NET")
+            return False
+
+    def _json_loads(self, payload):
+        """安全解析 JSON, 失败返回 None"""
+        try:
+            if isinstance(payload, (bytes, bytearray)):
+                try:
+                    payload = payload.decode("utf-8")
+                except Exception:
+                    payload = str(payload)
+            try:
+                import ujson as _j
+            except Exception:
+                import json as _j
+            return _j.loads(payload)
+        except Exception:
+            return None
+
+    # 安全与权限相关的辅助方法
+    def _get_security_config(self):
+        """读取 ble.security 配置, 返回 dict(auth, token)"""
+        try:
+            ble_cfg = (self.config or {}).get("ble", {}) or {}
+            sec = ble_cfg.get("security", {}) or {}
+            auth = sec.get("auth", "none") or "none"
+            return {"auth": auth, "token": sec.get("token")}
+        except Exception:
+            return {"auth": "none", "token": None}
+
+    def _is_authorized_for_config(self, data):
+        """基于 ble.security 鉴权, 当前实现支持 auth==token 验证 payload.token"""
+        try:
+            sec = self._get_security_config()
+            auth = (sec.get("auth") or "none").lower()
+            if auth == "none":
+                return True, None
+            if auth == "token":
+                token_cfg = sec.get("token")
+                token_req = data.get("token") if isinstance(data, dict) else None
+                if token_req is not None and str(token_req) == str(token_cfg):
+                    return True, None
+                return False, "unauthorized"
+            return False, "unauthorized"
+        except Exception:
+            return False, "unauthorized"
+
+    def _is_reboot_allowed(self):
+        """根据 ble.config_service.allow_reboot 判断是否允许重启"""
+        try:
+            ble_cfg = (self.config or {}).get("ble", {}) or {}
+            cs = ble_cfg.get("config_service", {}) or {}
+            return bool(cs.get("allow_reboot", True))
+        except Exception:
+            return True
+
+    def _publish_config_stat(self, obj):
+        try:
+            self.mqtt_publish(self._config_stat_topic(), obj, retain=False, qos=0)
+        except Exception:
+            pass
+
+    def _schedule_reboot(self, delay_ms):
+        try:
+            runtime = get_async_runtime()
+            async def _do_reboot(ms):
+                try:
+                    await asyncio.sleep_ms(int(ms) if ms and int(ms) > 0 else 0)
+                except Exception:
+                    pass
+                try:
+                    import machine
+                    machine.reset()
+                except Exception:
+                    pass
+            runtime.create_task(_do_reboot(delay_ms or 0), "delayed_reboot")
+        except Exception as e:
+            warning("调度重启失败: {}", e, module="NET")
+
+    def _on_mqtt_message(self, topic, msg):
+        """MQTT 消息回调: 处理配置通道命令"""
+        try:
+            t = topic.decode("utf-8") if isinstance(topic, (bytes, bytearray)) else str(topic)
+        except Exception:
+            t = str(topic)
+        base = "cmnd/{}/".format(self.get_device_id())
+        try:
+            if not t.startswith(base):
+                return
+            # 解析 JSON 负载
+            data = self._json_loads(msg) or {}
+            # 指令分发
+            if t == base + "config/set":
+                # 权限校验
+                ok_auth, err = self._is_authorized_for_config(data)
+                if not ok_auth:
+                    self._publish_config_stat({"ok": False, "msg": err or "unauthorized"})
+                    return
+                path = data.get("path")
+                update = data.get("update")
+                ok = False
+                if isinstance(update, dict):
+                    ok = apply_overlay(update_dict=update)
+                elif isinstance(path, str) and ("value" in data):
+                    ok = apply_overlay(path=path, value=data.get("value"))
+                else:
+                    self._publish_config_stat({"ok": False, "msg": "invalid payload for set"})
+                    return
+                self._publish_config_stat({"ok": bool(ok), "msg": "applied" if ok else "apply failed", "applied": data})
+            elif t == base + "config/save":
+                # 权限校验
+                ok_auth, err = self._is_authorized_for_config(data)
+                if not ok_auth:
+                    self._publish_config_stat({"ok": False, "msg": err or "unauthorized"})
+                    return
+                paths = data.get("paths")
+                if paths is not None and not isinstance(paths, (list, tuple)):
+                    self._publish_config_stat({"ok": False, "msg": "paths must be list"})
+                    return
+                ok = save_overlay(paths=paths)
+                self._publish_config_stat({"ok": bool(ok), "msg": "saved" if ok else "save failed", "paths": paths or "all"})
+            elif t == base + "config/reboot" or t == base + "reboot":
+                # 权限与能力校验
+                ok_auth, err = self._is_authorized_for_config(data)
+                if not ok_auth:
+                    self._publish_config_stat({"ok": False, "msg": err or "unauthorized"})
+                    return
+                if not self._is_reboot_allowed():
+                    self._publish_config_stat({"ok": False, "msg": "reboot not allowed"})
+                    return
+                delay_ms = data.get("delay_ms", 0) if isinstance(data, dict) else 0
+                self._publish_config_stat({"ok": True, "msg": "rebooting", "delay_ms": delay_ms})
+                self._schedule_reboot(delay_ms)
+            else:
+                # 未知命令忽略
+                pass
+        except Exception as e:
+            warning("处理配置指令异常: {}", e, module="NET")

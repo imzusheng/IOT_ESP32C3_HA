@@ -1,3 +1,155 @@
+# HA 混合配置方案实施计划 Hybrid: MQTT 控件 + config.json 原子持久化
+
+本计划在不改变现有主流程的前提下, 落地混合方案: 通过 HA 暴露少量高价值的 MQTT 控件即时生效, 仅在用戶顯式保存時將變更以原子寫入方式落盤至 config.json 覆蓋層, 並按需觸發安全重啟。優先級: 交互可用 > 最小改動 > 安全可靠。
+
+一、目標與範圍
+- 採用雙層配置: 內置默認層 app/config.py + 運行時覆蓋層 /config.json。
+- 為 HA 暴露 MVP 控件: ble.enabled, ble.adv.interval_ms, mqtt.enable_log_forward, Save to flash, Safe reboot。
+- 新增通用配置通道: cmnd/<device_id>/config/set|save|reboot, 狀態回執 stat/<device_id>/config。
+- 原子持久化: 使用臨時文件 + rename 保證落盤安全, 失敗自動回退舊配置。
+
+二、架構與數據流
+- 啟動時: 加載 app/config.py 默認配置 -> 嘗試讀取 /config.json 覆蓋層並深度合併 -> 得到運行時配置。
+- 運行態調整: HA 控件下發 set 指令 -> 設備在內存應用並回執 -> 用戶點擊 Save 才將變更寫入 /config.json。
+- 需要重啟的項: 用戶顯式點擊 Safe reboot 後生效, 避免無意義重啟。
+
+三、原子寫策略
+- 使用 app/utils/json_utils.atomic_write_json 實現: 先寫 tmp 再 rename 覆蓋, 兼容 replace 回退。
+- 持久化路徑: 優先使用 ble.config_service.persistence_path, 缺省為 /config.json, 僅允許白名單鍵寫入。
+- 故障回退: 解析失敗時忽略覆蓋層, 以默認層啟動並上報告警。
+
+四、MQTT 主题與權限
+- 下發: cmnd/<device_id>/config/set, payload: {"path":"ble.enabled","value":true}
+- 保存: cmnd/<device_id>/config/save, payload: {"paths":["ble.enabled","ble.adv.interval_ms"]}
+- 重啟: cmnd/<device_id>/reboot, payload: {"delay_ms":2000}
+- 回執: stat/<device_id>/config, 統一格式 {"ok":true|false,"msg":"...","applied":{...}}
+- 安全: 復用 config.ble.security.auth=="token" 時要求 header 或 payload.token 匹配, 未授權拒絕並記錄。
+
+五、HA 實體與 MVP
+- switch.ble_enabled -> set path: ble.enabled。
+- number.ble_adv_interval_ms -> set path: ble.adv.interval_ms, 範圍 50..2000 step 25。
+- switch.mqtt_log_forward -> set path: mqtt.enable_log_forward。
+- button.save_to_flash -> 發送 save。
+- button.safe_reboot -> 發送 reboot。
+
+六、代碼改動清單(最小改動)
+- app/config.py: 新增覆蓋層讀寫與深度合併工具, 提供 apply_overlay(dict) 與 save_overlay(paths or subset)。
+- app/utils/json_utils.py: 已有 atomic_write_json, 直接復用。
+- app/net/network_manager.py: 在 MQTT 連上後訂閱配置通道, 解析 set/save/reboot, 調用 config.apply/save, 並回執。
+- app/ha.py: 暫保留現有溫濕度發現; 之後補充 5 個 Discovery 實體對應 MVP 控件。
+- 安全: 臨時復用 ble.security.token。後續再抽象 mqtt.security。
+
+七、驗收標準
+- /build.py -c 編譯通過。
+- 啟動時無 /config.json 亦可正常運行, 有覆蓋層時能正確合併。
+- HA 端調整 ble.enabled 即時生效, Save 後斷電重啟仍保持。
+- set/save/reboot 全量回執, 錯誤可觀測, 未授權被拒絕。
+
+八、風險與回滾
+- 閃存磨損: 僅在 Save 時落盤, 並限制保存頻率。
+- 配置損壞: 原子寫 + 失敗回退, 開機忽略壞文件。
+- 安全: 默認 auth="none" 僅限開發環境; 上線切到 token 並按 topic ACL 限制寫入。
+
+九、里程碑
+- M1 覆蓋層框架: app/config.py 支持 load/apply/save, 單元驗證。
+- M2 MQTT 配置通道: set/save/reboot + 回執, 白名單校驗。
+- M3 HA Discovery MVP 5 個控件與交互驗證。
+
+十、当前进展
+- 代码已实现 MQTT 配置通道订阅与回调:
+  - 订阅: cmnd/<device_id>/config/set, cmnd/<device_id>/config/save, cmnd/<device_id>/config/reboot, cmnd/<device_id>/reboot
+  - 回调: _on_mqtt_message 中解析 JSON, 分发 set/save/reboot, 调用 apply_overlay/save_overlay, 并通过 stat/<device_id>/config 回执
+  - 辅助: _json_loads, _publish_config_stat, _schedule_reboot
+- 安全与权限:
+  - 鉴权: 复用 ble.security.auth == "token", 验证 payload.token; auth == "none" 时免鉴权
+  - 重启开关: 受 ble.config_service.allow_reboot 控制, 默认 true
+- 兼容性: 复用 MqttController 的订阅恢复机制, 断线重连后自动恢复订阅
+- 构建验证: python build.py -c 通过
+- 依赖与改动: 未引入新依赖, 遵循最小改动
+
+后续工作
+- HA Discovery: 补充 5 个控制实体, 与配置通道联动
+- 写入白名单: 限定可写路径集合, 降低误写风险
+- 文档: 在 README 增补配置通道使用示例 set/save/reboot 与鉴权示例
+- 可观测性: 鉴权失败与非法 payload 统一打点或上报事件总线
+
+十一、配置指南
+
+1) 启用鉴权与重启权限
+- 在默认配置或覆盖层中设置 ble.security 与 ble.config_service
+- 文件位置: <mcfile name="config.py" path="c:\Users\Zusheng\Desktop\IOT_ESP32C3_HA\app\config.py"></mcfile>
+- 推荐示例:
+```
+ble: {
+  security: { auth: "token", token: "your-strong-token" },
+  config_service: { allow_reboot: true }
+}
+```
+- 开发期可使用 auth: "none" 免鉴权; 量产建议切换为 "token" 并通过 Broker ACL 限制写权限
+
+2) 主题约定
+- 下发: cmnd/<device_id>/config/set | cmnd/<device_id>/config/save | cmnd/<device_id>/config/reboot | cmnd/<device_id>/reboot
+- 回执: stat/<device_id>/config
+- device_id 由设备端发布 announce 与 availability 时保持一致
+
+3) 命令示例
+- 即时设置单项
+```
+Topic: cmnd/<device_id>/config/set
+Payload: { "path": "ble.enabled", "value": true, "token": "your-strong-token" }
+```
+- 批量设置多项
+```
+Topic: cmnd/<device_id>/config/set
+Payload: {
+  "update": { "ble": { "enabled": true, "adv": { "interval_ms": 200 } } },
+  "token": "your-strong-token"
+}
+```
+- 保存变更到持久化文件
+```
+Topic: cmnd/<device_id>/config/save
+Payload: { "paths": ["ble.enabled", "ble.adv.interval_ms"], "token": "your-strong-token" }
+```
+- 全量保存(省略 paths)
+```
+Topic: cmnd/<device_id>/config/save
+Payload: { "token": "your-strong-token" }
+```
+- 安全重启(支持 config/reboot 与 reboot 两个主题)
+```
+Topic: cmnd/<device_id>/reboot
+Payload: { "delay_ms": 2000, "token": "your-strong-token" }
+```
+
+4) 回执示例
+- 成功
+```
+Topic: stat/<device_id>/config
+Payload: { "ok": true, "msg": "applied", "applied": { "path": "ble.enabled", "value": true } }
+```
+- 未授权
+```
+Payload: { "ok": false, "msg": "unauthorized" }
+```
+- 拒绝重启
+```
+Payload: { "ok": false, "msg": "reboot not allowed" }
+```
+
+5) Broker ACL 建议
+- 限制仅受信客户端可发布到 cmnd/<device_id>/**
+- 禁止外部客户端发布到 stat/**, 避免伪造回执
+- 建议使用设备级凭据或客户端证书区分写入方
+
+6) 故障排查
+- 未收到回执: 确认已订阅 stat/<device_id>/config, 检查 Broker ACL 与网络
+- 授权失败: 检查 ble.security.auth 与 payload.token 是否匹配
+- 重启被拒: 检查 ble.config_service.allow_reboot 是否为 true
+- 保存无效: 确认 paths 列表正确或改用全量保存, 并查看设备日志
+
+---
+
 # BLE 设置与 OTA 方案实施计划（优先完成：BLE 设置）
 
 本文档阐述在当前项目中引入“蓝牙设置（在 app/config.py 中可配置）”的完整思路与落地步骤，并给出可执行的 TodoList。目标是：不改动现有主流程的同时，为 BLE 行为提供统一、可持久化、可在线（Web Bluetooth）调整的配置入口，并为后续 OTA 与更多服务扩展打基础。

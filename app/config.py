@@ -191,11 +191,213 @@ CONFIG = {
 
 
 # =============================================================================
+# 覆盖层与运行时配置
+# =============================================================================
+
+# Runtime overlay persistence path
+try:
+    _PERSISTENCE_PATH = CONFIG.get("ble", {}).get("config_service", {}).get("persistence_path", "/config.json")
+except Exception:
+    _PERSISTENCE_PATH = "/config.json"
+
+# Safe import of json utils with graceful fallback
+try:
+    from utils.json_utils import load_json_file as _load_json_file, atomic_write_json as _atomic_write_json
+except Exception:
+    _load_json_file = None
+    _atomic_write_json = None
+
+    def _fallback_load_json(path, default=None):
+        try:
+            import ujson as _uj
+        except Exception:
+            try:
+                import json as _uj
+            except Exception:
+                _uj = None
+        try:
+            with open(path, "r") as f:
+                s = f.read()
+            if _uj:
+                return _uj.loads(s)
+            return default if default is not None else {}
+        except Exception:
+            return default if default is not None else {}
+
+    def _fallback_atomic_write(path, data):
+        try:
+            try:
+                import ujson as _uj
+            except Exception:
+                import json as _uj
+            with open(path, "w") as f:
+                f.write(_uj.dumps(data))
+                try:
+                    f.flush()
+                except Exception:
+                    pass
+            return True
+        except Exception:
+            return False
+
+    _load_json_file = _fallback_load_json
+    _atomic_write_json = _fallback_atomic_write
+
+# In-memory overlay and merged runtime config
+_OVERLAY = {}
+_RUNTIME_CONFIG = None
+
+
+def _deep_copy(obj):
+    """Shallow-friendly deep copy for dict/list primitives"""
+    try:
+        if isinstance(obj, dict):
+            return {k: _deep_copy(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [ _deep_copy(v) for v in obj ]
+        return obj
+    except Exception:
+        return obj
+
+
+def _deep_merge(base, overlay):
+    """Return a new dict by deep merging overlay onto base"""
+    if not isinstance(base, dict):
+        return _deep_copy(overlay) if isinstance(overlay, dict) else overlay
+    result = _deep_copy(base)
+    try:
+        if isinstance(overlay, dict):
+            for k, v in overlay.items():
+                if k in result and isinstance(result[k], dict) and isinstance(v, dict):
+                    result[k] = _deep_merge(result[k], v)
+                else:
+                    result[k] = _deep_copy(v)
+        return result
+    except Exception:
+        return result
+
+
+def _deep_get(d, path, default=None):
+    try:
+        if not path:
+            return d
+        cur = d
+        parts = path.split(".") if isinstance(path, str) else list(path)
+        for p in parts:
+            if not isinstance(cur, dict) or p not in cur:
+                return default
+            cur = cur[p]
+        return cur
+    except Exception:
+        return default
+
+
+def _deep_set(d, path, value, create_missing=True):
+    try:
+        parts = path.split(".") if isinstance(path, str) else list(path)
+        cur = d
+        for i, p in enumerate(parts):
+            is_last = i == len(parts) - 1
+            if is_last:
+                try:
+                    cur[p] = value
+                except Exception:
+                    return False
+                return True
+            # ensure dict level
+            if p not in cur or not isinstance(cur[p], dict):
+                if not create_missing:
+                    return False
+                cur[p] = {}
+            cur = cur[p]
+        return True
+    except Exception:
+        return False
+
+
+def _load_overlay_from_file(path):
+    data = _load_json_file(path, default={}) if _load_json_file else {}
+    return data if isinstance(data, dict) else {}
+
+
+def _init_runtime_config():
+    global _OVERLAY, _RUNTIME_CONFIG
+    try:
+        _OVERLAY = _load_overlay_from_file(_PERSISTENCE_PATH)
+    except Exception:
+        _OVERLAY = {}
+    _RUNTIME_CONFIG = _deep_merge(CONFIG, _OVERLAY)
+
+
+# initialize merged runtime config at import time
+_init_runtime_config()
+
+
+def reload_overlay(path=None):
+    """Reload overlay file and rebuild runtime config"""
+    global _OVERLAY, _RUNTIME_CONFIG
+    try:
+        p = path or _PERSISTENCE_PATH
+        _OVERLAY = _load_overlay_from_file(p)
+        _RUNTIME_CONFIG = _deep_merge(CONFIG, _OVERLAY)
+        return True
+    except Exception:
+        return False
+
+
+def apply_overlay(update_dict=None, path=None, value=None):
+    """Apply overlay to in-memory runtime config only
+    - update_dict: dict of partial overlay
+    - or use path/value to set a single key path
+    Returns True on success
+    """
+    global _OVERLAY, _RUNTIME_CONFIG
+    try:
+        if update_dict and isinstance(update_dict, dict):
+            # deep merge onto overlay
+            _OVERLAY = _deep_merge(_OVERLAY, update_dict)
+        elif path is not None:
+            if not isinstance(_OVERLAY, dict):
+                _OVERLAY = {}
+            _deep_set(_OVERLAY, path, value, create_missing=True)
+        else:
+            return False
+        _RUNTIME_CONFIG = _deep_merge(CONFIG, _OVERLAY)
+        return True
+    except Exception:
+        return False
+
+
+def save_overlay(paths=None, persistence_path=None):
+    """Persist current overlay to json atomically
+    - paths: optional list of top-level or dotted paths to restrict what to persist
+    - persistence_path: override path; default to _PERSISTENCE_PATH
+    If paths is None, write whole overlay
+    """
+    try:
+        target_path = persistence_path or _PERSISTENCE_PATH
+        data = _OVERLAY if isinstance(_OVERLAY, dict) else {}
+        if paths and isinstance(paths, (list, tuple)):
+            # build a minimal dict containing selected paths
+            minimal = {}
+            for p in paths:
+                val = _deep_get(data, p, default=None)
+                if val is None:
+                    continue
+                # create nested structure in minimal
+                _deep_set(minimal, p, val, create_missing=True)
+            data = minimal
+        return True if _atomic_write_json and _atomic_write_json(target_path, data) else False
+    except Exception:
+        return False
+
+
+# =============================================================================
 # 配置访问接口
 # =============================================================================
 
 
-def get_config(section: str = None, key: str = None, default=None):
+def get_config(section=None, key=None, default=None):
     """
     从模块内部的 CONFIG 字典中安全地获取配置值。
 
@@ -207,10 +409,11 @@ def get_config(section: str = None, key: str = None, default=None):
     Returns:
         配置值或配置字典。
     """
+    cfg = _RUNTIME_CONFIG if isinstance(_RUNTIME_CONFIG, dict) else CONFIG
     if section is None:
-        return CONFIG
+        return cfg
 
-    section_data = CONFIG.get(section, {})
+    section_data = cfg.get(section, {})
 
     if key is None:
         return section_data
