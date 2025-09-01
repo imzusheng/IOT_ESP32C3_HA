@@ -51,6 +51,7 @@ class MQTTClient:
         self.last_ping = time.time()
         self.last_ping_resp = time.time()
         self._in_callback = False
+        self._pid = 0  # Packet Identifier 递增计数器, 1..65535 循环
 
     def _send_str(self, s):
         if self.sock is None:
@@ -72,6 +73,13 @@ class MQTTClient:
 
     def set_callback(self, f):
         self.cb = f
+
+    def _next_pid(self):
+        """生成下一个 Packet Identifier, 范围 1..65535"""
+        self._pid = (self._pid + 1) & 0xFFFF
+        if self._pid == 0:
+            self._pid = 1
+        return self._pid
 
     def connect(self, clean_session=True):
         self.sock = socket.socket()
@@ -174,17 +182,57 @@ class MQTTClient:
         if self.sock is None:
             raise MQTTException("Socket is not connected")
         assert self.cb is not None, "订阅回调未设置"
-        pkt = bytearray(b"\x82\0\0\0")
-        self.sock.write(pkt)
+        # 构造 MQTT SUBSCRIBE 报文
+        # 固定头: 0x82, 剩余长度: 可变长度编码
+        # 可变头: Packet Identifier(2字节)
+        # 负载: Topic(String) + QoS(1字节)
+        if isinstance(topic, str):
+            topic = topic.encode("utf-8")
+        pid = self._next_pid()
+        # 计算剩余长度: 2(pid) + 2(topic_len) + len(topic) + 1(qos)
+        rem_len = 2 + 2 + len(topic) + 1
+        # 可变长度编码
+        rem_bytes = bytearray()
+        x = rem_len
+        while True:
+            enc = x & 0x7F
+            x >>= 7
+            if x:
+                enc |= 0x80
+            rem_bytes.append(enc)
+            if not x:
+                break
+        # 发送固定头
+        self.sock.write(b"\x82" + rem_bytes)
+        # 发送 Packet Identifier
+        self.sock.write(struct.pack("!H", pid))
+        # 发送主题与 QoS
         self._send_str(topic)
         self.sock.write(qos.to_bytes(1, "little"))
 
+        # 等待 SUBACK
         while 1:
             op = self.wait_msg()
-            if op == 0x90:
-                resp = self.sock.read(4)
-                assert resp[0] == 0x90
-                assert resp[2] == qos & 0x01
+            if op == 0x90:  # SUBACK
+                # 读取剩余长度、PID、返回码
+                rl = self._recv_len()
+                # rl 至少为 3 字节: 2(PID)+1(返回码)
+                if rl < 3:
+                    raise MQTTException("Invalid SUBACK length")
+                resp_pid = self.sock.read(2)
+                if len(resp_pid) != 2:
+                    raise MQTTException("SUBACK pid read error")
+                resp_pid = (resp_pid[0] << 8) | resp_pid[1]
+                granted = self.sock.read(1)
+                if not granted or len(granted) != 1:
+                    raise MQTTException("SUBACK rc read error")
+                # 校验 PID 与返回码
+                if resp_pid != pid:
+                    raise MQTTException("SUBACK pid mismatch")
+                rc = granted[0]
+                if rc == 0x80:
+                    raise MQTTException("SUBSCRIBE failed (rc=0x80)")
+                # 0x00/0x01/0x02 分别代表授予的 QoS
                 return
 
     def wait_msg(self):

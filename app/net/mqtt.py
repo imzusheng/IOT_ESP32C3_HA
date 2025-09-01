@@ -332,7 +332,7 @@ class MqttController:
         except Exception as e:
             err_no, reason = _errno_info(e)
             error("MQTT订阅失败 [errno={} reason={}]: {}", err_no, reason, e, module="MQTT")
-            self._on_disconnected()
+            # 订阅失败不应在此处额外处理连接状态, 交由上层状态机与 process_once 检测
             return False
 
     async def process_once(self):
@@ -345,6 +345,11 @@ class MqttController:
         except Exception as e:
             err_no, reason = _errno_info(e)
             warning("MQTT消息处理异常 [errno={} reason={}]: {}", err_no, reason, e, module="MQTT")
+            # 消息处理出现异常通常意味着底层连接异常, 立即标记断开, 交由上层状态机与退避逻辑处理重连
+            try:
+                self._on_disconnected()
+            except Exception:
+                pass
             return False
 
     def disconnect(self):

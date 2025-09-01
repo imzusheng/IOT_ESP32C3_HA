@@ -11,6 +11,7 @@ Home Assistant 帮助模块
   ha.publish_state(temperature=26.4, humidity=58.2)
 """
 from lib.logger import info, warning, debug
+from utils import json_dumps
 
 class HomeAssistantHelper:
     def __init__(self, config, get_device_id_fn, mqtt_publish_fn):
@@ -59,6 +60,12 @@ class HomeAssistantHelper:
         sub_tail = str(sub).strip("/")
         return f"device/{device_id}/state/{sub_tail}"
 
+    def command_topic(self, sub: str) -> str:
+        """构建命令主题 cmnd/<device_id>/<sub>"""
+        device_id = self._safe_device_id()
+        sub_tail = str(sub).strip("/")
+        return f"cmnd/{device_id}/{sub_tail}"
+
     def _safe_device_id(self) -> str:
         try:
             did = self._get_device_id() if callable(self._get_device_id) else None
@@ -66,9 +73,35 @@ class HomeAssistantHelper:
         except Exception:
             return "unknown"
 
+    def _get_security_token(self):
+        """读取 ble.security.token (当 auth==token 时返回 token)"""
+        try:
+            ble_cfg = (self.config or {}).get("ble", {}) or {}
+            sec = ble_cfg.get("security", {}) or {}
+            auth = (sec.get("auth") or "none").lower()
+            if auth == "token":
+                return sec.get("token")
+            return None
+        except Exception:
+            return None
+
+    def _payload_press_str(self, obj: dict) -> str:
+        """将对象编码成字符串, 作为 HA button 的 payload_press"""
+        try:
+            return json_dumps(obj)
+        except Exception:
+            try:
+                import ujson as _j
+            except Exception:
+                import json as _j
+            try:
+                return _j.dumps(obj)
+            except Exception:
+                return "{}"
+
     # -------- 发布器 --------
     def publish_discovery(self):
-        """为温度与湿度传感器发布 HA 发现配置"""
+        """为温度与湿度传感器与常用按钮发布 HA 发现配置"""
         try:
             device_id = self._safe_device_id()
             device = self._device_info(device_id)
@@ -110,8 +143,64 @@ class HomeAssistantHelper:
             h_topic = f"{base}/sensor/{device_id}/humidity/config"
             self._mqtt_publish(t_topic, temp_cfg, retain=True, qos=0)
             self._mqtt_publish(h_topic, hum_cfg, retain=True, qos=0)
-            info("已发布 HA 发现配置: {} , {}", t_topic, h_topic, module="HA")
-            return {"topics": [t_topic, h_topic]}
+
+            # -------- 发布按钮实体 (通过 cmnd/<device_id>/config/*) --------
+            token = self._get_security_token()
+
+            # 1) 立即重启
+            reboot_payload = {"delay_ms": 0}
+            if token is not None:
+                reboot_payload["token"] = token
+            reboot_cfg = {
+                "command_topic": self.command_topic("config/reboot"),
+                "payload_press": self._payload_press_str(reboot_payload),
+                "availability": availability,
+                "unique_id": f"{device_id}_btn_reboot_now",
+                "name": ha_cfg.get("reboot_name") or "Reboot",
+                "device": device,
+                "entity_category": "config",
+                "icon": "mdi:restart",
+            }
+            b1_topic = f"{base}/button/{device_id}/reboot/config"
+            self._mqtt_publish(b1_topic, reboot_cfg, retain=True, qos=0)
+
+            # 2) 3 秒后重启
+            reboot3_payload = {"delay_ms": 3000}
+            if token is not None:
+                reboot3_payload["token"] = token
+            reboot3_cfg = {
+                "command_topic": self.command_topic("config/reboot"),
+                "payload_press": self._payload_press_str(reboot3_payload),
+                "availability": availability,
+                "unique_id": f"{device_id}_btn_reboot_3s",
+                "name": ha_cfg.get("reboot3s_name") or "Reboot (3s)",
+                "device": device,
+                "entity_category": "config",
+                "icon": "mdi:update",
+            }
+            b2_topic = f"{base}/button/{device_id}/reboot3s/config"
+            self._mqtt_publish(b2_topic, reboot3_cfg, retain=True, qos=0)
+
+            # 3) 保存配置
+            save_payload = {}
+            if token is not None:
+                save_payload["token"] = token
+            save_cfg = {
+                "command_topic": self.command_topic("config/save"),
+                "payload_press": self._payload_press_str(save_payload),
+                "availability": availability,
+                "unique_id": f"{device_id}_btn_save_config",
+                "name": ha_cfg.get("save_name") or "Save Config",
+                "device": device,
+                "entity_category": "config",
+                "icon": "mdi:content-save",
+            }
+            b3_topic = f"{base}/button/{device_id}/save_config/config"
+            self._mqtt_publish(b3_topic, save_cfg, retain=True, qos=0)
+
+            info("已发布 HA 发现配置与按钮: {}, {}, {}, {}, {}",
+                 t_topic, h_topic, b1_topic, b2_topic, b3_topic, module="HA")
+            return {"topics": [t_topic, h_topic, b1_topic, b2_topic, b3_topic]}
         except Exception as e:
             warning("发布 HA 发现配置失败: {}", e, module="HA")
             return {"topics": []}
