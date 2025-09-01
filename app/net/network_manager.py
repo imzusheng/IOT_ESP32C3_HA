@@ -540,6 +540,9 @@ class NetworkManager:
         try:
             if (not self.mqtt_controller) or (not self.mqtt_controller.is_connected()):
                 return False
+            # 防重入: 避免重复订阅
+            if getattr(self, "_cfg_subscribed", False):
+                return True
             # 设置回调(幂等)
             self.mqtt_controller.set_callback(self._on_mqtt_message)
             base = "cmnd/{}".format(self.get_device_id())
@@ -549,11 +552,19 @@ class NetworkManager:
                 base + "/config/reboot",
                 base + "/reboot",
             ]
+            # 逐个订阅并插入短延迟, 避免底层阻塞导致连接不稳定
+            import utime as time
             for tp in topics:
                 try:
                     self.mqtt_controller.subscribe(tp, qos=0)
+                    # 成功后短暂延迟
+                    try:
+                        time.sleep_ms(50)
+                    except Exception:
+                        pass
                 except Exception:
                     pass
+            self._cfg_subscribed = True
             debug("MQTT配置通道订阅完成", module="NET")
             return True
         except Exception as e:
