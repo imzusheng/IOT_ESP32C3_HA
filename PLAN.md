@@ -1,59 +1,59 @@
 # HA 混合配置方案实施计划 Hybrid: MQTT 控件 + config.json 原子持久化
 
-本计划在不改变现有主流程的前提下, 落地混合方案: 通过 HA 暴露少量高价值的 MQTT 控件即时生效, 仅在用戶顯式保存時將變更以原子寫入方式落盤至 config.json 覆蓋層, 並按需觸發安全重啟。優先級: 交互可用 > 最小改動 > 安全可靠。
+本计划在不改变现有主流程的前提下, 落地混合方案: 通过 HA 暴露少量高价值的 MQTT 控件即时生效, 仅在用户显式保存时将变更以原子写入方式落盘至 config.json 覆盖层, 并按需触发安全重启。优先级: 交互可用 > 最小改动 > 安全可靠。
 
-一、目標與範圍
-- 採用雙層配置: 內置默認層 app/config.py + 運行時覆蓋層 /config.json。
-- 為 HA 暴露 MVP 控件: ble.enabled, ble.adv.interval_ms, mqtt.enable_log_forward, Save to flash, Safe reboot。
-- 新增通用配置通道: cmnd/<device_id>/config/set|save|reboot, 狀態回執 stat/<device_id>/config。
-- 原子持久化: 使用臨時文件 + rename 保證落盤安全, 失敗自動回退舊配置。
+一、目标与范围
+- 采用双层配置: 内置默认层 app/config.py + 运行时覆盖层 /config.json。
+- 为 HA 暴露 MVP 控件: ble.enabled, ble.adv.interval_ms, mqtt.enable_log_forward, Save to flash, Safe reboot。
+- 新增通用配置通道: cmnd/<device_id>/config/set|save|reboot, 状态回执 stat/<device_id>/config。
+- 原子持久化: 使用临时文件 + rename 保证落盘安全, 失败自动回退旧配置。
 
-二、架構與數據流
-- 啟動時: 加載 app/config.py 默認配置 -> 嘗試讀取 /config.json 覆蓋層並深度合併 -> 得到運行時配置。
-- 運行態調整: HA 控件下發 set 指令 -> 設備在內存應用並回執 -> 用戶點擊 Save 才將變更寫入 /config.json。
-- 需要重啟的項: 用戶顯式點擊 Safe reboot 後生效, 避免無意義重啟。
+二、架构与数据流
+- 启动时: 加载 app/config.py 默认配置 -> 尝试读取 /config.json 覆盖层并深度合并 -> 得到运行时配置。
+- 运行态调整: HA 控件下发 set 指令 -> 设备在内存应用并回执 -> 用户点击 Save 才将变更写入 /config.json。
+- 需要重启的项: 用户显式点击 Safe reboot 后生效, 避免无意义重启。
 
-三、原子寫策略
-- 使用 app/utils/json_utils.atomic_write_json 實現: 先寫 tmp 再 rename 覆蓋, 兼容 replace 回退。
-- 持久化路徑: 優先使用 ble.config_service.persistence_path, 缺省為 /config.json, 僅允許白名單鍵寫入。
-- 故障回退: 解析失敗時忽略覆蓋層, 以默認層啟動並上報告警。
+三、原子写策略
+- 使用 app/utils/json_utils.atomic_write_json 实现: 先写 tmp 再 rename 覆盖, 兼容 replace 回退。
+- 持久化路径: 优先使用 ble.config_service.persistence_path, 缺省为 /config.json, 仅允许白名单键写入。
+- 故障回退: 解析失败时忽略覆盖层, 以默认层启动并上报告警。
 
-四、MQTT 主题與權限
-- 下發: cmnd/<device_id>/config/set, payload: {"path":"ble.enabled","value":true}
+四、MQTT 主题与权限
+- 下发: cmnd/<device_id>/config/set, payload: {"path":"ble.enabled","value":true}
 - 保存: cmnd/<device_id>/config/save, payload: {"paths":["ble.enabled","ble.adv.interval_ms"]}
-- 重啟: cmnd/<device_id>/reboot, payload: {"delay_ms":2000}
-- 回執: stat/<device_id>/config, 統一格式 {"ok":true|false,"msg":"...","applied":{...}}
-- 安全: 復用 config.ble.security.auth=="token" 時要求 header 或 payload.token 匹配, 未授權拒絕並記錄。
+- 重启: cmnd/<device_id>/reboot, payload: {"delay_ms":2000}
+- 回执: stat/<device_id>/config, 统一格式 {"ok":true|false,"msg":"...","applied":{...}}
+- 安全: 复用 config.ble.security.auth=="token" 时要求 header 或 payload.token 匹配, 未授权拒绝并记录。
 
-五、HA 實體與 MVP
+五、HA 实体与 MVP
 - switch.ble_enabled -> set path: ble.enabled。
-- number.ble_adv_interval_ms -> set path: ble.adv.interval_ms, 範圍 50..2000 step 25。
+- number.ble_adv_interval_ms -> set path: ble.adv.interval_ms, 范围 50..2000 step 25。
 - switch.mqtt_log_forward -> set path: mqtt.enable_log_forward。
-- button.save_to_flash -> 發送 save。
-- button.safe_reboot -> 發送 reboot。
+- button.save_to_flash -> 发送 save。
+- button.safe_reboot -> 发送 reboot。
 
-六、代碼改動清單(最小改動)
-- app/config.py: 新增覆蓋層讀寫與深度合併工具, 提供 apply_overlay(dict) 與 save_overlay(paths or subset)。
-- app/utils/json_utils.py: 已有 atomic_write_json, 直接復用。
-- app/net/network_manager.py: 在 MQTT 連上後訂閱配置通道, 解析 set/save/reboot, 調用 config.apply/save, 並回執。
-- app/ha.py: 暫保留現有溫濕度發現; 之後補充 5 個 Discovery 實體對應 MVP 控件。
-- 安全: 臨時復用 ble.security.token。後續再抽象 mqtt.security。
+六、代码改动清单(最小改动)
+- app/config.py: 新增覆盖层读写与深度合并工具, 提供 apply_overlay(dict) 与 save_overlay(paths or subset)。
+- app/utils/json_utils.py: 已有 atomic_write_json, 直接复用。
+- app/net/network_manager.py: 在 MQTT 连上后订阅配置通道, 解析 set/save/reboot, 调用 config.apply/save, 并回执。
+- app/ha.py: 暂保留现有温湿度发现; 之后补充 5 个 Discovery 实体对应 MVP 控件。
+- 安全: 临时复用 ble.security.token。后续再抽象 mqtt.security。
 
-七、驗收標準
-- /build.py -c 編譯通過。
-- 啟動時無 /config.json 亦可正常運行, 有覆蓋層時能正確合併。
-- HA 端調整 ble.enabled 即時生效, Save 後斷電重啟仍保持。
-- set/save/reboot 全量回執, 錯誤可觀測, 未授權被拒絕。
+七、验收标准
+- /build.py -c 编译通过。
+- 启动时无 /config.json 亦可正常运行, 有覆盖层时能正确合并。
+- HA 端调整 ble.enabled 即时生效, Save 后断电重启仍保持。
+- set/save/reboot 全量回执, 错误可观测, 未授权被拒绝。
 
-八、風險與回滾
-- 閃存磨損: 僅在 Save 時落盤, 並限制保存頻率。
-- 配置損壞: 原子寫 + 失敗回退, 開機忽略壞文件。
-- 安全: 默認 auth="none" 僅限開發環境; 上線切到 token 並按 topic ACL 限制寫入。
+八、风险与回滚
+- 闪存磨损: 仅在 Save 时落盘, 并限制保存频率。
+- 配置损坏: 原子写 + 失败回退, 开机忽略坏文件。
+- 安全: 默认 auth="none" 仅限开发环境; 上线切到 token 并按 topic ACL 限制写入。
 
 九、里程碑
-- M1 覆蓋層框架: app/config.py 支持 load/apply/save, 單元驗證。
-- M2 MQTT 配置通道: set/save/reboot + 回執, 白名單校驗。
-- M3 HA Discovery MVP 5 個控件與交互驗證。
+- M1 覆盖层框架: app/config.py 支持 load/apply/save, 单元验证。
+- M2 MQTT 配置通道: set/save/reboot + 回执, 白名单校验。
+- M3 HA Discovery MVP 5 个控件与交互验证。
 
 十、当前进展
 - 代码已实现 MQTT 配置通道订阅与回调:
