@@ -666,6 +666,39 @@ class NetworkManager:
                     self._publish_config_stat({"ok": False, "msg": "invalid payload for set"})
                     return
                 self._publish_config_stat({"ok": bool(ok), "msg": "applied" if ok else "apply failed", "applied": data})
+            elif t == base + "config/select/led_power":
+                # LED开关控制
+                try:
+                    value = data if isinstance(data, bool) else str(data).lower() == "true"
+                    ok = apply_overlay(path="led_enabled", value=value)
+                    self._publish_config_stat({"ok": bool(ok), "msg": "applied" if ok else "apply failed", "applied": {"led_enabled": value}})
+                    
+                    # 立即应用LED状态
+                    if ok:
+                        from hw.led import play
+                        if value:
+                            current_mode = self.config.get_nested("led_mode", "cruise")
+                            play(current_mode)
+                        else:
+                            play("off")
+                except Exception as e:
+                    self._publish_config_stat({"ok": False, "msg": str(e)})
+            elif t == base + "config/select/led_mode":
+                # LED模式选择
+                try:
+                    valid_modes = ["off", "blink", "pulse", "cruise", "sos"]
+                    mode = str(data) if str(data) in valid_modes else "cruise"
+                    ok = apply_overlay(path="led_mode", value=mode)
+                    self._publish_config_stat({"ok": bool(ok), "msg": "applied" if ok else "apply failed", "applied": {"led_mode": mode}})
+                    
+                    # 立即应用LED模式
+                    if ok:
+                        from hw.led import play
+                        led_enabled = self.config.get_nested("led_enabled", True)
+                        if led_enabled:
+                            play(mode)
+                except Exception as e:
+                    self._publish_config_stat({"ok": False, "msg": str(e)})
             elif t == base + "config/save":
                 # 权限校验
                 ok_auth, err = self._is_authorized_for_config(data)

@@ -122,7 +122,47 @@ CONFIG = {
         "sw_version": "2.3.0",
         # 描述: 传感器展示名称(可选)
         "temp_name": "Temperature",
-        "hum_name": "Humidity",
+        # 描述: 传感器展示名称(可选)
+        "humi_name": "Humidity",
+        # 描述: LED开关状态
+        "led_enabled": True,
+        # 描述: LED闪烁模式
+        "led_mode": "cruise",
+        # 描述: 按钮配置列表
+        "buttons": [
+            {
+                "id": "reboot",
+                "name": "重启设备",
+                "icon": "mdi:restart",
+                "type": "reboot",
+                "params": {"delay_ms": 0}
+            },
+            {
+                "id": "reset_wifi",
+                "name": "重置WiFi",
+                "icon": "mdi:wifi-off",
+                "type": "reset",
+                "params": {"target": "wifi"}
+            },
+            {
+                "id": "led_power",
+                "name": "LED开关",
+                "icon": "mdi:lightbulb",
+                "type": "toggle",
+                "params": {"feature": "led_enabled", "default": True}
+            },
+            {
+                "id": "led_mode",
+                "name": "LED模式",
+                "icon": "mdi:palette",
+                "type": "select",
+                "params": {
+                    "feature": "led_mode",
+                    "options": ["off", "blink", "pulse", "cruise", "sos"],
+                    "default": "cruise"
+                }
+            }
+        ],
     },
     # ==========================
     # BLE 配置段（新增）
