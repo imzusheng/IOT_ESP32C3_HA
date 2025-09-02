@@ -123,6 +123,32 @@ CONFIG = {
         # 描述: 传感器展示名称(可选)
         "temp_name": "Temperature",
         "hum_name": "Humidity",
+        # 描述: 可配置的按钮列表
+        # 影响: 定义设备支持的控制按钮
+        # 建议: 根据实际需求配置按钮类型和参数
+        "buttons": [
+            {
+                "id": "reboot",
+                "name": "重启设备",
+                "icon": "mdi:restart",
+                "type": "reboot",
+                "params": {"delay_ms": 0}
+            },
+            {
+                "id": "reset_wifi",
+                "name": "重置WiFi",
+                "icon": "mdi:wifi-refresh",
+                "type": "reset",
+                "params": {"target": "wifi"}
+            },
+            {
+                "id": "test_mode",
+                "name": "测试模式",
+                "icon": "mdi:test-tube",
+                "type": "toggle",
+                "params": {"feature": "test_mode", "default": False}
+            }
+        ],
     },
     # ==========================
     # BLE 配置段（新增）
