@@ -135,6 +135,3 @@ def enter_safe_mode():
 # 检查安全模式
 if check_safe_mode():
     enter_safe_mode()
-
-# 正常启动流程继续
-print("Normal boot sequence continuing...")

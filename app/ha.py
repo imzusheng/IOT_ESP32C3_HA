@@ -160,27 +160,34 @@ class HomeAssistantHelper:
                     
                 btn_name = btn.get("name") or btn_id.title()
                 btn_icon = btn.get("icon") or "mdi:gesture-tap-button"
+                btn_type = btn.get("type", "button")
                 btn_params = btn.get("params", {})
                 
-                # 构建payload
-                payload = dict(btn_params)
-                if token is not None:
-                    payload["token"] = token
+                if btn_type == "select":
+                    options = btn_params.get("options", [])
+                    select_topic = self.publish_select_discovery(btn_id, btn_name, options, btn_icon)
+                    if select_topic:
+                        button_topics.append(select_topic)
+                else:
+                    # 构建payload
+                    payload = dict(btn_params)
+                    if token is not None:
+                        payload["token"] = token
 
-                btn_cfg = {
-                    "command_topic": self.command_topic(f"config/button/{btn_id}"),
-                    "payload_press": self._payload_press_str(payload),
-                    "availability": availability,
-                    "unique_id": f"{device_id}_btn_{btn_id}",
-                    "name": btn_name,
-                    "device": device,
-                    "entity_category": "config",
-                    "icon": btn_icon,
-                }
-                
-                btn_topic = f"{base}/button/{device_id}/{btn_id}/config"
-                self._mqtt_publish(btn_topic, btn_cfg, retain=True, qos=0)
-                button_topics.append(btn_topic)
+                    btn_cfg = {
+                        "command_topic": self.command_topic(f"config/button/{btn_id}"),
+                        "payload_press": self._payload_press_str(payload),
+                        "availability": availability,
+                        "unique_id": f"{device_id}_btn_{btn_id}",
+                        "name": btn_name,
+                        "device": device,
+                        "entity_category": "config",
+                        "icon": btn_icon,
+                    }
+                    
+                    btn_topic = f"{base}/button/{device_id}/{btn_id}/config"
+                    self._mqtt_publish(btn_topic, btn_cfg, retain=True, qos=0)
+                    button_topics.append(btn_topic)
 
             all_topics = [t_topic, h_topic] + button_topics
             info("已发布 HA 发现配置: {}", ", ".join(all_topics), module="HA")
@@ -208,6 +215,37 @@ class HomeAssistantHelper:
         except Exception:
             ok = False
         return ok
+
+    def publish_select_discovery(self, select_id: str, name: str, options: list, icon: str = "mdi:format-list-bulleted"):
+        """为 select 实体发布 HA 发现配置"""
+        try:
+            device_id = self._safe_device_id()
+            device = self._device_info(device_id)
+            availability = [{
+                "topic": self.availability_topic(),
+                "payload_available": "online",
+                "payload_not_available": "offline",
+            }]
+            
+            select_cfg = {
+                "command_topic": self.command_topic(f"config/select/{select_id}"),
+                "state_topic": self.state_topic(f"select/{select_id}"),
+                "availability": availability,
+                "unique_id": f"{device_id}_select_{select_id}",
+                "name": name,
+                "device": device,
+                "entity_category": "config",
+                "icon": icon,
+                "options": options,
+            }
+            
+            topic = f"{self.discovery_prefix}/select/{device_id}/{select_id}/config"
+            self._mqtt_publish(topic, select_cfg, retain=True, qos=0)
+            info("已发布 HA select 发现配置: {}", topic, module="HA")
+            return topic
+        except Exception as e:
+            warning("发布 HA select 发现配置失败: {}", e, module="HA")
+            return None
 
     def publish_metrics(self, payload, retain=False, qos=0):
         try:

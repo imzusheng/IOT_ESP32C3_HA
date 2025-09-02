@@ -122,10 +122,13 @@ CONFIG = {
         "sw_version": "2.3.0",
         # 描述: 传感器展示名称(可选)
         "temp_name": "Temperature",
-        "hum_name": "Humidity",
-        # 描述: 可配置的按钮列表
-        # 影响: 定义设备支持的控制按钮
-        # 建议: 根据实际需求配置按钮类型和参数
+        # 描述: 传感器展示名称(可选)
+        "humi_name": "Humidity",
+        # 描述: LED开关状态
+        "led_enabled": True,
+        # 描述: LED闪烁模式
+        "led_mode": "cruise",
+        # 描述: 按钮配置列表
         "buttons": [
             {
                 "id": "reboot",
@@ -137,16 +140,27 @@ CONFIG = {
             {
                 "id": "reset_wifi",
                 "name": "重置WiFi",
-                "icon": "mdi:wifi-refresh",
+                "icon": "mdi:wifi-off",
                 "type": "reset",
                 "params": {"target": "wifi"}
             },
             {
-                "id": "test_mode",
-                "name": "测试模式",
-                "icon": "mdi:test-tube",
+                "id": "led_power",
+                "name": "LED开关",
+                "icon": "mdi:lightbulb",
                 "type": "toggle",
-                "params": {"feature": "test_mode", "default": False}
+                "params": {"feature": "led_enabled", "default": True}
+            },
+            {
+                "id": "led_mode",
+                "name": "LED模式",
+                "icon": "mdi:palette",
+                "type": "select",
+                "params": {
+                    "feature": "led_mode",
+                    "options": ["off", "blink", "pulse", "cruise", "sos"],
+                    "default": "cruise"
+                }
             }
         ],
     },
