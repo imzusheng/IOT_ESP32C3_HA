@@ -138,20 +138,6 @@ CONFIG = {
                 "params": {"delay_ms": 0}
             },
             {
-                "id": "reset_wifi",
-                "name": "重置WiFi",
-                "icon": "mdi:wifi-off",
-                "type": "reset",
-                "params": {"target": "wifi"}
-            },
-            {
-                "id": "led_power",
-                "name": "LED开关",
-                "icon": "mdi:lightbulb",
-                "type": "toggle",
-                "params": {"feature": "led_enabled", "default": True}
-            },
-            {
                 "id": "led_mode",
                 "name": "LED模式",
                 "icon": "mdi:palette",

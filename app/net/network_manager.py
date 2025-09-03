@@ -335,6 +335,12 @@ class NetworkManager:
                         self.publish_announce()
                         # 新增: 配置通道订阅与回调
                         self._setup_mqtt_config_channel()
+                        # 发布当前LED模式状态
+                        try:
+                            current_led_mode = self.config.get_nested("led_mode", "cruise")
+                            self.mqtt_publish(f"device/{self.get_device_id()}/state/select/led_mode", current_led_mode, retain=True, qos=0)
+                        except Exception:
+                            pass
                     except Exception:
                         pass
                     return True
@@ -406,6 +412,12 @@ class NetworkManager:
                         self.ha.publish_discovery()
                         # 新增: 配置通道订阅与回调
                         self._setup_mqtt_config_channel()
+                        # 发布当前LED模式状态
+                        try:
+                            current_led_mode = self.config.get_nested("led_mode", "cruise")
+                            self.mqtt_publish(f"device/{self.get_device_id()}/state/select/led_mode", current_led_mode, retain=True, qos=0)
+                        except Exception:
+                            pass
                     except Exception:
                         pass
                 if self.mqtt_connected:
@@ -548,6 +560,8 @@ class NetworkManager:
                 base + "/config/save",
                 base + "/config/reboot",
                 base + "/reboot",
+                base + "/config/button/reboot",
+                base + "/config/select/led_mode",
             ]
             for tp in topics:
                 try:
@@ -697,6 +711,12 @@ class NetworkManager:
                         led_enabled = self.config.get_nested("led_enabled", True)
                         if led_enabled:
                             play(mode)
+                        
+                        # 发布LED模式状态到Home Assistant
+                        try:
+                            self.mqtt_publish(f"device/{self.get_device_id()}/state/select/led_mode", mode, retain=True, qos=0)
+                        except Exception:
+                            pass
                 except Exception as e:
                     self._publish_config_stat({"ok": False, "msg": str(e)})
             elif t == base + "config/save":
@@ -711,6 +731,18 @@ class NetworkManager:
                     return
                 ok = save_overlay(paths=paths)
                 self._publish_config_stat({"ok": bool(ok), "msg": "saved" if ok else "save failed", "paths": paths or "all"})
+            elif t == base + "config/button/reboot":
+                # 按钮重启功能
+                ok_auth, err = self._is_authorized_for_config(data)
+                if not ok_auth:
+                    self._publish_config_stat({"ok": False, "msg": err or "unauthorized"})
+                    return
+                if not self._is_reboot_allowed():
+                    self._publish_config_stat({"ok": False, "msg": "reboot not allowed"})
+                    return
+                delay_ms = data.get("delay_ms", 0) if isinstance(data, dict) else 0
+                self._publish_config_stat({"ok": True, "msg": "rebooting", "delay_ms": delay_ms})
+                self._schedule_reboot(delay_ms)
             elif t == base + "config/reboot" or t == base + "reboot":
                 # 权限与能力校验
                 ok_auth, err = self._is_authorized_for_config(data)

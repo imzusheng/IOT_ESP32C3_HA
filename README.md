@@ -1,5 +1,7 @@
 # ESP32-C3 MicroPython IoT 项目 (重构版)
 
+- 蓝牙和风扇功能暂时搁置
+
 - ESP32C3 设备基础限制
   - 最多支持 2 个定时器(编号 0 至 1)
   - 总RAM: 264KB SRAM

@@ -201,6 +201,13 @@ python -m py_compile app/main.py
   - 标记文件安全模式触发
   - 系统路径初始化
 
+### 15. 工具函数模块 - `app/utils/`
+- **功能**: 提供各种工具函数和辅助功能
+- **包含模块**:
+  - `json_utils.py`: JSON文件读写工具，支持原子写入
+  - `time_utils.py`: 时间处理工具函数
+  - `timers.py`: 定时器管理工具集
+
 ## 事件驱动工作流程
 
 ### 事件类型和处理
@@ -285,8 +292,9 @@ object_pool.add_pool("system_events", lambda: {"event": "", "state": ""}, 5)
 - **ntp**: NTP时间同步配置
 - **daemon**: 系统守护进程配置(看门狗、错误计数等)
 - **system**: 系统行为配置(主循环延迟等)
-- **ha**: Home Assistant集成配置(发现前缀、设备信息等)
-- **ble**: 蓝牙功能配置(设备名称、服务开关、安全设置等)
+- **ha**: Home Assistant集成配置(发现前缀、设备信息、按钮配置等)
+- **ble**: 蓝牙功能配置(设备名称、服务开关、安全设置、配置服务等)
+- **buttons**: Home Assistant按钮实体配置(支持LED控制等功能按钮)
 
 ### 配置访问接口
 ```python
@@ -335,9 +343,23 @@ app/                        # 开发源代码目录(编译后上传到设备根�
 ├── ha.py                  # Home Assistant集成
 └── boot.py                # 启动引导
 └── tests/                 # 单元测试目录
+
+## 测试脚本
+
+### 硬件测试脚本
+- **test_tb6612fng.py**: TB6612FNG电机驱动器测试脚本，支持PWM和TACH信号诊断
+- **test_bluetoot_working.py**: 蓝牙功能测试脚本，支持BLE设备连接和通信测试
+
+### 测试脚本使用
+```bash
+# 运行风扇诊断测试
+python test_tb6612fng.py
+
+# 运行蓝牙功能测试
+python test_bluetoot_working.py
 ```
 
-### 开发原则
+## 开发原则
 1. **事件驱动**: 所有模块间通信通过EventBus进行
 2. **内存优化**: 注意ESP32C3的264KB内存限制
 3. **错误处理**: 统一的错误处理和恢复机制
@@ -401,6 +423,8 @@ class MyModule:
 - **WiFi多网络**: 支持配置多个WiFi网络，按信号强度自动选择最优网络连接
 - **蓝牙支持**: 支持BLE功能，包括设备信息、电池服务等标准服务
 - **安全模式**: 支持按键和双击复位进入安全模式，便于故障恢复
+- **配置覆盖**: 支持MQTT动态配置和配置文件覆盖
+- **HA按钮**: 支持Home Assistant可配置按钮实体，用于设备控制
 
 ## 项目实际特性
 
