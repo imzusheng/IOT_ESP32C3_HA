@@ -440,6 +440,79 @@ print("清理完成")
         print_message(f"设备清理失败: {stderr}", "ERROR")
         return False
 
+def start_upload_guard(port, verbose=False):
+    """启动设备端上传守护进程"""
+    guard_script = """
+import machine
+import utime
+import gc
+
+# 全局看门狗实例
+_upload_wdt = None
+_upload_start_time = 0
+
+def _init_upload_watchdog():
+    global _upload_wdt, _upload_start_time
+    try:
+        if hasattr(machine, "WDT"):
+            _upload_wdt = machine.WDT(timeout=60000)
+            _upload_start_time = utime.ticks_ms()
+            print("Upload watchdog initialized")
+            return True
+    except Exception as e:
+        print(f"Watchdog init failed: {e}")
+    return False
+
+def _feed_upload_watchdog():
+    global _upload_wdt, _upload_start_time
+    try:
+        current_time = utime.ticks_ms()
+        # 每30秒喂一次看门狗
+        if utime.ticks_diff(current_time, _upload_start_time) >= 30000:
+            if _upload_wdt:
+                _upload_wdt.feed()
+                print("Upload watchdog fed")
+                _upload_start_time = current_time
+            return True
+    except Exception as e:
+        print(f"Watchdog feed failed: {e}")
+    return False
+
+# 初始化看门狗
+_init_upload_watchdog()
+print("Upload guard ready")
+"""
+    
+    if verbose:
+        print_message("启动设备端上传守护进程...", "INFO")
+    
+    ret, _, err = execute_mpremote_command(port, "exec", guard_script, timeout=TIMEOUT_SHORT)
+    if ret == 0:
+        if verbose:
+            print_message("上传守护进程已启动", "SUCCESS")
+        return True
+    else:
+        if verbose:
+            print_message(f"启动上传守护进程失败: {err.strip()}", "WARNING")
+        return False
+
+def stop_upload_guard(port, verbose=False):
+    """停止设备端上传守护进程"""
+    stop_script = """
+# 清理上传守护进程
+try:
+    global _upload_wdt
+    _upload_wdt = None
+    print("Upload guard stopped")
+except Exception as e:
+    print(f"Stop guard error: {e}")
+"""
+    
+    if verbose:
+        print_message("停止设备端上传守护进程...", "INFO")
+    
+    execute_mpremote_command(port, "exec", stop_script, timeout=TIMEOUT_SHORT)
+
 def upload_directory(port, dist_dir, verbose=False, force_full_upload=False):
     """上传整个目录, 支持智能同步和缓存"""
     upload_cache = {} if force_full_upload else load_cache(UPLOAD_CACHE_FILE)
@@ -471,28 +544,48 @@ def upload_directory(port, dist_dir, verbose=False, force_full_upload=False):
         print_message("所有文件都是最新的, 无需上传", "SUCCESS")
         return True
 
-    # 创建目录
-    if dirs_to_create:
-        sorted_dirs = sorted(list(dirs_to_create))
-        print_message(f"创建 {len(sorted_dirs)} 个目录...", "INFO")
-        for d in sorted_dirs:
-            execute_mpremote_command(port, "fs", "mkdir", d, timeout=TIMEOUT_SHORT)
+    # 启动上传守护进程
+    start_upload_guard(port, verbose)
 
-    # 上传文件
-    if files_to_upload:
-        print_message(f"开始上传 {len(files_to_upload)} 个文件...", "INFO")
-        for i, (local, remote, md5, key) in enumerate(files_to_upload):
-            print_message(f"[{i+1}/{len(files_to_upload)}] 上传: {local.name} -> /{remote}", "INFO")
-            ret, _, err = execute_mpremote_command(port, "fs", "cp", str(local), f":/{remote}", timeout=TIMEOUT_MEDIUM)
-            if ret == 0:
-                new_cache[key] = md5
-            else:
-                print_message(f"上传失败: {remote} - {err.strip()}", "ERROR")
-                return False
+    try:
+        # 创建目录
+        if dirs_to_create:
+            sorted_dirs = sorted(list(dirs_to_create))
+            print_message(f"创建 {len(sorted_dirs)} 个目录...", "INFO")
+            for d in sorted_dirs:
+                execute_mpremote_command(port, "fs", "mkdir", d, timeout=TIMEOUT_SHORT)
 
-    save_cache(new_cache, UPLOAD_CACHE_FILE)
-    print_message("文件上传成功", "SUCCESS")
-    return True
+        # 上传文件
+        if files_to_upload:
+            print_message(f"开始上传 {len(files_to_upload)} 个文件...", "INFO")
+            for i, (local, remote, md5, key) in enumerate(files_to_upload):
+                print_message(f"[{i+1}/{len(files_to_upload)}] 上传: {local.name} -> /{remote}", "INFO")
+                
+                # 上传前喂看门狗
+                feed_script = """
+try:
+    if '_feed_upload_watchdog' in globals():
+        _feed_upload_watchdog()
+    print("Watchdog fed before upload")
+except Exception as e:
+    print(f"Feed watchdog error: {e}")
+"""
+                execute_mpremote_command(port, "exec", feed_script, timeout=TIMEOUT_SHORT)
+                
+                ret, _, err = execute_mpremote_command(port, "fs", "cp", str(local), f":/{remote}", timeout=TIMEOUT_MEDIUM)
+                if ret == 0:
+                    new_cache[key] = md5
+                else:
+                    print_message(f"上传失败: {remote} - {err.strip()}", "ERROR")
+                    return False
+
+        save_cache(new_cache, UPLOAD_CACHE_FILE)
+        print_message("文件上传成功", "SUCCESS")
+        return True
+        
+    finally:
+        # 停止上传守护进程
+        stop_upload_guard(port, verbose)
 
 def reset_device(port, verbose=False):
     """软重置设备"""
