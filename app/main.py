@@ -40,6 +40,7 @@ class MainController:
         
         # 系统状态
         self.last_stats_time = 0
+        self.last_wdt_feed_ms = 0  # 记录最近一次喂狗的时间戳
         
         # 注册事件监听
         self._register_event_handlers()
@@ -100,6 +101,7 @@ class MainController:
                 try:
                     if getattr(self, "wdt", None):
                         self.wdt.feed()
+                        self.last_wdt_feed_ms = current_time
                 except Exception:
                     pass
                 
@@ -159,6 +161,14 @@ class MainController:
                         "humidity": env_hum,
                     },
                     "net": net_status,
+                    # 诊断字段: 与配置只读展示对齐
+                    "diag": {
+                        "main_loop_delay_ms": (self.config.get("system", {}) or {}).get("main_loop_delay", 0),
+                        "wdt_enabled": (self.config.get("daemon", {}) or {}).get("wdt_enabled", False),
+                        "wdt_timeout_ms": (self.config.get("daemon", {}) or {}).get("wdt_timeout", 0),
+                        "wdt_last_feed_ms": self.last_wdt_feed_ms,
+                        "loop_sleep_ms": 50,
+                    }
                 }
                 if self.network_manager:
                     # 统一的 metrics 发布: device/<id>/state/metrics

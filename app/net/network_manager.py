@@ -410,6 +410,8 @@ class NetworkManager:
                         self.ha.publish_availability(True)
                         # 发布 Home Assistant Discovery 配置
                         self.ha.publish_discovery()
+                        # 可选: 设备 announce
+                        self.publish_announce()
                         # 新增: 配置通道订阅与回调
                         self._setup_mqtt_config_channel()
                         # 发布当前LED模式状态
@@ -544,10 +546,9 @@ class NetworkManager:
     def _setup_mqtt_config_channel(self):
         """设置配置通道的回调与订阅
         订阅主题:
-        - cmnd/<device_id>/config/set
-        - cmnd/<device_id>/config/save
         - cmnd/<device_id>/config/reboot
         - cmnd/<device_id>/reboot (兼容)
+        - cmnd/<device_id>/config/button/reboot
         """
         try:
             if (not self.mqtt_controller) or (not self.mqtt_controller.is_connected()):
@@ -556,12 +557,9 @@ class NetworkManager:
             self.mqtt_controller.set_callback(self._on_mqtt_message)
             base = "cmnd/{}".format(self.get_device_id())
             topics = [
-                base + "/config/set",
-                base + "/config/save",
                 base + "/config/reboot",
                 base + "/reboot",
                 base + "/config/button/reboot",
-                base + "/config/select/led_mode",
             ]
             for tp in topics:
                 try:
