@@ -1,0 +1,246 @@
+---
+globs: app/config.py
+description: 配置管理和安全规范
+---
+
+# 配置管理和安全规范
+
+## 配置架构
+
+[config.py](mdc:app/config.py)是系统的配置中心，采用双层配置架构：
+
+- **默认层**: 内置在代码中的默认配置
+- **覆盖层**: 运行时配置文件(/config.json)覆盖默认配置
+- **深度合并**: 支持嵌套配置的深度合并
+- **原子写入**: 使用临时文件+重命名保证配置写入安全
+
+## 配置结构
+
+### 核心配置段
+
+```python
+CONFIG = {
+    "daemon": {
+        "max_error_count": 10,      # 最大错误次数
+        "wdt_timeout": 60000,       # 看门狗超时时间
+        "wdt_enabled": True,        # 是否启用看门狗
+    },
+    "system": {
+        "main_loop_delay": 25,      # 主循环延迟(ms)
+    },
+    "wifi": {
+        "networks": [...],          # WiFi网络列表
+        "scan_timeout_ms": 10000,   # 扫描超时时间
+        "base_delay_ms": 3000,      # 重连基础延迟
+        "max_delay_ms": 60000,      # 最大重连延迟
+        "max_retries": 3,           # 最大重试次数
+    },
+    "mqtt": {
+        "broker": "zusheng.cc",     # MQTT服务器地址
+        "port": 1883,               # MQTT端口
+        "user": "",                 # MQTT用户名
+        "password": "",             # MQTT密码
+        "keepalive": 60,            # 心跳间隔
+        "enable_log_forward": False, # 是否转发日志
+    },
+    "ha": {
+        "discovery_prefix": "homeassistant",
+        "device_name": "Zusheng's ESP32C3",
+        "manufacturer": "Zusheng STU",
+        "model": "C3",
+        "sw_version": "2.3.0",
+    },
+    "ble": {
+        "enabled": True,
+        "device_name": "ESP32-C3",
+        "security": {
+            "auth": "none",         # 鉴权方式: none/token
+            "token": "changeme",    # 鉴权token
+        },
+        "config_service": {
+            "enabled": True,
+            "persistence_path": "/config.json",
+            "allow_reboot": True,
+        },
+    },
+}
+```
+
+## 配置访问接口
+
+### 基本访问
+
+```python
+from config import get_config
+
+# 获取整个配置段
+wifi_config = get_config('wifi')
+
+# 获取特定配置项
+broker = get_config('mqtt', 'broker', 'default_broker')
+
+# 获取默认值
+timeout = get_config('wifi', 'timeout', 15)
+```
+
+### 运行时配置修改
+
+```python
+from config import apply_overlay, save_overlay
+
+# 应用配置覆盖(仅内存)
+apply_overlay(path="ble.enabled", value=True)
+apply_overlay(update_dict={"ble": {"enabled": True, "device_name": "NewName"}})
+
+# 保存配置到文件
+save_overlay(paths=["ble.enabled", "ble.device_name"])
+save_overlay()  # 保存所有覆盖配置
+```
+
+## 安全配置规范
+
+### 敏感信息处理
+
+```python
+# 密码和token配置
+"mqtt": {
+    "user": "",           # 空字符串表示未配置
+    "password": "",       # 生产环境应通过安全渠道配置
+},
+"ble": {
+    "security": {
+        "auth": "none",   # 开发环境可为none
+        "token": "changeme",  # 示例token，生产环境必须修改
+    },
+}
+```
+
+### 权限控制
+
+```python
+# MQTT配置通道权限验证
+def _is_authorized_for_config(self, data):
+    sec = self._get_security_config()
+    auth = sec.get("auth", "none")
+    
+    if auth == "none":
+        return True, None  # 开发环境免鉴权
+    
+    if auth == "token":
+        token_cfg = sec.get("token")
+        token_req = data.get("token")
+        if token_req and str(token_req) == str(token_cfg):
+            return True, None
+        return False, "unauthorized"
+    
+    return False, "unauthorized"
+```
+
+## 配置验证和默认值
+
+### 配置验证
+
+```python
+# 配置项验证示例
+def validate_config(config):
+    # 验证必需配置
+    if not config.get("mqtt", {}).get("broker"):
+        raise ValueError("MQTT broker地址未配置")
+    
+    # 验证配置范围
+    delay = config.get("system", {}).get("main_loop_delay", 25)
+    if not 10 <= delay <= 1000:
+        raise ValueError("主循环延迟应在10-1000ms范围内")
+    
+    return True
+```
+
+### 默认值策略
+
+```python
+# 使用get方法提供默认值
+def get_config(section=None, key=None, default=None):
+    cfg = _RUNTIME_CONFIG if isinstance(_RUNTIME_CONFIG, dict) else CONFIG
+    
+    if section is None:
+        return cfg
+    
+    section_data = cfg.get(section, {})
+    
+    if key is None:
+        return section_data
+    
+    return section_data.get(key, default)
+```
+
+## 配置持久化
+
+### 原子写入
+
+```python
+def atomic_write_json(path, data, tmp_suffix=".tmp"):
+    """原子写入JSON文件"""
+    tmp_path = path + tmp_suffix
+    try:
+        # 先写入临时文件
+        s = json_dumps(data)
+        with open(tmp_path, "w") as f:
+            f.write(s)
+            f.flush()
+        
+        # 重命名覆盖
+        _os.rename(tmp_path, path)
+        return True
+    except Exception:
+        # 清理临时文件
+        try:
+            _os.remove(tmp_path)
+        except Exception:
+            pass
+        return False
+```
+
+### 配置恢复
+
+```python
+def reload_overlay(path=None):
+    """重新加载覆盖层配置"""
+    global _OVERLAY, _RUNTIME_CONFIG
+    try:
+        p = path or _PERSISTENCE_PATH
+        _OVERLAY = _load_overlay_from_file(p)
+        _RUNTIME_CONFIG = _deep_merge(CONFIG, _OVERLAY)
+        return True
+    except Exception:
+        return False
+```
+
+## 配置最佳实践
+
+### 1. 配置组织
+
+- **分层配置**: 按功能模块组织配置段
+- **命名规范**: 使用清晰的配置项名称
+- **类型一致**: 保持配置项数据类型一致
+- **文档注释**: 为每个配置项提供详细说明
+
+### 2. 安全考虑
+
+- **敏感信息**: 不在代码中硬编码密码和token
+- **权限控制**: 实现适当的权限验证机制
+- **配置验证**: 验证配置项的有效性
+- **错误处理**: 配置错误时的优雅降级
+
+### 3. 运行时管理
+
+- **热更新**: 支持运行时配置更新
+- **原子操作**: 使用原子写入保证配置一致性
+- **回滚机制**: 配置错误时能够回滚到默认配置
+- **持久化**: 重要配置变更需要持久化保存
+
+### 4. 开发调试
+
+- **默认值**: 提供合理的默认配置
+- **调试模式**: 支持调试相关的配置选项
+- **日志记录**: 记录配置变更和错误
+- **测试友好**: 支持测试环境的配置覆盖

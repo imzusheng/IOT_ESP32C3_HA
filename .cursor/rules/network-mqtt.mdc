@@ -1,0 +1,102 @@
+---
+globs: app/net/*.py,app/ha.py
+description: 网络和MQTT相关代码规范
+---
+
+# 网络和MQTT开发规范
+
+## 网络管理器架构
+
+网络管理器([network_manager.py](mdc:app/net/network_manager.py))负责统一管理WiFi、MQTT、NTP连接：
+
+- **WiFi管理**: 支持多网络配置，按RSSI强度自动选择
+- **MQTT控制**: 轻量级MQTT客户端，支持重连和订阅恢复
+- **NTP同步**: 时间同步服务，失败不影响MQTT连接
+- **事件驱动**: 通过EventBus发布连接状态变化事件
+
+## WiFi开发规范
+
+```python
+# WiFi管理器使用
+from net.wifi import WifiManager
+
+wifi_manager = WifiManager(config)
+networks = wifi_manager.scan_networks()  # 按RSSI排序
+success = wifi_manager.connect(ssid, password)
+is_connected = wifi_manager.get_is_connected()
+```
+
+## MQTT开发规范
+
+```python
+# MQTT控制器使用
+from net.mqtt import MqttController
+
+mqtt_controller = MqttController(config)
+await mqtt_controller.connect_async()
+mqtt_controller.publish(topic, payload, retain=True, qos=0)
+mqtt_controller.subscribe(topic, qos=0)
+```
+
+## Home Assistant集成
+
+[ha.py](mdc:app/ha.py)提供Home Assistant设备发现和状态上报：
+
+```python
+# HA助手使用
+from ha import HomeAssistantHelper
+
+ha = HomeAssistantHelper(config, get_device_id_fn, mqtt_publish_fn)
+ha.publish_discovery()  # 发布设备发现配置
+ha.publish_availability(True)  # 发布设备可用性
+ha.publish_state(temperature=26.4, humidity=58.2)  # 发布传感器数据
+```
+
+## MQTT主题规范
+
+```
+# 设备状态主题
+device/{device_id}/availability         # 设备可用性
+device/{device_id}/state/metrics        # 系统指标
+device/{device_id}/state/temperature    # 温度数据
+device/{device_id}/state/humidity       # 湿度数据
+
+# 设备控制主题
+cmnd/{device_id}/config/set             # 配置设置
+cmnd/{device_id}/config/save            # 配置保存
+cmnd/{device_id}/reboot                 # 设备重启
+
+# HA发现主题
+{discovery_prefix}/sensor/{device_id}/temperature/config
+{discovery_prefix}/sensor/{device_id}/humidity/config
+```
+
+## 网络事件处理
+
+```python
+# 订阅网络事件
+from lib.event_bus_lock import EVENTS
+
+self.event_bus.subscribe(EVENTS["WIFI_STATE_CHANGE"], self._handle_wifi_event)
+self.event_bus.subscribe(EVENTS["MQTT_STATE_CHANGE"], self._handle_mqtt_event)
+
+def _handle_wifi_event(self, event_name, state=None, **kwargs):
+    if state == 'connected':
+        info("WiFi连接成功", module="NET")
+    elif state == 'disconnected':
+        warning("WiFi连接断开", module="NET")
+```
+
+## 重连机制
+
+- **指数退避**: 支持指数退避重连，避免频繁重连
+- **抖动**: 添加随机抖动避免多个设备同时重连
+- **最大重试**: 支持最大重试次数限制
+- **状态监控**: 实时监控连接状态，自动处理断线重连
+
+## 安全考虑
+
+- **认证**: MQTT支持用户名密码认证
+- **权限控制**: 配置通道支持token鉴权
+- **LWT**: 支持Last Will and Testament功能
+- **加密**: 支持SSL/TLS连接(端口8883)

@@ -1,0 +1,325 @@
+---
+description: 安全最佳实践和常见问题防范
+---
+
+# 安全最佳实践
+
+## 项目安全分析总结
+
+基于对该ESP32C3物联网项目的深入分析，以下是主要的安全问题和改进建议：
+
+## 主要安全缺陷
+
+### 1. 硬编码敏感信息
+
+**问题**: 配置文件中包含硬编码的WiFi密码和MQTT凭据
+```python
+# app/config.py 中的问题
+"wifi": {
+    "networks": [
+        {"ssid": "zsm60p", "password": "25845600"},
+        {"ssid": "leju_software", "password": "leju123456"},
+        {"ssid": "CMCC-pdRG", "password": "7k77ed5p"},
+    ],
+},
+"mqtt": {
+    "user": "",
+    "password": "",
+},
+"ble": {
+    "security": {
+        "token": "changeme",  # 示例token
+    },
+}
+```
+
+**风险**: 密码泄露、未授权访问
+
+**解决方案**:
+- 使用环境变量或安全配置文件
+- 实现配置加密存储
+- 提供配置模板，不包含真实凭据
+
+### 2. 默认安全配置不足
+
+**问题**: 默认启用无鉴权模式
+```python
+"ble": {
+    "security": {
+        "auth": "none",  # 默认无鉴权
+    },
+}
+```
+
+**风险**: 未授权设备控制
+
+**解决方案**:
+- 生产环境默认启用鉴权
+- 提供安全配置检查工具
+- 实现配置验证机制
+
+### 3. MQTT安全配置缺失
+
+**问题**: MQTT连接缺少SSL/TLS加密
+```python
+"mqtt": {
+    "port": 1883,  # 非加密端口
+    "user": "",    # 空用户名
+    "password": "", # 空密码
+}
+```
+
+**风险**: 数据泄露、中间人攻击
+
+**解决方案**:
+- 支持SSL/TLS连接(端口8883)
+- 强制用户名密码认证
+- 实现证书验证
+
+## 安全改进建议
+
+### 1. 配置安全
+
+```python
+# 安全的配置管理
+def load_secure_config():
+    """加载安全配置"""
+    config = load_default_config()
+    
+    # 从环境变量加载敏感信息
+    if "MQTT_PASSWORD" in os.environ:
+        config["mqtt"]["password"] = os.environ["MQTT_PASSWORD"]
+    
+    # 验证必需的安全配置
+    validate_security_config(config)
+    
+    return config
+
+def validate_security_config(config):
+    """验证安全配置"""
+    if config.get("ble", {}).get("security", {}).get("auth") == "none":
+        warning("BLE鉴权已禁用，生产环境建议启用", module="SECURITY")
+    
+    if not config.get("mqtt", {}).get("password"):
+        warning("MQTT密码未设置，建议配置强密码", module="SECURITY")
+```
+
+### 2. 网络安全
+
+```python
+# 安全的MQTT连接
+def create_secure_mqtt_client(config):
+    """创建安全的MQTT客户端"""
+    mqtt_config = config.get("mqtt", {})
+    
+    # 强制SSL连接
+    if mqtt_config.get("port") == 1883:
+        warning("使用非加密MQTT连接，建议使用SSL", module="SECURITY")
+    
+    # 验证认证信息
+    if not mqtt_config.get("user") or not mqtt_config.get("password"):
+        raise ValueError("MQTT认证信息不完整")
+    
+    return MQTTClient(
+        client_id=generate_secure_client_id(),
+        server=mqtt_config["broker"],
+        port=mqtt_config.get("port", 8883),  # 默认SSL端口
+        user=mqtt_config["user"],
+        password=mqtt_config["password"],
+        ssl=True,  # 启用SSL
+        ssl_params={
+            "server_hostname": mqtt_config["broker"]
+        }
+    )
+```
+
+### 3. 权限控制
+
+```python
+# 增强的权限验证
+def enhanced_auth_check(data, required_permissions=None):
+    """增强的权限检查"""
+    if not required_permissions:
+        required_permissions = ["read"]
+    
+    # 检查token
+    token = data.get("token")
+    if not token:
+        return False, "missing_token"
+    
+    # 验证token格式和有效性
+    if not validate_token_format(token):
+        return False, "invalid_token_format"
+    
+    # 检查权限
+    user_permissions = get_user_permissions(token)
+    if not all(perm in user_permissions for perm in required_permissions):
+        return False, "insufficient_permissions"
+    
+    return True, None
+
+def validate_token_format(token):
+    """验证token格式"""
+    # 检查token长度和复杂度
+    if len(token) < 16:
+        return False
+    
+    # 检查是否包含足够的随机性
+    import re
+    if not re.match(r'^[a-zA-Z0-9_-]{16,}$', token):
+        return False
+    
+    return True
+```
+
+### 4. 输入验证
+
+```python
+# 输入验证和清理
+def validate_mqtt_payload(payload):
+    """验证MQTT载荷"""
+    if not isinstance(payload, dict):
+        return False, "invalid_payload_type"
+    
+    # 检查载荷大小
+    payload_str = str(payload)
+    if len(payload_str) > 1024:  # 限制载荷大小
+        return False, "payload_too_large"
+    
+    # 检查危险字符
+    dangerous_chars = ['<', '>', '"', "'", '&', '\x00']
+    if any(char in payload_str for char in dangerous_chars):
+        return False, "dangerous_characters"
+    
+    return True, None
+
+def sanitize_config_path(path):
+    """清理配置路径"""
+    # 移除危险字符
+    import re
+    sanitized = re.sub(r'[^a-zA-Z0-9._-]', '', path)
+    
+    # 防止路径遍历
+    if '..' in sanitized or sanitized.startswith('/'):
+        return None
+    
+    return sanitized
+```
+
+## 安全配置模板
+
+### 生产环境配置
+
+```python
+# 生产环境安全配置模板
+PRODUCTION_CONFIG_TEMPLATE = {
+    "mqtt": {
+        "port": 8883,  # SSL端口
+        "user": "REPLACE_WITH_USERNAME",
+        "password": "REPLACE_WITH_STRONG_PASSWORD",
+        "ssl": True,
+    },
+    "ble": {
+        "security": {
+            "auth": "token",
+            "token": "REPLACE_WITH_STRONG_TOKEN",
+        },
+        "config_service": {
+            "allow_reboot": False,  # 生产环境禁用远程重启
+        },
+    },
+    "wifi": {
+        "networks": [
+            # 通过环境变量或安全配置文件提供
+        ],
+    },
+}
+```
+
+### 开发环境配置
+
+```python
+# 开发环境配置(仅用于开发)
+DEVELOPMENT_CONFIG = {
+    "mqtt": {
+        "port": 1883,  # 非SSL端口
+        "user": "",
+        "password": "",
+    },
+    "ble": {
+        "security": {
+            "auth": "none",  # 开发环境免鉴权
+        },
+    },
+}
+```
+
+## 安全检查和监控
+
+### 安全配置检查
+
+```python
+def security_audit():
+    """安全配置审计"""
+    config = get_config()
+    issues = []
+    
+    # 检查MQTT安全
+    if config.get("mqtt", {}).get("port") == 1883:
+        issues.append("使用非加密MQTT连接")
+    
+    if not config.get("mqtt", {}).get("password"):
+        issues.append("MQTT密码未设置")
+    
+    # 检查BLE安全
+    if config.get("ble", {}).get("security", {}).get("auth") == "none":
+        issues.append("BLE鉴权已禁用")
+    
+    # 检查WiFi安全
+    networks = config.get("wifi", {}).get("networks", [])
+    for network in networks:
+        if len(network.get("password", "")) < 8:
+            issues.append(f"WiFi密码过短: {network.get('ssid')}")
+    
+    return issues
+```
+
+### 安全事件监控
+
+```python
+def log_security_event(event_type, details):
+    """记录安全事件"""
+    from lib.logger import warning, error
+    
+    security_events = {
+        "auth_failure": "认证失败",
+        "invalid_token": "无效token",
+        "config_tamper": "配置篡改",
+        "unauthorized_access": "未授权访问",
+    }
+    
+    event_desc = security_events.get(event_type, "未知安全事件")
+    error("安全事件: {} - {}", event_desc, details, module="SECURITY")
+```
+
+## 实施建议
+
+### 1. 立即实施
+
+- 修改默认配置，启用安全选项
+- 实现配置验证机制
+- 添加安全事件日志
+
+### 2. 短期改进
+
+- 实现SSL/TLS支持
+- 增强权限验证
+- 添加输入验证
+
+### 3. 长期规划
+
+- 实现配置加密存储
+- 添加设备证书管理
+- 实现远程安全更新
+
+通过实施这些安全改进措施，可以显著提高项目的安全性和可靠性。

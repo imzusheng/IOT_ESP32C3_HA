@@ -1,0 +1,210 @@
+---
+globs: app/lib/event_bus_lock.py,app/state_machine.py,app/main.py
+description: 事件驱动架构和状态机开发规范
+---
+
+# 事件驱动架构开发规范
+
+## 事件总线架构
+
+[event_bus_lock.py](mdc:app/lib/event_bus_lock.py)是系统的核心通信枢纽：
+
+### 事件常量定义
+
+```python
+from lib.event_bus_lock import EVENTS
+
+# 系统事件
+EVENTS["SYSTEM_STATE_CHANGE"]    # 系统状态变化
+EVENTS["SYSTEM_ERROR"]           # 系统错误
+
+# 网络事件
+EVENTS["WIFI_STATE_CHANGE"]      # WiFi状态变化
+EVENTS["MQTT_STATE_CHANGE"]      # MQTT状态变化
+EVENTS["MQTT_MESSAGE"]           # MQTT消息
+
+# 时间事件
+EVENTS["NTP_STATE_CHANGE"]       # NTP同步状态
+
+# 传感器事件
+EVENTS["SENSOR_DATA"]            # 传感器数据
+```
+
+### 事件发布和订阅
+
+```python
+from lib.event_bus_lock import EventBus
+
+# 获取事件总线实例
+event_bus = EventBus()
+
+# 订阅事件
+event_bus.subscribe(EVENTS["WIFI_STATE_CHANGE"], self._handle_wifi_event)
+
+# 发布事件
+event_bus.publish(EVENTS["SYSTEM_ERROR"], error_type="network", error_info="connection failed")
+
+# 处理事件(在主循环中调用)
+event_bus.process_events()
+```
+
+## 状态机架构
+
+[state_machine.py](mdc:app/state_machine.py)管理设备状态转换：
+
+### 状态定义
+
+```python
+# 状态常量
+STATE_INIT = 0          # 系统启动、初始化
+STATE_CONNECTING = 1    # 网络连接中
+STATE_RUNNING = 2       # 正常运行
+STATE_ERROR = 3         # 错误状态
+
+# 状态名称映射
+STATE_NAMES = {
+    STATE_INIT: "INIT",
+    STATE_CONNECTING: "CONNECTING", 
+    STATE_RUNNING: "RUNNING",
+    STATE_ERROR: "ERROR"
+}
+```
+
+### 状态机使用
+
+```python
+from state_machine import FSM
+
+# 创建状态机
+fsm = FSM(event_bus, config, network_manager)
+
+# 状态机更新(在主循环中调用)
+fsm.update()
+
+# 获取当前状态
+current_state = fsm.get_current_state()
+
+# 强制设置状态
+fsm.force_state("RUNNING")
+```
+
+### 状态转换逻辑
+
+```python
+# 状态转换规则
+INIT → CONNECTING → RUNNING
+  ↓         ↓         ↓
+ERROR ← ERROR ← ERROR
+
+# 事件驱动的状态转换
+def _handle_wifi_event(self, event_name, state=None, **kwargs):
+    if state == 'connected' and self.current_state in (STATE_INIT, STATE_CONNECTING):
+        self._try_enter_running_if_fully_connected()
+    elif state == 'disconnected' and self.current_state == STATE_RUNNING:
+        self._enter_state(STATE_CONNECTING)
+```
+
+## 主控制器架构
+
+[main.py](mdc:app/main.py)是系统的入口点和协调器：
+
+### 主循环设计
+
+```python
+async def run(self):
+    """运行主循环"""
+    while True:
+        current_time = time.ticks_ms()
+        
+        # 事件分发与状态机更新
+        if self.event_bus:
+            self.event_bus.process_events()
+        if self.state_machine:
+            self.state_machine.update()
+        
+        # 看门狗喂狗
+        if getattr(self, "wdt", None):
+            self.wdt.feed()
+        
+        # 定期维护
+        self._periodic_maintenance(current_time)
+        
+        await asyncio.sleep_ms(50)
+```
+
+### 依赖注入模式
+
+```python
+class MainController:
+    def __init__(self):
+        # 依赖注入
+        self.config = get_config()
+        self.event_bus = EventBus()
+        self.network_manager = NetworkManager(self.config, self.event_bus)
+        self.state_machine = FSM(self.event_bus, self.config, self.network_manager)
+        
+        # 注册事件监听
+        self._register_event_handlers()
+```
+
+## 异步运行时管理
+
+[async_runtime.py](mdc:app/lib/async_runtime.py)管理异步任务：
+
+```python
+from lib.async_runtime import get_async_runtime
+
+# 获取异步运行时
+runtime = get_async_runtime()
+
+# 创建异步任务
+task = runtime.create_task(coro, name="task_name")
+
+# 取消任务
+runtime.cancel_task("task_name")
+
+# 取消所有任务
+runtime.cancel_all_tasks()
+```
+
+## 事件驱动开发模式
+
+### 模块开发模板
+
+```python
+class MyModule:
+    def __init__(self, event_bus, config):
+        self.event_bus = event_bus
+        self.config = config
+        self._subscribe_events()
+    
+    def _subscribe_events(self):
+        """订阅必要的事件"""
+        self.event_bus.subscribe(EVENTS["SYSTEM_STATE_CHANGE"], self._handle_system_event)
+    
+    def _handle_system_event(self, event_name, state=None, **kwargs):
+        """处理系统事件"""
+        if state == 'running':
+            self._do_something()
+    
+    def _do_something(self):
+        """执行业务逻辑"""
+        # 发布事件通知其他模块
+        self.event_bus.publish(EVENTS["MY_MODULE_EVENT"], data="some_data")
+```
+
+### 事件处理最佳实践
+
+1. **事件命名**: 使用清晰的事件名称，遵循`模块.动作`格式
+2. **事件数据**: 事件数据应该包含足够的上下文信息
+3. **错误处理**: 事件处理函数应该有完善的错误处理
+4. **性能考虑**: 避免在事件处理函数中执行耗时操作
+5. **内存管理**: 及时释放事件处理中的临时对象
+
+### 状态机最佳实践
+
+1. **状态简化**: 保持状态数量最少，避免复杂的状态转换
+2. **事件驱动**: 状态转换应该由事件驱动，而不是定时器
+3. **错误恢复**: 每个状态都应该有错误恢复机制
+4. **状态持久化**: 重要状态变化应该记录日志
+5. **测试友好**: 状态机应该支持强制状态设置，便于测试

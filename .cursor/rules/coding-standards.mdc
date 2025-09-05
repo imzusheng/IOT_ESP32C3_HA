@@ -1,0 +1,98 @@
+---
+globs: *.py
+description: Python代码规范和最佳实践
+---
+
+# Python代码规范
+
+## 基本规范
+
+- **编码**: 所有代码文件使用UTF-8编码，中文注释和文档
+- **语言**: 始终使用中文进行代码注释和文档
+- **注释**: 除非特殊要求，否则生成的新代码中不要出现注释
+- **测试**: 除非特殊要求，否则不要添加测试代码
+
+## 导入规范
+
+```python
+# 标准库导入
+import utime as time
+import machine
+import gc
+
+# 第三方库导入
+import uasyncio as asyncio
+
+# 本地模块导入
+from lib.logger import info, error, debug
+from config import get_config
+```
+
+## 错误处理
+
+```python
+# 使用try-except进行错误处理
+try:
+    # 可能出错的操作
+    result = some_operation()
+except Exception as e:
+    error("操作失败: {}", e, module="MODULE_NAME")
+    return False
+```
+
+## 日志使用
+
+```python
+from lib.logger import info, warning, error, debug
+
+# 使用模块标识
+info("操作成功", module="MODULE_NAME")
+error("操作失败: {}", error_msg, module="MODULE_NAME")
+debug("调试信息: {}", debug_data, module="MODULE_NAME")
+```
+
+## 内存管理
+
+```python
+# 及时释放大对象
+large_object = None
+gc.collect()
+
+# 使用对象池避免频繁创建销毁
+# 避免在循环中创建大量临时对象
+```
+
+## 事件驱动模式
+
+```python
+# 订阅事件
+self.event_bus.subscribe(EVENTS["WIFI_STATE_CHANGE"], self._handle_wifi_event)
+
+# 发布事件
+self.event_bus.publish(EVENTS["SYSTEM_ERROR"], error_type="my_error", error_info="details")
+```
+
+## 配置访问
+
+```python
+from config import get_config
+
+# 获取配置段
+wifi_config = get_config('wifi')
+
+# 获取特定配置项
+broker = get_config('mqtt', 'broker', 'default_broker')
+```
+
+## 硬件资源使用
+
+```python
+# 使用软件定时替代硬件定时器
+current_time = time.ticks_ms()
+elapsed = time.ticks_diff(current_time, start_time)
+
+# 硬件定时器管理
+from utils import get_hardware_timer_manager
+timer_mgr = get_hardware_timer_manager()
+timer = timer_mgr.create_timer(period_ms, callback)
+```

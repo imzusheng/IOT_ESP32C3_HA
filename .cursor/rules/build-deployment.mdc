@@ -1,0 +1,258 @@
+---
+globs: build.py,*.md
+description: 构建和部署规范
+---
+
+# 构建和部署规范
+
+## 构建系统
+
+[build.py](mdc:build.py)是项目的构建和部署工具，提供完整的开发工作流：
+
+### 基本用法
+
+```bash
+# 默认构建: 编译、上传、启动
+python build.py
+
+# 仅编译不部署
+python build.py --compile
+
+# 仅上传到设备(智能同步)
+python build.py --upload
+
+# 强制全量上传(忽略缓存)
+python build.py --full-upload
+
+# 启动REPL交互模式
+python build.py --repl
+
+# 监控设备输出
+python build.py --monitor
+
+# 诊断设备状态
+python build.py --diagnose
+```
+
+### 高级用法
+
+```bash
+# 包含测试文件编译
+python build.py --test
+
+# 清理本地缓存
+python build.py --clean-cache
+
+# 指定端口上传
+python build.py --upload --port COM3
+
+# 清理设备后上传
+python build.py --clean --upload
+
+# 详细输出模式
+python build.py --verbose
+```
+
+## 编译系统
+
+### 编译规则
+
+- **源目录**: `app/` - 开发源代码目录
+- **输出目录**: `dist/` - 编译输出目录
+- **编译文件**: `.py`文件编译为`.mpy`文件
+- **排除文件**: `boot.py`, `main.py`不进行交叉编译
+- **排除目录**: `__pycache__`, `tests`, `docs`等
+
+### 智能同步
+
+```python
+# 文件变更检测
+def get_file_md5(file_path):
+    """计算文件MD5哈希值用于变更检测"""
+    hash_md5 = hashlib.md5()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
+
+# 缓存管理
+upload_cache = load_cache(UPLOAD_CACHE_FILE)
+if upload_cache.get(cache_key) == file_md5:
+    # 跳过未变更文件
+    continue
+```
+
+## 设备管理
+
+### 设备检测
+
+```python
+# ESP32设备VID/PID模式
+ESP32_VID_PID_PATTERNS = [
+    (0x303A, 0x1001),  # Espressif官方芯片
+    (0x10C4, 0xEA60),  # Silicon Labs CP210x
+    (0x1A86, 0x7523),  # QinHeng CH340
+    (0x1A86, 0x55D4),  # QinHeng CH343
+    (0x0403, 0x6001),  # FTDI芯片
+]
+
+# 自动检测设备端口
+def detect_esp32_port():
+    ports = serial.tools.list_ports.comports()
+    esp32_ports = []
+    for port in ports:
+        is_esp32_by_id = (port.vid, port.pid) in ESP32_VID_PID_PATTERNS
+        is_esp32_by_desc = any(kw in port.description.lower() for kw in ESP32_KEYWORDS)
+        if is_esp32_by_id or is_esp32_by_desc:
+            esp32_ports.append(port)
+    return esp32_ports
+```
+
+### 设备操作
+
+```python
+# 清理设备文件
+def clean_device(port, verbose=False):
+    clean_script = """
+    import os
+    def clean(path='/'):
+        for item in os.listdir(path):
+            item_path = f"{path}/{item}".replace('//', '/')
+            try:
+                is_dir = (os.stat(item_path)[0] & 0x4000) != 0
+                if is_dir:
+                    clean(item_path)
+                    os.rmdir(item_path)
+                else:
+                    os.remove(item_path)
+            except OSError as e:
+                print(f"删除失败: {item_path} - {e}")
+    clean()
+    """
+    return execute_mpremote_command(port, "exec", clean_script)
+
+# 设备重置
+def reset_device(port, verbose=False):
+    return execute_mpremote_command(port, "reset", timeout=TIMEOUT_SHORT)
+```
+
+## 开发工具
+
+### REPL支持
+
+```bash
+# 交互式REPL
+python build.py --repl
+
+# 原始REPL
+python build.py --raw-repl
+
+# Windows独立终端原始REPL
+python build.py -R
+```
+
+### 监控和诊断
+
+```bash
+# 监控设备输出
+python build.py --monitor
+
+# 诊断设备状态
+python build.py --diagnose
+```
+
+## 环境配置
+
+### 依赖安装
+
+```bash
+# 安装构建工具依赖
+pip install pyserial mpremote mpy-cross
+
+# 代码格式化(可选)
+pip install black
+
+# 代码检查(可选)
+pip install flake8
+```
+
+### 工具检查
+
+```python
+def check_tool(executable):
+    """检查核心工具是否可用"""
+    try:
+        cmd = [executable, "--version"] if executable == "mpy-cross" else [executable, "version"]
+        subprocess.run(cmd, capture_output=True, check=True, text=True, timeout=5)
+        return True
+    except FileNotFoundError:
+        print_message(f"命令未找到: {executable}", "ERROR")
+        return False
+```
+
+## 错误处理和重试
+
+### 连接错误处理
+
+```python
+def _is_connection_error(stderr):
+    """判断错误是否为连接相关错误"""
+    connection_error_keywords = [
+        "could not enter raw repl", "could not connect", "device not found",
+        "permission denied", "access denied", "device busy",
+        "no such file or directory", "connection failed", "timeout",
+        "device disconnected"
+    ]
+    stderr_lower = stderr.lower()
+    return any(keyword in stderr_lower for keyword in connection_error_keywords)
+```
+
+### 重试机制
+
+```python
+def execute_mpremote_command(port, *cmd_args, timeout=60, retries=1, verbose=False):
+    """执行mpremote命令并支持重试"""
+    for attempt in range(retries):
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+            if result.returncode == 0 or not _is_connection_error(result.stderr):
+                return result.returncode, result.stdout, result.stderr
+            
+            if attempt < retries - 1:
+                time.sleep(retry_delay)
+        except subprocess.TimeoutExpired:
+            if attempt < retries - 1:
+                time.sleep(retry_delay)
+            else:
+                return -1, "", "命令执行超时"
+```
+
+## 最佳实践
+
+### 1. 开发流程
+
+- **增量开发**: 使用智能同步避免重复上传
+- **测试优先**: 先本地测试再部署到设备
+- **版本控制**: 使用Git管理代码版本
+- **文档更新**: 及时更新项目文档
+
+### 2. 错误处理
+
+- **连接检查**: 部署前检查设备连接状态
+- **错误重试**: 使用重试机制处理临时错误
+- **日志记录**: 记录详细的错误信息
+- **优雅降级**: 部分功能失败时不影响其他功能
+
+### 3. 性能优化
+
+- **缓存机制**: 使用文件MD5避免重复上传
+- **并行处理**: 支持多文件并行上传
+- **资源管理**: 及时释放系统资源
+- **内存优化**: 避免大文件一次性加载
+
+### 4. 安全考虑
+
+- **权限检查**: 检查文件系统权限
+- **路径验证**: 验证文件路径的有效性
+- **输入验证**: 验证用户输入的参数
+- **错误信息**: 避免泄露敏感信息

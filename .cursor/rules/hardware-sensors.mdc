@@ -1,0 +1,173 @@
+---
+globs: app/hw/*.py
+description: 硬件和传感器开发规范
+---
+
+# 硬件和传感器开发规范
+
+## 硬件抽象层设计
+
+硬件抽象层位于[app/hw/](mdc:app/hw/)目录，提供统一的硬件接口：
+
+- **延迟初始化**: 硬件资源在首次使用时创建
+- **单例模式**: 防止重复实例化，保证硬件控制的唯一性
+- **错误处理**: 硬件操作失败时的优雅降级
+- **资源管理**: 自动清理硬件资源
+
+## LED控制器规范
+
+[led.py](mdc:app/hw/led.py)提供开箱即用的LED控制：
+
+```python
+from hw.led import play, cleanup
+
+# 开箱即用，无需初始化
+play('blink')    # 闪烁模式
+play('pulse')    # 脉冲模式
+play('cruise')   # 巡航模式
+play('sos')      # SOS模式
+play('off')      # 关闭
+
+# 清理资源
+cleanup()
+```
+
+### LED模式说明
+
+- **blink**: 快速闪烁(系统初始化)
+- **pulse**: 脉冲模式(连接中)
+- **cruise**: 常亮(正常运行)
+- **sos**: SOS模式(错误状态)
+- **off**: 关闭所有LED
+
+## 传感器开发规范
+
+### SHT40温湿度传感器
+
+[sht40.py](mdc:app/hw/sht40.py)提供SHT40传感器接口：
+
+```python
+from hw.sht40 import read, exists, configure
+
+# 检查传感器是否存在
+if exists():
+    # 读取温湿度数据
+    data = read(precision="high")  # high/med/low
+    temperature = data["temperature"]
+    humidity = data["humidity"]
+
+# 配置I2C引脚
+configure(sda=4, scl=5, freq=100000)
+```
+
+### 传感器数据格式
+
+```python
+# 返回格式
+{
+    "temperature": 26.4,  # 摄氏度，保留1位小数
+    "humidity": 58.2      # 相对湿度%，保留1位小数
+}
+```
+
+## 硬件定时器管理
+
+[timers.py](mdc:app/utils/timers.py)提供硬件定时器管理：
+
+```python
+from utils import get_hardware_timer_manager
+
+# 获取定时器管理器
+timer_mgr = get_hardware_timer_manager()
+
+# 创建定时器
+timer = timer_mgr.create_timer(period_ms, callback, mode=machine.Timer.PERIODIC)
+
+# 释放定时器
+timer_mgr.release_timer(timer)
+```
+
+### 定时器限制
+
+- **ESP32C3限制**: 最多支持2个硬件定时器(编号0至1)
+- **优化策略**: 优先使用软件定时替代硬件定时器
+- **资源管理**: 使用完毕后及时释放定时器资源
+
+## 硬件资源使用原则
+
+### 内存管理
+
+```python
+# 及时释放大对象
+large_data = None
+gc.collect()
+
+# 避免在循环中创建大量临时对象
+# 使用对象池复用对象
+```
+
+### 错误处理
+
+```python
+try:
+    # 硬件操作
+    result = hardware_operation()
+except Exception as e:
+    error("硬件操作失败: {}", e, module="HW")
+    return None  # 返回默认值或None
+```
+
+### 资源清理
+
+```python
+def cleanup(self):
+    """清理硬件资源"""
+    try:
+        if self.timer:
+            self.timer.deinit()
+        if self.i2c:
+            self.i2c = None
+    except Exception:
+        pass
+```
+
+## 新增硬件模块规范
+
+### 模块结构
+
+```python
+# 模块级单例模式
+_instance = None
+
+def _get_instance():
+    global _instance
+    if _instance is None:
+        _instance = _HardwareClass()
+    return _instance
+
+# 公共接口函数
+def public_function():
+    inst = _get_instance()
+    return inst.method()
+```
+
+### 配置支持
+
+```python
+# 支持运行时配置
+def configure(param1=default1, param2=default2):
+    global _instance
+    _instance = _HardwareClass(param1=param1, param2=param2)
+```
+
+### 错误处理
+
+```python
+# 硬件操作失败时的优雅降级
+def read_sensor():
+    try:
+        return actual_hardware_read()
+    except Exception as e:
+        error("传感器读取失败: {}", e, module="SENSOR")
+        return {"value": None, "error": str(e)}
+```
