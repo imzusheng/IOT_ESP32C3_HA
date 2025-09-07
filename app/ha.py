@@ -165,8 +165,7 @@ class HomeAssistantHelper:
                 "state_class": "measurement",
                 "device": device,
             }
-            if temp_name:
-                temp_cfg["name"] = temp_name
+            temp_cfg["name"] = temp_name or "温度"
 
             hum_cfg = {
                 "state_topic": self.state_topic("humidity"),
@@ -177,8 +176,7 @@ class HomeAssistantHelper:
                 "state_class": "measurement",
                 "device": device,
             }
-            if hum_name:
-                hum_cfg["name"] = hum_name
+            hum_cfg["name"] = hum_name or "湿度"
 
             base = self.discovery_prefix
             t_topic = f"{base}/sensor/{device_id}/temperature/config"
@@ -192,7 +190,7 @@ class HomeAssistantHelper:
                 "json_attributes_topic": self.state_topic("config_snapshot"),
                 "availability": availability,
                 "unique_id": f"{device_id}_config_snapshot",
-                "name": ha_cfg.get("config_name") or "Device Config",
+                "name": ha_cfg.get("config_name") or "设备配置",
                 "device": device,
                 "entity_category": "diagnostic",
                 "icon": "mdi:cog",
@@ -209,7 +207,7 @@ class HomeAssistantHelper:
                 "value_template": "{{ value_json.ha.led_mode }}",
                 "availability": availability,
                 "unique_id": f"{device_id}_led_mode",
-                "name": "LED Mode",
+                "name": "LED 模式",
                 "device": device,
                 "entity_category": "diagnostic",
                 "icon": "mdi:led-on",
@@ -224,7 +222,7 @@ class HomeAssistantHelper:
                 "value_template": "{{ 'ON' if value_json.ha.led_enabled else 'OFF' }}",
                 "availability": availability,
                 "unique_id": f"{device_id}_led_enabled",
-                "name": "LED Enabled",
+                "name": "LED 使能",
                 "device": device,
                 "entity_category": "diagnostic",
                 "icon": "mdi:power",
@@ -239,7 +237,7 @@ class HomeAssistantHelper:
                 "value_template": "{{ value_json.system.main_loop_delay }}",
                 "availability": availability,
                 "unique_id": f"{device_id}_main_loop_delay",
-                "name": "Main Loop Delay",
+                "name": "主循环延时",
                 "device": device,
                 "entity_category": "diagnostic",
                 "icon": "mdi:timer-sand",
@@ -250,54 +248,80 @@ class HomeAssistantHelper:
             self._mqtt_publish(topic_ld, loop_delay_cfg, retain=True, qos=0)
             diag_topics.append(topic_ld)
 
-            # 看门狗开关(binary_sensor)
-            wdt_enabled_cfg = {
-                "state_topic": self.state_topic("config_snapshot"),
-                "value_template": "{{ 'ON' if value_json.daemon.wdt_enabled else 'OFF' }}",
-                "availability": availability,
-                "unique_id": f"{device_id}_wdt_enabled",
-                "name": "WDT Enabled",
-                "device": device,
-                "entity_category": "diagnostic",
-                "icon": "mdi:shield-check",
-            }
+            # 移除看门狗使能实体：清理旧 discovery（空保留消息）
             topic_we = f"{base}/binary_sensor/{device_id}/wdt_enabled/config"
-            self._mqtt_publish(topic_we, wdt_enabled_cfg, retain=True, qos=0)
-            diag_topics.append(topic_we)
+            self._mqtt_publish(topic_we, "", retain=True, qos=0)
 
-            # 看门狗超时(sensor, ms)
-            wdt_timeout_cfg = {
-                "state_topic": self.state_topic("config_snapshot"),
-                "value_template": "{{ value_json.daemon.wdt_timeout }}",
-                "availability": availability,
-                "unique_id": f"{device_id}_wdt_timeout",
-                "name": "WDT Timeout",
-                "device": device,
-                "entity_category": "diagnostic",
-                "icon": "mdi:timer-alert",
-                "unit_of_measurement": "ms",
-                "state_class": "measurement",
-            }
+            # 移除看门狗超时实体：清理旧 discovery（空保留消息）
             topic_wt = f"{base}/sensor/{device_id}/wdt_timeout/config"
-            self._mqtt_publish(topic_wt, wdt_timeout_cfg, retain=True, qos=0)
-            diag_topics.append(topic_wt)
+            self._mqtt_publish(topic_wt, "", retain=True, qos=0)
 
-            # 运行时长(sensor, s) - 取自 metrics.uptime_ms
+            # 运行时长(文本) - 友好显示，如 "3 分钟" / "1.2 小时"
             uptime_cfg = {
                 "state_topic": self.state_topic("metrics"),
-                "value_template": "{{ (value_json.uptime_ms | int) // 1000 }}",
+                "value_template": "{{ value_json.uptime_text }}",
                 "availability": availability,
-                "unique_id": f"{device_id}_uptime_s",
-                "name": "Uptime",
+                "unique_id": f"{device_id}_uptime_text",
+                "name": "运行时长",
                 "device": device,
                 "entity_category": "diagnostic",
                 "icon": "mdi:clock-outline",
-                "unit_of_measurement": "s",
-                "state_class": "measurement",
             }
             topic_up = f"{base}/sensor/{device_id}/uptime/config"
             self._mqtt_publish(topic_up, uptime_cfg, retain=True, qos=0)
             diag_topics.append(topic_up)
+
+            # MCU 温度(sensor, °C)
+            mcu_temp_cfg = {
+                "state_topic": self.state_topic("metrics"),
+                "value_template": "{{ value_json.mcu_temp_c }}",
+                "availability": availability,
+                "unique_id": f"{device_id}_mcu_temp_c",
+                "name": "MCU 温度",
+                "device": device,
+                "entity_category": "diagnostic",
+                "device_class": "temperature",
+                "unit_of_measurement": "°C",
+                "state_class": "measurement",
+                "icon": "mdi:thermometer",
+            }
+            topic_mt = f"{base}/sensor/{device_id}/mcu_temp_c/config"
+            self._mqtt_publish(topic_mt, mcu_temp_cfg, retain=True, qos=0)
+            diag_topics.append(topic_mt)
+
+            # 内存使用率(sensor, %)
+            mem_used_cfg = {
+                "state_topic": self.state_topic("metrics"),
+                "value_template": "{{ (value_json.mem.percent | float) | round(1) }}",
+                "availability": availability,
+                "unique_id": f"{device_id}_mem_used_percent",
+                "name": "内存使用率",
+                "device": device,
+                "entity_category": "diagnostic",
+                "unit_of_measurement": "%",
+                "state_class": "measurement",
+                "icon": "mdi:memory",
+            }
+            topic_mp = f"{base}/sensor/{device_id}/mem_used_percent/config"
+            self._mqtt_publish(topic_mp, mem_used_cfg, retain=True, qos=0)
+            diag_topics.append(topic_mp)
+
+            # 内存剩余(sensor, KB)
+            mem_free_cfg = {
+                "state_topic": self.state_topic("metrics"),
+                "value_template": "{{ value_json.mem.free_kb }}",
+                "availability": availability,
+                "unique_id": f"{device_id}_mem_free_kb",
+                "name": "内存剩余",
+                "device": device,
+                "entity_category": "diagnostic",
+                "unit_of_measurement": "KB",
+                "state_class": "measurement",
+                "icon": "mdi:memory",
+            }
+            topic_mf = f"{base}/sensor/{device_id}/mem_free_kb/config"
+            self._mqtt_publish(topic_mf, mem_free_cfg, retain=True, qos=0)
+            diag_topics.append(topic_mf)
 
             # 主循环实际休眠间隔(ms) - 来源 metrics.diag.loop_sleep_ms
             loop_sleep_cfg = {
@@ -305,7 +329,7 @@ class HomeAssistantHelper:
                 "value_template": "{{ value_json.diag.loop_sleep_ms }}",
                 "availability": availability,
                 "unique_id": f"{device_id}_loop_sleep_ms",
-                "name": "Loop Sleep",
+                "name": "循环休眠",
                 "device": device,
                 "entity_category": "diagnostic",
                 "icon": "mdi:timer-sand",
@@ -316,22 +340,25 @@ class HomeAssistantHelper:
             self._mqtt_publish(topic_ls, loop_sleep_cfg, retain=True, qos=0)
             diag_topics.append(topic_ls)
 
-            # 看门狗最后喂狗时间(ms) - 来源 metrics.diag.wdt_last_feed_ms
+            # 上次喂狗间隔(文本) - 由设备侧统一格式化，避免 0.001 分钟等
             wdt_feed_cfg = {
                 "state_topic": self.state_topic("metrics"),
-                "value_template": "{{ value_json.diag.wdt_last_feed_ms }}",
+                "value_template": "{{ value_json.diag.wdt_last_feed_text }}",
                 "availability": availability,
-                "unique_id": f"{device_id}_wdt_last_feed_ms",
-                "name": "WDT Last Feed",
+                "unique_id": f"{device_id}_wdt_last_feed_text",
+                "enabled_by_default": False,
+                "name": "上次喂狗间隔",
                 "device": device,
                 "entity_category": "diagnostic",
                 "icon": "mdi:dog-service",
-                "unit_of_measurement": "ms",
-                "state_class": "measurement",
             }
+            # 已禁用“上次喂狗间隔”实体的发布，减少界面噪音
+            # 清理历史保留的该实体 Discovery（空 payload 覆盖保留消息）
             topic_wf = f"{base}/sensor/{device_id}/wdt_last_feed_ms/config"
-            self._mqtt_publish(topic_wf, wdt_feed_cfg, retain=True, qos=0)
-            diag_topics.append(topic_wf)
+            try:
+                self._mqtt_publish(topic_wf, "", retain=True, qos=0)
+            except Exception:
+                pass
 
             # ===== 额外只读诊断(直接来源于 config_snapshot) =====
             # MQTT 服务器
@@ -340,7 +367,7 @@ class HomeAssistantHelper:
                 "value_template": "{{ value_json.mqtt.broker }}",
                 "availability": availability,
                 "unique_id": f"{device_id}_mqtt_broker",
-                "name": "MQTT Broker",
+                "name": "MQTT 服务器",
                 "device": device,
                 "entity_category": "diagnostic",
                 "icon": "mdi:server-network",
@@ -349,68 +376,60 @@ class HomeAssistantHelper:
             self._mqtt_publish(topic_mb, mqtt_broker_cfg, retain=True, qos=0)
             diag_topics.append(topic_mb)
 
-            # MQTT Keepalive(s)
+            # MQTT 保活(文本)
             mqtt_keep_cfg = {
-                "state_topic": self.state_topic("config_snapshot"),
-                "value_template": "{{ value_json.mqtt.keepalive }}",
+                "state_topic": self.state_topic("metrics"),
+                "value_template": "{{ value_json.config_text.mqtt_keepalive }}",
                 "availability": availability,
                 "unique_id": f"{device_id}_mqtt_keepalive",
-                "name": "MQTT Keepalive",
+                "name": "MQTT 保活",
                 "device": device,
                 "entity_category": "diagnostic",
                 "icon": "mdi:timer-outline",
-                "unit_of_measurement": "s",
-                "state_class": "measurement",
             }
             topic_mk = f"{base}/sensor/{device_id}/mqtt_keepalive/config"
             self._mqtt_publish(topic_mk, mqtt_keep_cfg, retain=True, qos=0)
             diag_topics.append(topic_mk)
 
-            # WiFi 扫描超时(ms)
+            # WiFi 扫描超时(文本)
             wifi_scan_cfg = {
-                "state_topic": self.state_topic("config_snapshot"),
-                "value_template": "{{ value_json.wifi.scan_timeout_ms }}",
+                "state_topic": self.state_topic("metrics"),
+                "value_template": "{{ value_json.config_text.wifi_scan_timeout }}",
                 "availability": availability,
                 "unique_id": f"{device_id}_wifi_scan_timeout",
-                "name": "WiFi Scan Timeout",
+                "name": "WiFi 扫描超时",
                 "device": device,
                 "entity_category": "diagnostic",
                 "icon": "mdi:wifi-settings",
-                "unit_of_measurement": "ms",
-                "state_class": "measurement",
             }
             topic_ws = f"{base}/sensor/{device_id}/wifi_scan_timeout/config"
             self._mqtt_publish(topic_ws, wifi_scan_cfg, retain=True, qos=0)
             diag_topics.append(topic_ws)
 
-            # WiFi 重连延迟(ms)
+            # WiFi 基础延迟(文本)
             wifi_base_cfg = {
-                "state_topic": self.state_topic("config_snapshot"),
-                "value_template": "{{ value_json.wifi.base_delay_ms }}",
+                "state_topic": self.state_topic("metrics"),
+                "value_template": "{{ value_json.config_text.wifi_base_delay }}",
                 "availability": availability,
                 "unique_id": f"{device_id}_wifi_base_delay",
-                "name": "WiFi Base Delay",
+                "name": "WiFi 基础延迟",
                 "device": device,
                 "entity_category": "diagnostic",
                 "icon": "mdi:timer-sand",
-                "unit_of_measurement": "ms",
-                "state_class": "measurement",
             }
             topic_wb = f"{base}/sensor/{device_id}/wifi_base_delay/config"
             self._mqtt_publish(topic_wb, wifi_base_cfg, retain=True, qos=0)
             diag_topics.append(topic_wb)
 
             wifi_max_cfg = {
-                "state_topic": self.state_topic("config_snapshot"),
-                "value_template": "{{ value_json.wifi.max_delay_ms }}",
+                "state_topic": self.state_topic("metrics"),
+                "value_template": "{{ value_json.config_text.wifi_max_delay }}",
                 "availability": availability,
                 "unique_id": f"{device_id}_wifi_max_delay",
-                "name": "WiFi Max Delay",
+                "name": "WiFi 最大延迟",
                 "device": device,
                 "entity_category": "diagnostic",
                 "icon": "mdi:timer-cog",
-                "unit_of_measurement": "ms",
-                "state_class": "measurement",
             }
             topic_wm = f"{base}/sensor/{device_id}/wifi_max_delay/config"
             self._mqtt_publish(topic_wm, wifi_max_cfg, retain=True, qos=0)
@@ -421,7 +440,7 @@ class HomeAssistantHelper:
                 "value_template": "{{ value_json.wifi.max_retries }}",
                 "availability": availability,
                 "unique_id": f"{device_id}_wifi_max_retries",
-                "name": "WiFi Max Retries",
+                "name": "WiFi 最大重试次数",
                 "device": device,
                 "entity_category": "diagnostic",
                 "icon": "mdi:restart-alert",
@@ -436,7 +455,7 @@ class HomeAssistantHelper:
                 "value_template": "{{ (value_json.wifi.networks | default([])) | length }}",
                 "availability": availability,
                 "unique_id": f"{device_id}_wifi_networks_count",
-                "name": "WiFi Networks Count",
+                "name": "WiFi 网络数量",
                 "device": device,
                 "entity_category": "diagnostic",
                 "icon": "mdi:wifi",
@@ -451,26 +470,24 @@ class HomeAssistantHelper:
                 "value_template": "{{ value_json.ntp.server }}",
                 "availability": availability,
                 "unique_id": f"{device_id}_ntp_server",
-                "name": "NTP Server",
+                "name": "NTP 服务器",
                 "device": device,
                 "entity_category": "diagnostic",
-                "icon": "mdi:server-clock",
+                "icon": "mdi:clock",
             }
             topic_ns = f"{base}/sensor/{device_id}/ntp_server/config"
             self._mqtt_publish(topic_ns, ntp_server_cfg, retain=True, qos=0)
             diag_topics.append(topic_ns)
 
             ntp_timeout_cfg = {
-                "state_topic": self.state_topic("config_snapshot"),
-                "value_template": "{{ value_json.ntp.timeout }}",
+                "state_topic": self.state_topic("metrics"),
+                "value_template": "{{ value_json.config_text.ntp_timeout }}",
                 "availability": availability,
                 "unique_id": f"{device_id}_ntp_timeout",
-                "name": "NTP Timeout",
+                "name": "NTP 超时",
                 "device": device,
                 "entity_category": "diagnostic",
                 "icon": "mdi:timer-outline",
-                "unit_of_measurement": "ms",
-                "state_class": "measurement",
             }
             topic_nt = f"{base}/sensor/{device_id}/ntp_timeout/config"
             self._mqtt_publish(topic_nt, ntp_timeout_cfg, retain=True, qos=0)
@@ -482,7 +499,7 @@ class HomeAssistantHelper:
                 "value_template": "{{ value_json.daemon.max_error_count }}",
                 "availability": availability,
                 "unique_id": f"{device_id}_max_error_count",
-                "name": "Max Error Count",
+                "name": "最大错误次数",
                 "device": device,
                 "entity_category": "diagnostic",
                 "icon": "mdi:alert-decagram-outline",
@@ -497,7 +514,7 @@ class HomeAssistantHelper:
                 "value_template": "{{ 'ON' if value_json.ble.enabled else 'OFF' }}",
                 "availability": availability,
                 "unique_id": f"{device_id}_ble_enabled",
-                "name": "BLE Enabled",
+                "name": "BLE 使能",
                 "device": device,
                 "entity_category": "diagnostic",
                 "icon": "mdi:bluetooth",
@@ -507,49 +524,29 @@ class HomeAssistantHelper:
             diag_topics.append(topic_be)
 
             ble_adv_cfg = {
-                "state_topic": self.state_topic("config_snapshot"),
-                "value_template": "{{ value_json.ble.adv.interval_ms }}",
+                "state_topic": self.state_topic("metrics"),
+                "value_template": "{{ value_json.config_text.ble_adv_interval }}",
                 "availability": availability,
                 "unique_id": f"{device_id}_ble_adv_interval",
-                "name": "BLE Adv Interval",
+                "name": "BLE 广播间隔",
                 "device": device,
                 "entity_category": "diagnostic",
                 "icon": "mdi:bluetooth-settings",
-                "unit_of_measurement": "ms",
-                "state_class": "measurement",
             }
             topic_ba = f"{base}/sensor/{device_id}/ble_adv_interval/config"
             self._mqtt_publish(topic_ba, ble_adv_cfg, retain=True, qos=0)
             diag_topics.append(topic_ba)
 
             # 固件与型号
-            fw_ver_cfg = {
-                "state_topic": self.state_topic("config_snapshot"),
-                "value_template": "{{ value_json.ha.sw_version }}",
-                "availability": availability,
-                "unique_id": f"{device_id}_fw_version",
-                "name": "Firmware Version",
-                "device": device,
-                "entity_category": "diagnostic",
-                "icon": "mdi:tag",
-            }
+            # 已移除固件版本实体配置
             topic_fv = f"{base}/sensor/{device_id}/fw_version/config"
-            self._mqtt_publish(topic_fv, fw_ver_cfg, retain=True, qos=0)
-            diag_topics.append(topic_fv)
+            self._mqtt_publish(topic_fv, "", retain=True, qos=0)
+            # diag_topics.append(topic_fv)  # 清理旧实体，不计入统计
 
-            model_cfg = {
-                "state_topic": self.state_topic("config_snapshot"),
-                "value_template": "{{ value_json.ha.model }}",
-                "availability": availability,
-                "unique_id": f"{device_id}_device_model",
-                "name": "Device Model",
-                "device": device,
-                "entity_category": "diagnostic",
-                "icon": "mdi:cellphone-cog",
-            }
+            # 已移除设备型号实体配置
             topic_dm = f"{base}/sensor/{device_id}/device_model/config"
-            self._mqtt_publish(topic_dm, model_cfg, retain=True, qos=0)
-            diag_topics.append(topic_dm)
+            self._mqtt_publish(topic_dm, "", retain=True, qos=0)
+            # diag_topics.append(topic_dm)  # 清理旧实体，不计入统计
 
             # 配置化按钮系统: 仅保留 reboot, 其余全部忽略(实现只读)
             token = self._get_security_token()

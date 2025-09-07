@@ -18,7 +18,7 @@ import uasyncio as asyncio
 from lib.logger import info, error, debug
 from config import get_config
 from lib.event_bus_lock import EventBus, EVENTS
-from utils import check_memory, get_temperature
+from utils import check_memory, get_temperature, format_duration_ms
 from daemon import Daemon
 
 
@@ -40,7 +40,6 @@ class MainController:
         
         # 系统状态
         self.last_stats_time = 0
-        self.last_wdt_feed_ms = 0  # 记录最近一次喂狗的时间戳
         
         # 注册事件监听
         self._register_event_handlers()
@@ -101,7 +100,6 @@ class MainController:
                 try:
                     if getattr(self, "wdt", None):
                         self.wdt.feed()
-                        self.last_wdt_feed_ms = current_time
                 except Exception:
                     pass
                 
@@ -115,16 +113,16 @@ class MainController:
     def _periodic_maintenance(self, current_time):
         """定期维护任务"""
         # 每60秒执行一次
-        if time.ticks_diff(current_time, self.last_stats_time) >= 60000 or self.last_stats_time == 0:
+        if time.ticks_diff(current_time, self.last_stats_time) >= 30000 or self.last_stats_time == 0:
             self.last_stats_time = current_time
             
             # 垃圾回收
             gc.collect()
             
-            # 输出统计信息(移除性能显示)
+            # 输出统计信息
             mem = check_memory()
             free_kb = mem.get("free_kb", gc.mem_free() // 1024)
-            percent_used = mem.get("percent", 0)
+            percent_used = round(mem.get("percent", 0), 1)
             
             # 读取MCU内部温度
             temp_mcu = get_temperature()
@@ -147,10 +145,34 @@ class MainController:
             
             # 上报周期性指标到 MQTT
             try:
+                try:
+                    wifi_cfg = (self.config.get("wifi", {}) or {})
+                    mqtt_cfg = (self.config.get("mqtt", {}) or {})
+                    ntp_cfg = (self.config.get("ntp", {}) or {})
+                    ble_cfg = (self.config.get("ble", {}) or {})
+                    daemon_cfg = (self.config.get("daemon", {}) or {})
+
+                    mqtt_keep_s = mqtt_cfg.get("keepalive")
+                    mqtt_keep_ms = (int(mqtt_keep_s) * 1000) if mqtt_keep_s is not None else None
+
+                    config_text = {
+                        "mqtt_keepalive": format_duration_ms(mqtt_keep_ms) if mqtt_keep_ms is not None else "N/A",
+                        "wifi_scan_timeout": format_duration_ms(wifi_cfg.get("scan_timeout_ms")) if wifi_cfg else "N/A",
+                        "wifi_base_delay": format_duration_ms(wifi_cfg.get("base_delay_ms")) if wifi_cfg else "N/A",
+                        "wifi_max_delay": format_duration_ms(wifi_cfg.get("max_delay_ms")) if wifi_cfg else "N/A",
+                        "ntp_timeout": format_duration_ms(ntp_cfg.get("timeout")) if ntp_cfg else "N/A",
+                        "ble_adv_interval": format_duration_ms(((ble_cfg.get("adv", {}) or {}).get("interval_ms"))) if ble_cfg else "N/A",
+                        "wdt_timeout": format_duration_ms(daemon_cfg.get("wdt_timeout")) if daemon_cfg else "N/A",
+                    }
+                except Exception:
+                    config_text = {}
+
                 metrics = {
                     "uptime_ms": current_time,
+                    "uptime_text": format_duration_ms(current_time),
                     "unix_s": self.network_manager.get_epoch_unix_s() if self.network_manager else None,
                     "state": state,
+                    "config_text": config_text,
                     "mem": {
                         "free_kb": free_kb,
                         "percent": percent_used,
@@ -166,7 +188,7 @@ class MainController:
                         "main_loop_delay_ms": (self.config.get("system", {}) or {}).get("main_loop_delay", 0),
                         "wdt_enabled": (self.config.get("daemon", {}) or {}).get("wdt_enabled", False),
                         "wdt_timeout_ms": (self.config.get("daemon", {}) or {}).get("wdt_timeout", 0),
-                        "wdt_last_feed_ms": self.last_wdt_feed_ms,
+                        
                         "loop_sleep_ms": 50,
                     }
                 }

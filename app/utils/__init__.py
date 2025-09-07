@@ -9,6 +9,7 @@
 from .timers import get_hardware_timer_manager
 from .json_utils import json_dumps
 from .time_utils import get_epoch_unix_s
+from .duration import format_duration_ms
 
 # ===== 通用工具函数: 内存与温度 =====
 
@@ -58,4 +59,5 @@ __all__ = [
     "check_memory",
     "get_temperature",
     "get_epoch_unix_s",
+    "format_duration_ms",
 ]
