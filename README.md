@@ -4,12 +4,12 @@
 
 - ESP32C3 设备基础限制
   - 最多支持 2 个定时器(编号 0 至 1)
-  - 总RAM: 264KB SRAM
-  - 总Flash: 4MB Flash
-  - CPU频率: 160000000 Hz (160.00 MHz)
+  - 总 RAM: 264KB SRAM
+  - 总 Flash: 4MB Flash
+  - CPU 频率: 160000000 Hz (160.00 MHz)
 - machine 模块
   - 支持: ADC, I2C, I2S, PWM, Pin, RTC, SPI, UART, WDT 等
-  - machine.ADC: 支持 12位精度, 多种衰减模式
+  - machine.ADC: 支持 12 位精度, 多种衰减模式
   - 支持:['__class__', '__name__', 'ADC', 'ADCBlock', 'DEEPSLEEP', 'DEEPSLEEP_RESET', 'EXT0_WAKE', 'EXT1_WAKE', 'HARD_RESET', 'I2C', 'I2S', 'PIN_WAKE', 'PWM', 'PWRON_RESET', 'Pin', 'RTC', 'SDCard', 'SLEEP', 'SOFT_RESET', 'SPI', 'Signal', 'SoftI2C', 'SoftSPI', 'TIMER_WAKE', 'TOUCHPAD_WAKE', 'Timer', 'UART', 'ULP_WAKE', 'WDT', 'WDT_RESET', '__dict__', 'bitstream', 'bootloader', 'deepsleep', 'dht_readinto', 'disable_irq', 'enable_irq', 'freq', 'idle', 'lightsleep', 'mem16', 'mem32', 'mem8', 'reset', 'reset_cause', 'sleep', 'soft_reset', 'time_pulse_us', 'unique_id', 'wake_reason']
   - machine.ADC:['__class__', '__name__', 'read', 'ATTN_0DB', 'ATTN_11DB', 'ATTN_2_5DB', 'ATTN_6DB', 'WIDTH_12BIT', '__bases__', '__dict__', 'atten', 'block', 'init', 'read_u16', 'read_uv', 'width']
 - 蓝牙模块
@@ -18,7 +18,7 @@
 
 ## 📋 项目概述
 
-这是一个基于ESP32-C3的MicroPython物联网设备项目, 专为Home Assistant智能家居系统设计。采用**事件驱动架构**和**模块化设计**, 提供WiFi连接, MQTT通信, 系统监控, LED状态指示和错误恢复等功能, 确保设备在资源受限的嵌入式环境中稳定运行。
+这是一个基于 ESP32-C3 的 MicroPython 物联网设备项目, 专为 Home Assistant 智能家居系统设计。采用**事件驱动架构**和**模块化设计**, 提供 WiFi 连接, MQTT 通信, 系统监控, LED 状态指示和错误恢复等功能, 确保设备在资源受限的嵌入式环境中稳定运行。
 
 ## 📁 项目结构
 
@@ -53,46 +53,53 @@ IOT_ESP32C3/
 ## 🏗️ 核心模块
 
 ### 事件总线 (EventBus)
+
 - **位置**: `app/lib/event_bus_lock.py`
 - **功能**: 模块间异步通信的核心枢纽
-- **特性**: 
-  - 基于diff时间的软件定时系统
+- **特性**:
+  - 基于 diff 时间的软件定时系统
   - 错误断路器机制, 防止系统级联故障
   - 批量事件处理和内存优化
   - 支持发布-订阅模式
 
 ### 状态机 (FSM)
+
 - **位置**: `app/state_machine.py`
 - **功能**: 系统状态管理和转换
 - **支持状态**: INIT → CONNECTING → RUNNING → ERROR
 - **特性**: 事件驱动的状态转换、错误计数和自动恢复
 
 ### 网络管理器 (NetworkManager)
+
 - **位置**: `app/net/network_manager.py`
-- **功能**: 统一管理WiFi、MQTT、NTP连接
-- **特性**: 
-  - 支持多WiFi网络自动选择
+- **功能**: 统一管理 WiFi、MQTT、NTP 连接
+- **特性**:
+  - 支持多 WiFi 网络自动选择
   - 指数退避重连机制
   - 异步非阻塞调用
 
-### LED控制器
+### LED 控制器
+
 - **位置**: `app/hw/led.py`
-- **功能**: 丰富的LED状态指示和模式控制
+- **功能**: 丰富的 LED 状态指示和模式控制
 - **特性**: 开箱即用、延迟初始化、多种预设模式
 
 ### 日志系统
+
 - **位置**: `app/lib/logger.py`
-- **功能**: 极简日志系统, 专为ESP32-C3设计
+- **功能**: 极简日志系统, 专为 ESP32-C3 设计
 - **特性**: 零配置、颜色支持、模块标识
 
 ### Home Assistant 集成
+
 - **位置**: `app/ha.py`
 - **功能**: 发布 Home Assistant discovery 配置、设备可用性 availability、温湿度状态
-- **特性**: 可配置 discovery_prefix、设备信息、唯一ID、支持 retain 发布
+- **特性**: 可配置 discovery_prefix、设备信息、唯一 ID、支持 retain 发布
 
 ## ⚙️ 常用配置
 
-### MQTT配置 (Home Assistant)
+### MQTT 配置 (Home Assistant)
+
 ```python
 # app/config.py
 "mqtt": {
@@ -108,7 +115,8 @@ IOT_ESP32C3/
 }
 ```
 
-### WiFi配置
+### WiFi 配置
+
 ```python
 # app/config.py
 "wifi": {
@@ -124,6 +132,7 @@ IOT_ESP32C3/
 ```
 
 ### HA 配置
+
 ```python
 # app/config.py
 "ha": {
@@ -138,6 +147,7 @@ IOT_ESP32C3/
 ```
 
 ### BLE 配置 (可选)
+
 ```python
 # app/config.py
 "ble": {
@@ -151,11 +161,13 @@ IOT_ESP32C3/
     "config_service": {"enabled": True, "persistence_path": "/config.json", "allow_reboot": True}
 }
 ```
+
 > 注意: 生产环境建议关闭 `enable_log_forward`, 并将 `security.auth` 设置为 `token`。
 
 ## 🚀 快速开始
 
 ### 1. 环境准备
+
 ```bash
 # 安装依赖
 pip install pyserial mpremote mpy-cross
@@ -165,9 +177,11 @@ python build.py --diagnose
 ```
 
 ### 2. 配置设备
-编辑 `app/config.py` 文件, 修改MQTT和WiFi配置。
+
+编辑 `app/config.py` 文件, 修改 MQTT 和 WiFi 配置。
 
 ### 3. 构建和部署
+
 ```bash
 # 编译并上传
 python build.py
@@ -182,6 +196,7 @@ python build.py --repl
 ## 📖 常见问题 (FAQ)
 
 ### 目录
+
 - [连接问题](#连接问题)
 - [配置问题](#配置问题)
 - [性能问题](#性能问题)
@@ -189,28 +204,31 @@ python build.py --repl
 
 ### 连接问题
 
-**Q: 设备无法连接WiFi?**
-A: 检查WiFi配置是否正确, 确保:
-- SSID和密码正确
+**Q: 设备无法连接 WiFi?**
+A: 检查 WiFi 配置是否正确, 确保:
+
+- SSID 和密码正确
 - 路由器在工作范围内
 - 尝试重启设备
 
-**Q: MQTT连接失败?**
-A: 检查MQTT配置:
+**Q: MQTT 连接失败?**
+A: 检查 MQTT 配置:
+
 - 服务器地址和端口正确
 - 用户名和密码正确
-- Home Assistant的MQTT集成已启用
+- Home Assistant 的 MQTT 集成已启用
 
 **Q: 设备频繁断线重连?**
 A: 可能原因:
-- WiFi信号弱
-- MQTT服务器不稳定
+
+- WiFi 信号弱
+- MQTT 服务器不稳定
 - 配置的重连参数过于激进
 
 ### 配置问题
 
-**Q: 如何修改LED引脚?**
-A: 在 `app/hw/led.py` 中修改LED引脚定义。
+**Q: 如何修改 LED 引脚?**
+A: 在 `app/hw/led.py` 中修改 LED 引脚定义。
 
 **Q: 如何添加新的传感器?**
 A: 在 `app/hw/` 目录下创建新的传感器模块, 并在主程序中集成。
@@ -222,6 +240,7 @@ A: 在 `app/lib/logger.py` 中修改日志级别设置。
 
 **Q: 内存不足怎么办?**
 A: 优化建议:
+
 - 减少不必要的变量和对象
 - 使用生成器替代列表
 - 及时释放大对象
@@ -229,6 +248,7 @@ A: 优化建议:
 
 **Q: 设备运行缓慢?**
 A: 检查:
+
 - 主循环延迟是否过长
 - 是否有阻塞操作
 - 内存使用情况
@@ -237,45 +257,52 @@ A: 检查:
 
 **Q: 如何调试设备?**
 A: 调试方法:
+
 - 使用 `python build.py --monitor` 查看日志
 - 使用 `python build.py --repl` 进行交互式调试
 - Windows 独立终端原始 REPL: `python build.py -R`
 - 原始 REPL: `python build.py --raw-repl`
-- 检查LED状态指示
+- 检查 LED 状态指示
 
 **Q: 如何添加新功能?**
 A: 开发流程:
+
 1. 创建新模块
-2. 在EventBus中注册事件
+2. 在 EventBus 中注册事件
 3. 在状态机中添加处理逻辑
 4. 测试和部署
 
 ## 🔄 系统工作流程
 
 ### 启动流程
+
 ```
 boot.py → main.py → 配置加载 → 网络连接 → 主循环
 ```
 
 ### 主循环流程
+
 ```
 喂看门狗 → 状态机更新 → 事件处理 → LED更新 → 状态监控 → 循环
 ```
 
 ### 事件处理流程
+
 ```
 事件发生 → EventBus.publish → 事件队列 → 主循环处理 → 订阅者回调
 ```
 
 ## 📊 系统状态
 
-### LED状态指示
+### LED 状态指示
+
 - **INIT**: 快速闪烁 (系统初始化)
 - **CONNECTING**: 脉冲模式 (连接中)
 - **RUNNING**: 常亮 (正常运行)
-- **ERROR**: SOS模式 (错误状态)
+- **ERROR**: SOS 模式 (错误状态)
 
-### MQTT主题结构
+### MQTT 主题结构
+
 ```
 device/{device_id}/availability         # 设备可用性 (online/offline)
 device/{device_id}/state/metrics        # 系统指标
@@ -284,10 +311,12 @@ device/{device_id}/state/humidity       # 湿度数据
 ```
 
 ### Home Assistant Discovery 主题
+
 ```
 {discovery_prefix}/sensor/{device_id}/temperature/config
 {discovery_prefix}/sensor/{device_id}/humidity/config
 ```
+
 > 默认 discovery_prefix 为 `homeassistant`。
 
 ## 🛠️ 开发命令
@@ -313,11 +342,39 @@ python build.py --clean-cache      # 清理本地缓存
 
 ## ⚠️ 重要说明
 
-- **内存限制**: ESP32C3只有264KB内存, 必须时刻注意内存使用
+- **内存限制**: ESP32C3 只有 264KB 内存, 必须时刻注意内存使用
 - **文件位置**: 所有代码位于 `app/` 目录, 编译后上传到设备根目录
 - **导入机制**: 设备上从根目录导入, 不存在 `app` 包
 - **配置管理**: 所有配置在 `config.py` 中统一管理
 - **语言**: 代码注释和文档使用中文
+
+## 🔌 硬件连接重要规则
+
+### 风扇控制连接 (利民 TL-S12W 等 PWM 风扇)
+
+**⚠️ 关键要求: 必须连接共地线!**
+
+正确的连接方式:
+
+```
+ESP32-C3         风扇
+GPIO2    ←→      PWM控制线
+GPIO6    ←→      TACH信号线
+GND      ←→      GND (共地线) ⚠️ 必须连接!
+VIN/3.3V ←→      风扇电源正极 (12V/5V)
+```
+
+**常见问题:**
+
+- ❌ 只连接 PWM 和 TACH 线, 不接 GND → 转速读数异常, 信号不稳定
+- ❌ 共地线接触不良 → 转速计算错误, 可能出现异常高转速
+- ✅ 正确连接共地线 → 转速读数准确, 符合物理实际值(500-1700 RPM)
+
+**诊断工具使用:**
+
+- 使用 `test_tb6612fng.py` 进行引脚配置诊断
+- 正确配置应显示: GPIO2=PWM 输出, GPIO6=TACH 输入
+- 转速应随 PWM 增加而正常增加, 数值在合理范围内
 
 ## 📝 版本信息
 
