@@ -248,15 +248,15 @@ class HomeAssistantHelper:
             self._mqtt_publish(topic_ld, loop_delay_cfg, retain=True, qos=0)
             diag_topics.append(topic_ld)
 
-            # 移除看门狗使能实体：清理旧 discovery（空保留消息）
+            # 移除看门狗使能实体：清理旧 discovery(空保留消息)
             topic_we = f"{base}/binary_sensor/{device_id}/wdt_enabled/config"
             self._mqtt_publish(topic_we, "", retain=True, qos=0)
 
-            # 移除看门狗超时实体：清理旧 discovery（空保留消息）
+            # 移除看门狗超时实体：清理旧 discovery(空保留消息)
             topic_wt = f"{base}/sensor/{device_id}/wdt_timeout/config"
             self._mqtt_publish(topic_wt, "", retain=True, qos=0)
 
-            # 运行时长(文本) - 友好显示，如 "3 分钟" / "1.2 小时"
+            # 运行时长(文本) - 友好显示,如 "3 分钟" / "1.2 小时"
             uptime_cfg = {
                 "state_topic": self.state_topic("metrics"),
                 "value_template": "{{ value_json.uptime_text }}",
@@ -340,7 +340,7 @@ class HomeAssistantHelper:
             self._mqtt_publish(topic_ls, loop_sleep_cfg, retain=True, qos=0)
             diag_topics.append(topic_ls)
 
-            # 上次喂狗间隔(文本) - 由设备侧统一格式化，避免 0.001 分钟等
+            # 上次喂狗间隔(文本) - 由设备侧统一格式化,避免 0.001 分钟等
             wdt_feed_cfg = {
                 "state_topic": self.state_topic("metrics"),
                 "value_template": "{{ value_json.diag.wdt_last_feed_text }}",
@@ -352,8 +352,8 @@ class HomeAssistantHelper:
                 "entity_category": "diagnostic",
                 "icon": "mdi:dog-service",
             }
-            # 已禁用“上次喂狗间隔”实体的发布，减少界面噪音
-            # 清理历史保留的该实体 Discovery（空 payload 覆盖保留消息）
+            # 已禁用“上次喂狗间隔”实体的发布,减少界面噪音
+            # 清理历史保留的该实体 Discovery(空 payload 覆盖保留消息)
             topic_wf = f"{base}/sensor/{device_id}/wdt_last_feed_ms/config"
             try:
                 self._mqtt_publish(topic_wf, "", retain=True, qos=0)
@@ -541,12 +541,12 @@ class HomeAssistantHelper:
             # 已移除固件版本实体配置
             topic_fv = f"{base}/sensor/{device_id}/fw_version/config"
             self._mqtt_publish(topic_fv, "", retain=True, qos=0)
-            # diag_topics.append(topic_fv)  # 清理旧实体，不计入统计
+            # diag_topics.append(topic_fv)  # 清理旧实体,不计入统计
 
             # 已移除设备型号实体配置
             topic_dm = f"{base}/sensor/{device_id}/device_model/config"
             self._mqtt_publish(topic_dm, "", retain=True, qos=0)
-            # diag_topics.append(topic_dm)  # 清理旧实体，不计入统计
+            # diag_topics.append(topic_dm)  # 清理旧实体,不计入统计
 
             # 配置化按钮系统: 仅保留 reboot, 其余全部忽略(实现只读)
             token = self._get_security_token()
@@ -563,7 +563,7 @@ class HomeAssistantHelper:
                 btn_type = btn.get("type", "button")
                 btn_params = btn.get("params", {})
 
-                # 只允许重启按钮，其余全部跳过
+                # 只允许重启按钮,其余全部跳过
                 if not (btn_type == "reboot" or btn_id == "reboot"):
                     continue
 

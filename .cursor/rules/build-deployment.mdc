@@ -7,7 +7,7 @@ description: 构建和部署规范
 
 ## 构建系统
 
-[build.py](mdc:build.py)是项目的构建和部署工具，提供完整的开发工作流：
+[build.py](mdc:build.py)是项目的构建和部署工具,提供完整的开发工作流：
 
 ### 基本用法
 
@@ -138,7 +138,7 @@ def reset_device(port, verbose=False):
 
 ## 开发工具
 
-### REPL支持
+### REPL 支持
 
 ```bash
 # 交互式REPL
@@ -217,7 +217,7 @@ def execute_mpremote_command(port, *cmd_args, timeout=60, retries=1, verbose=Fal
             result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
             if result.returncode == 0 or not _is_connection_error(result.stderr):
                 return result.returncode, result.stdout, result.stderr
-            
+
             if attempt < retries - 1:
                 time.sleep(retry_delay)
         except subprocess.TimeoutExpired:
@@ -233,7 +233,7 @@ def execute_mpremote_command(port, *cmd_args, timeout=60, retries=1, verbose=Fal
 
 - **增量开发**: 使用智能同步避免重复上传
 - **测试优先**: 先本地测试再部署到设备
-- **版本控制**: 使用Git管理代码版本
+- **版本控制**: 使用 Git 管理代码版本
 - **文档更新**: 及时更新项目文档
 
 ### 2. 错误处理
@@ -245,7 +245,7 @@ def execute_mpremote_command(port, *cmd_args, timeout=60, retries=1, verbose=Fal
 
 ### 3. 性能优化
 
-- **缓存机制**: 使用文件MD5避免重复上传
+- **缓存机制**: 使用文件 MD5 避免重复上传
 - **并行处理**: 支持多文件并行上传
 - **资源管理**: 及时释放系统资源
 - **内存优化**: 避免大文件一次性加载

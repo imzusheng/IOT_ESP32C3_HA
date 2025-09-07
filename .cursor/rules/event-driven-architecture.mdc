@@ -64,7 +64,7 @@ STATE_ERROR = 3         # 错误状态
 # 状态名称映射
 STATE_NAMES = {
     STATE_INIT: "INIT",
-    STATE_CONNECTING: "CONNECTING", 
+    STATE_CONNECTING: "CONNECTING",
     STATE_RUNNING: "RUNNING",
     STATE_ERROR: "ERROR"
 }
@@ -115,20 +115,20 @@ async def run(self):
     """运行主循环"""
     while True:
         current_time = time.ticks_ms()
-        
+
         # 事件分发与状态机更新
         if self.event_bus:
             self.event_bus.process_events()
         if self.state_machine:
             self.state_machine.update()
-        
+
         # 看门狗喂狗
         if getattr(self, "wdt", None):
             self.wdt.feed()
-        
+
         # 定期维护
         self._periodic_maintenance(current_time)
-        
+
         await asyncio.sleep_ms(50)
 ```
 
@@ -142,7 +142,7 @@ class MainController:
         self.event_bus = EventBus()
         self.network_manager = NetworkManager(self.config, self.event_bus)
         self.state_machine = FSM(self.event_bus, self.config, self.network_manager)
-        
+
         # 注册事件监听
         self._register_event_handlers()
 ```
@@ -177,16 +177,16 @@ class MyModule:
         self.event_bus = event_bus
         self.config = config
         self._subscribe_events()
-    
+
     def _subscribe_events(self):
         """订阅必要的事件"""
         self.event_bus.subscribe(EVENTS["SYSTEM_STATE_CHANGE"], self._handle_system_event)
-    
+
     def _handle_system_event(self, event_name, state=None, **kwargs):
         """处理系统事件"""
         if state == 'running':
             self._do_something()
-    
+
     def _do_something(self):
         """执行业务逻辑"""
         # 发布事件通知其他模块
@@ -195,7 +195,7 @@ class MyModule:
 
 ### 事件处理最佳实践
 
-1. **事件命名**: 使用清晰的事件名称，遵循`模块.动作`格式
+1. **事件命名**: 使用清晰的事件名称,遵循`模块.动作`格式
 2. **事件数据**: 事件数据应该包含足够的上下文信息
 3. **错误处理**: 事件处理函数应该有完善的错误处理
 4. **性能考虑**: 避免在事件处理函数中执行耗时操作
@@ -203,8 +203,8 @@ class MyModule:
 
 ### 状态机最佳实践
 
-1. **状态简化**: 保持状态数量最少，避免复杂的状态转换
-2. **事件驱动**: 状态转换应该由事件驱动，而不是定时器
+1. **状态简化**: 保持状态数量最少,避免复杂的状态转换
+2. **事件驱动**: 状态转换应该由事件驱动,而不是定时器
 3. **错误恢复**: 每个状态都应该有错误恢复机制
 4. **状态持久化**: 重要状态变化应该记录日志
-5. **测试友好**: 状态机应该支持强制状态设置，便于测试
+5. **测试友好**: 状态机应该支持强制状态设置,便于测试

@@ -7,7 +7,7 @@ description: 配置管理和安全规范
 
 ## 配置架构
 
-[config.py](mdc:app/config.py)是系统的配置中心，采用双层配置架构：
+[config.py](mdc:app/config.py)是系统的配置中心,采用双层配置架构：
 
 - **默认层**: 内置在代码中的默认配置
 - **覆盖层**: 运行时配置文件(/config.json)覆盖默认配置
@@ -110,7 +110,7 @@ save_overlay()  # 保存所有覆盖配置
 "ble": {
     "security": {
         "auth": "none",   # 开发环境可为none
-        "token": "changeme",  # 示例token，生产环境必须修改
+        "token": "changeme",  # 示例token,生产环境必须修改
     },
 }
 ```
@@ -122,17 +122,17 @@ save_overlay()  # 保存所有覆盖配置
 def _is_authorized_for_config(self, data):
     sec = self._get_security_config()
     auth = sec.get("auth", "none")
-    
+
     if auth == "none":
         return True, None  # 开发环境免鉴权
-    
+
     if auth == "token":
         token_cfg = sec.get("token")
         token_req = data.get("token")
         if token_req and str(token_req) == str(token_cfg):
             return True, None
         return False, "unauthorized"
-    
+
     return False, "unauthorized"
 ```
 
@@ -146,12 +146,12 @@ def validate_config(config):
     # 验证必需配置
     if not config.get("mqtt", {}).get("broker"):
         raise ValueError("MQTT broker地址未配置")
-    
+
     # 验证配置范围
     delay = config.get("system", {}).get("main_loop_delay", 25)
     if not 10 <= delay <= 1000:
         raise ValueError("主循环延迟应在10-1000ms范围内")
-    
+
     return True
 ```
 
@@ -161,15 +161,15 @@ def validate_config(config):
 # 使用get方法提供默认值
 def get_config(section=None, key=None, default=None):
     cfg = _RUNTIME_CONFIG if isinstance(_RUNTIME_CONFIG, dict) else CONFIG
-    
+
     if section is None:
         return cfg
-    
+
     section_data = cfg.get(section, {})
-    
+
     if key is None:
         return section_data
-    
+
     return section_data.get(key, default)
 ```
 
@@ -187,7 +187,7 @@ def atomic_write_json(path, data, tmp_suffix=".tmp"):
         with open(tmp_path, "w") as f:
             f.write(s)
             f.flush()
-        
+
         # 重命名覆盖
         _os.rename(tmp_path, path)
         return True
@@ -226,7 +226,7 @@ def reload_overlay(path=None):
 
 ### 2. 安全考虑
 
-- **敏感信息**: 不在代码中硬编码密码和token
+- **敏感信息**: 不在代码中硬编码密码和 token
 - **权限控制**: 实现适当的权限验证机制
 - **配置验证**: 验证配置项的有效性
 - **错误处理**: 配置错误时的优雅降级

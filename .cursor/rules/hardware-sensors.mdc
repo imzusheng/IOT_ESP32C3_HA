@@ -7,21 +7,21 @@ description: 硬件和传感器开发规范
 
 ## 硬件抽象层设计
 
-硬件抽象层位于[app/hw/](mdc:app/hw/)目录，提供统一的硬件接口：
+硬件抽象层位于[app/hw/](mdc:app/hw/)目录,提供统一的硬件接口：
 
 - **延迟初始化**: 硬件资源在首次使用时创建
-- **单例模式**: 防止重复实例化，保证硬件控制的唯一性
+- **单例模式**: 防止重复实例化,保证硬件控制的唯一性
 - **错误处理**: 硬件操作失败时的优雅降级
 - **资源管理**: 自动清理硬件资源
 
-## LED控制器规范
+## LED 控制器规范
 
-[led.py](mdc:app/hw/led.py)提供开箱即用的LED控制：
+[led.py](mdc:app/hw/led.py)提供开箱即用的 LED 控制：
 
 ```python
 from hw.led import play, cleanup
 
-# 开箱即用，无需初始化
+# 开箱即用,无需初始化
 play('blink')    # 闪烁模式
 play('pulse')    # 脉冲模式
 play('cruise')   # 巡航模式
@@ -32,19 +32,19 @@ play('off')      # 关闭
 cleanup()
 ```
 
-### LED模式说明
+### LED 模式说明
 
 - **blink**: 快速闪烁(系统初始化)
 - **pulse**: 脉冲模式(连接中)
 - **cruise**: 常亮(正常运行)
-- **sos**: SOS模式(错误状态)
-- **off**: 关闭所有LED
+- **sos**: SOS 模式(错误状态)
+- **off**: 关闭所有 LED
 
 ## 传感器开发规范
 
-### SHT40温湿度传感器
+### SHT40 温湿度传感器
 
-[sht40.py](mdc:app/hw/sht40.py)提供SHT40传感器接口：
+[sht40.py](mdc:app/hw/sht40.py)提供 SHT40 传感器接口：
 
 ```python
 from hw.sht40 import read, exists, configure
@@ -65,8 +65,8 @@ configure(sda=4, scl=5, freq=100000)
 ```python
 # 返回格式
 {
-    "temperature": 26.4,  # 摄氏度，保留1位小数
-    "humidity": 58.2      # 相对湿度%，保留1位小数
+    "temperature": 26.4,  # 摄氏度,保留1位小数
+    "humidity": 58.2      # 相对湿度%,保留1位小数
 }
 ```
 
@@ -89,7 +89,7 @@ timer_mgr.release_timer(timer)
 
 ### 定时器限制
 
-- **ESP32C3限制**: 最多支持2个硬件定时器(编号0至1)
+- **ESP32C3 限制**: 最多支持 2 个硬件定时器(编号 0 至 1)
 - **优化策略**: 优先使用软件定时替代硬件定时器
 - **资源管理**: 使用完毕后及时释放定时器资源
 

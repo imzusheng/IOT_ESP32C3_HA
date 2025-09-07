@@ -67,7 +67,7 @@ def enter_safe_mode():
         except Exception as e:
             print(f"Safe mode daemon failed: {e}")
         
-        # 主循环: LED已由硬件定时器驱动，仅需保持系统运行
+        # 主循环: LED已由硬件定时器驱动,仅需保持系统运行
         while True:
             utime.sleep(1)  # 1秒间隔
             

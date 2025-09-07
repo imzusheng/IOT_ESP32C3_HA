@@ -247,7 +247,7 @@ class Daemon:
             # 添加温度样本到历史记录
             self._add_temp_sample(temp_c)
             
-            # 安全模式下仅记录温度，不触发重启
+            # 安全模式下仅记录温度,不触发重启
             if self._in_safe_mode:
                 if self._ticks % self.SAFE_MODE_TEMP_LOG_INTERVAL == 0:
                     if self._is_valid_temperature(temp_c):
@@ -299,10 +299,10 @@ class Daemon:
         # 创建安全模式标记
         _request_safe_mode()
         
-        # 延迟重启，给系统留出清理时间
+        # 延迟重启,给系统留出清理时间
         try:
             if machine and hasattr(machine, "reset"):
-                # 延迟重启，让日志输出完成
+                # 延迟重启,让日志输出完成
                 import time
                 time.sleep_ms(self.REBOOT_DELAY_MS)
                 machine.reset()

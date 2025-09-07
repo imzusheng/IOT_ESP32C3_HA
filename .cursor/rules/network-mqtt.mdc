@@ -3,18 +3,18 @@ globs: app/net/*.py,app/ha.py
 description: 网络和MQTT相关代码规范
 ---
 
-# 网络和MQTT开发规范
+# 网络和 MQTT 开发规范
 
 ## 网络管理器架构
 
-网络管理器([network_manager.py](mdc:app/net/network_manager.py))负责统一管理WiFi、MQTT、NTP连接：
+网络管理器([network_manager.py](mdc:app/net/network_manager.py))负责统一管理 WiFi、MQTT、NTP 连接：
 
-- **WiFi管理**: 支持多网络配置，按RSSI强度自动选择
-- **MQTT控制**: 轻量级MQTT客户端，支持重连和订阅恢复
-- **NTP同步**: 时间同步服务，失败不影响MQTT连接
-- **事件驱动**: 通过EventBus发布连接状态变化事件
+- **WiFi 管理**: 支持多网络配置,按 RSSI 强度自动选择
+- **MQTT 控制**: 轻量级 MQTT 客户端,支持重连和订阅恢复
+- **NTP 同步**: 时间同步服务,失败不影响 MQTT 连接
+- **事件驱动**: 通过 EventBus 发布连接状态变化事件
 
-## WiFi开发规范
+## WiFi 开发规范
 
 ```python
 # WiFi管理器使用
@@ -26,7 +26,7 @@ success = wifi_manager.connect(ssid, password)
 is_connected = wifi_manager.get_is_connected()
 ```
 
-## MQTT开发规范
+## MQTT 开发规范
 
 ```python
 # MQTT控制器使用
@@ -38,9 +38,9 @@ mqtt_controller.publish(topic, payload, retain=True, qos=0)
 mqtt_controller.subscribe(topic, qos=0)
 ```
 
-## Home Assistant集成
+## Home Assistant 集成
 
-[ha.py](mdc:app/ha.py)提供Home Assistant设备发现和状态上报：
+[ha.py](mdc:app/ha.py)提供 Home Assistant 设备发现和状态上报：
 
 ```python
 # HA助手使用
@@ -52,7 +52,7 @@ ha.publish_availability(True)  # 发布设备可用性
 ha.publish_state(temperature=26.4, humidity=58.2)  # 发布传感器数据
 ```
 
-## MQTT主题规范
+## MQTT 主题规范
 
 ```
 # 设备状态主题
@@ -89,14 +89,14 @@ def _handle_wifi_event(self, event_name, state=None, **kwargs):
 
 ## 重连机制
 
-- **指数退避**: 支持指数退避重连，避免频繁重连
+- **指数退避**: 支持指数退避重连,避免频繁重连
 - **抖动**: 添加随机抖动避免多个设备同时重连
 - **最大重试**: 支持最大重试次数限制
-- **状态监控**: 实时监控连接状态，自动处理断线重连
+- **状态监控**: 实时监控连接状态,自动处理断线重连
 
 ## 安全考虑
 
-- **认证**: MQTT支持用户名密码认证
-- **权限控制**: 配置通道支持token鉴权
-- **LWT**: 支持Last Will and Testament功能
-- **加密**: 支持SSL/TLS连接(端口8883)
+- **认证**: MQTT 支持用户名密码认证
+- **权限控制**: 配置通道支持 token 鉴权
+- **LWT**: 支持 Last Will and Testament 功能
+- **加密**: 支持 SSL/TLS 连接(端口 8883)

@@ -14,7 +14,7 @@ TEST_PINS = [6, 2]  # 您当前连接的两个引脚
 PWM_FREQ = 25000
 PULSES_PER_REV = 2  # 风扇TACH默认2脉冲/转, 利民TL-S12W实测为2脉冲/转
 MIN_TACH_INTERVAL_US = 12000  # 脉冲去抖最小间隔(微秒), 提升至12000us有效过滤高频噪声与PWM谐波干扰
-# 新增: 低速起转辅助（防止卡死）
+# 新增: 低速起转辅助(防止卡死)
 KICKSTART_PERCENT = 50
 KICKSTART_MS = 500
 # 新增: 保存TACH相邻脉冲间隔用于“周期法”计算RPM
@@ -61,7 +61,7 @@ def reset_pulse_counters():
         _intervals[pin_num] = []
     machine.enable_irq(state)
 
-# 新增: 基于脉冲间隔的RPM计算（周期法, 更稳更快）
+# 新增: 基于脉冲间隔的RPM计算(周期法, 更稳更快)
 
 def rpm_from_intervals(pin_num, min_samples=3):
     buf = _intervals.get(pin_num, [])
@@ -79,7 +79,7 @@ def rpm_from_intervals(pin_num, min_samples=3):
     q3 = sample[q3_idx]
     iqr = q3 - q1
     
-    # 过滤异常值（1.5*IQR规则）
+    # 过滤异常值(1.5*IQR规则)
     lower_bound = q1 - 1.5 * iqr
     upper_bound = q3 + 1.5 * iqr
     filtered = [x for x in sample if lower_bound <= x <= upper_bound]
@@ -94,7 +94,7 @@ def rpm_from_intervals(pin_num, min_samples=3):
     
     rpm = int(60000000 / (median_us * PULSES_PER_REV))
     
-    # 额外检查RPM合理性（风扇最高2000RPM）
+    # 额外检查RPM合理性(风扇最高2000RPM)
     if rpm > 2000:
         return None
     
@@ -129,7 +129,7 @@ def wait_enter(prompt=""):
 
 def test_pin_as_pwm(pin_num, other_pin_num, open_drain=False):
     """测试某个引脚作为PWM输出
-    open_drain: True表示使用开漏模式模拟PWM（仅支持0%或100%两档, 中间占空比无法用软件精确模拟25kHz）
+    open_drain: True表示使用开漏模式模拟PWM(仅支持0%或100%两档, 中间占空比无法用软件精确模拟25kHz)
     """
     mode_str = "开漏模拟" if open_drain else "标准"
     print(f"\n=== 测试GPIO{pin_num}作为{mode_str}PWM, GPIO{other_pin_num}作为TACH ===")
@@ -143,7 +143,7 @@ def test_pin_as_pwm(pin_num, other_pin_num, open_drain=False):
                 if percent <= 0:
                     pwm_pin.value(0)  # 拉低=0%
                 elif percent >= 100:
-                    pwm_pin.value(1)  # 释放=100%（由外部上拉）
+                    pwm_pin.value(1)  # 释放=100%(由外部上拉)
                 else:
                     # 无法产生连续25kHz开漏PWM, 仅近似为就近的0/100
                     pwm_pin.value(1 if percent >= 50 else 0)
@@ -200,11 +200,11 @@ def test_pin_as_pwm(pin_num, other_pin_num, open_drain=False):
             else:
                 print(f"计算转速: {rpm} RPM")
             
-            # 判断是否合理（以计数法为基准的阈值）
+            # 判断是否合理(以计数法为基准的阈值)
             if 0 <= rpm <= 2000:
-                print("✓ 转速读数（计数法）在合理范围内")
+                print("✓ 转速读数(计数法)在合理范围内")
             else:
-                print("✗ 转速读数（计数法）异常, 可能有干扰或PPR设置不正确")
+                print("✗ 转速读数(计数法)异常, 可能有干扰或PPR设置不正确")
         
         # 清理
         if open_drain:
@@ -225,7 +225,7 @@ def diagnostic_full():
     """完整诊断: 测试两种引脚配置"""
     print("=== 利民TL-S12W风扇引脚诊断 ===")
     print("将测试两种可能的引脚配置...")
-    print("请确保风扇已正确连接电源（+12V和GND）")
+    print("请确保风扇已正确连接电源(+12V和GND)")
     wait_enter("按回车键开始诊断...")
     
     a, b = TEST_PINS[0], TEST_PINS[1]
@@ -261,8 +261,8 @@ def diagnostic_full():
     
     print("\n=== 诊断总结 ===")
     print("请观察哪种配置和模式下：")
-    print("1. 转速随PWM%正常变化（PWM越高转速越高）")
-    print("2. 转速数值在合理范围内（0-2000 RPM）")
+    print("1. 转速随PWM%正常变化(PWM越高转速越高)")
+    print("2. 转速数值在合理范围内(0-2000 RPM)")
     print("3. 没有异常高的脉冲计数")
     print("\n正确的配置应该显示合理的转速变化。")
 
@@ -420,7 +420,7 @@ def interactive_pwm_monitor():
                             if open_drain_mode:
                                 pwm_pin = Pin(pwm_pin_num, Pin.OUT_OD)
                                 pwm = None
-                                print("切换到开漏PWM模式（仅支持0%/100%两档）")
+                                print("切换到开漏PWM模式(仅支持0%/100%两档)")
                             else:
                                 pwm = PWM(Pin(pwm_pin_num), freq=PWM_FREQ)
                                 pwm_pin = None
@@ -474,7 +474,7 @@ def interactive_pwm_monitor():
                                         continue
                                     if cmd == "ppr":
                                         if val <= 0 or val > 8:
-                                            print("PPR无效, 请输入1-8之间的整数（常见为2或4）")
+                                            print("PPR无效, 请输入1-8之间的整数(常见为2或4)")
                                         else:
                                             PULSES_PER_REV = val
                                             reset_pulse_counters()
@@ -499,7 +499,7 @@ def interactive_pwm_monitor():
                                 try:
                                     val = int(line)
                                     if 0 <= val <= 100:
-                                        # 小占空比起转辅助（仅标准PWM模式）
+                                        # 小占空比起转辅助(仅标准PWM模式)
                                         if (not open_drain_mode) and (pwm is not None) and (current_percent == 0) and (0 < val <= 10):
                                             _apply_pwm_percent(pwm, KICKSTART_PERCENT, False)
                                             time.sleep_ms(KICKSTART_MS)
