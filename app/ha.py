@@ -142,7 +142,7 @@ class HomeAssistantHelper:
 
     # -------- 发布器 --------
     def publish_discovery(self):
-        """为温度与湿度传感器与配置按钮发布 HA 发现配置"""
+        """为温度与湿度传感器、风扇控制与配置按钮发布 HA 发现配置"""
         try:
             device_id = self._safe_device_id()
             device = self._device_info(device_id)
@@ -154,6 +154,7 @@ class HomeAssistantHelper:
             ha_cfg = (self.config or {}).get("ha", {}) or {}
             temp_name = ha_cfg.get("temp_name")
             hum_name = ha_cfg.get("hum_name")
+            fan_name = ha_cfg.get("fan_name", "风扇")
 
             # 传感器配置
             temp_cfg = {
@@ -178,11 +179,26 @@ class HomeAssistantHelper:
             }
             hum_cfg["name"] = hum_name or "湿度"
 
+            # 风扇转速传感器
+            fan_rpm_cfg = {
+                "state_topic": self.state_topic("fan_rpm"),
+                "availability": availability,
+                "unique_id": f"{device_id}_fan_rpm",
+                "unit_of_measurement": "RPM",
+                "device_class": "frequency",
+                "state_class": "measurement",
+                "device": device,
+                "name": f"{fan_name}转速",
+                "icon": "mdi:fan",
+            }
+
             base = self.discovery_prefix
             t_topic = f"{base}/sensor/{device_id}/temperature/config"
             h_topic = f"{base}/sensor/{device_id}/humidity/config"
+            fan_rpm_topic = f"{base}/sensor/{device_id}/fan_rpm/config"
             self._mqtt_publish(t_topic, temp_cfg, retain=True, qos=0)
             self._mqtt_publish(h_topic, hum_cfg, retain=True, qos=0)
+            self._mqtt_publish(fan_rpm_topic, fan_rpm_cfg, retain=True, qos=0)
 
             # 只读配置快照 sensor (无命令, 仅属性)
             cfg_sensor = {
@@ -537,6 +553,20 @@ class HomeAssistantHelper:
             self._mqtt_publish(topic_ba, ble_adv_cfg, retain=True, qos=0)
             diag_topics.append(topic_ba)
 
+            # 风扇转速设置 (诊断实体)
+            fan_speed_setting_cfg = {
+                "state_topic": self.state_topic("fan_speed_setting"),
+                "availability": availability,
+                "unique_id": f"{device_id}_fan_speed_setting",
+                "name": f"{fan_name}转速设置",
+                "device": device,
+                "entity_category": "diagnostic",
+                "icon": "mdi:fan-speed-1",
+            }
+            topic_fs = f"{base}/sensor/{device_id}/fan_speed_setting/config"
+            self._mqtt_publish(topic_fs, fan_speed_setting_cfg, retain=True, qos=0)
+            diag_topics.append(topic_fs)
+
             # 固件与型号
             # 已移除固件版本实体配置
             topic_fv = f"{base}/sensor/{device_id}/fw_version/config"
@@ -547,6 +577,7 @@ class HomeAssistantHelper:
             topic_dm = f"{base}/sensor/{device_id}/device_model/config"
             self._mqtt_publish(topic_dm, "", retain=True, qos=0)
             # diag_topics.append(topic_dm)  # 清理旧实体,不计入统计
+
 
             # 配置化按钮系统: 仅保留 reboot, 其余全部忽略(实现只读)
             token = self._get_security_token()
@@ -588,7 +619,7 @@ class HomeAssistantHelper:
             # 发布一次只读配置快照
             self.publish_config_snapshot()
 
-            all_topics = [t_topic, h_topic, cfg_topic] + diag_topics + button_topics
+            all_topics = [t_topic, h_topic, fan_rpm_topic, cfg_topic] + diag_topics + button_topics
             info("已发布 HA 发现配置: {}", ", ".join(all_topics), module="HA")
             return {"topics": all_topics}
         except Exception as e:
@@ -604,13 +635,17 @@ class HomeAssistantHelper:
         except Exception:
             return False
 
-    def publish_state(self, temperature=None, humidity=None, retain=False):
+    def publish_state(self, temperature=None, humidity=None, fan_rpm=None, fan_speed_setting=None, retain=False):
         ok = True
         try:
             if temperature is not None:
                 ok = bool(self._mqtt_publish(self.state_topic("temperature"), temperature, retain=retain, qos=0)) and ok
             if humidity is not None:
                 ok = bool(self._mqtt_publish(self.state_topic("humidity"), humidity, retain=retain, qos=0)) and ok
+            if fan_rpm is not None:
+                ok = bool(self._mqtt_publish(self.state_topic("fan_rpm"), fan_rpm, retain=retain, qos=0)) and ok
+            if fan_speed_setting is not None:
+                ok = bool(self._mqtt_publish(self.state_topic("fan_speed_setting"), fan_speed_setting, retain=retain, qos=0)) and ok
         except Exception:
             ok = False
         return ok

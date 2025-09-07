@@ -52,6 +52,31 @@ class MainController:
                 self.led.value(0)
         except Exception:
             self.led = None
+
+    def _init_fan(self):
+        """风扇初始化(如存在)"""
+        try:
+            fan_config = self.config.get("fan", {})
+            if fan_config.get("enabled", False):
+                from hw.fan import configure, set_speed
+                # 配置风扇参数
+                configure(
+                    pwm_pin=fan_config.get("pwm_pin", 2),
+                    tach_pin=fan_config.get("tach_pin", 6),
+                    pwm_freq=fan_config.get("pwm_freq", 25000),
+                    pulses_per_rev=fan_config.get("pulses_per_rev", 2)
+                )
+                # 设置默认转速
+                default_speed = fan_config.get("default_speed", 30)
+                set_speed(default_speed)
+                info(f"风扇初始化成功，默认转速: {default_speed}%", module="MAIN")
+                self.fan_enabled = True
+            else:
+                self.fan_enabled = False
+                info("风扇功能已禁用", module="MAIN")
+        except Exception as e:
+            error(f"风扇初始化失败: {e}", module="MAIN")
+            self.fan_enabled = False
     
     def _init_watchdog(self):
         """看门狗初始化(如存在)"""
@@ -77,6 +102,7 @@ class MainController:
         try:
             # 初始化
             self._init_led()
+            self._init_fan()
             self._init_watchdog()
             
             # Start daemon service only once
@@ -133,14 +159,36 @@ class MainController:
             env_temp = env_data["temperature"] if isinstance(env_data, dict) else None
             env_hum = env_data["humidity"] if isinstance(env_data, dict) else None
             
+            # 读取风扇状态
+            fan_rpm = None
+            fan_speed_setting = None
+            fan_speed_percent = None
+            if getattr(self, "fan_enabled", False):
+                try:
+                    from hw.fan import get_rpm, get_speed
+                    fan_rpm = get_rpm()
+                    fan_speed_percent = get_speed()
+                    # 将转速百分比转换为设置选项
+                    if fan_speed_percent == 30:
+                        fan_speed_setting = "30%"
+                    elif fan_speed_percent == 60:
+                        fan_speed_setting = "60%"
+                    elif fan_speed_percent == 90:
+                        fan_speed_setting = "90%"
+                    else:
+                        fan_speed_setting = "30%"  # 默认值
+                except Exception:
+                    pass
+            
             state = self.state_machine.get_current_state() if self.state_machine else "INIT"
             net_status = self.network_manager.get_status()
             
-            info("系统状态 - 状态:{}, 内存:{}KB({:.0f}%), MCU温度:{}, 环境:{}°C/{}%, WiFi:{}, MQTT:{}", 
+            fan_info = f", 风扇:{fan_rpm}RPM({fan_speed_setting})" if fan_rpm is not None else ""
+            info("系统状态 - 状态:{}, 内存:{}KB({:.0f}%), MCU温度:{}, 环境:{}°C/{}%, WiFi:{}, MQTT:{}{}", 
                  state, free_kb, percent_used, temp_mcu,
                  env_temp if env_temp is not None else "N/A",
                  env_hum if env_hum is not None else "N/A",
-                 net_status['wifi'], net_status['mqtt'], 
+                 net_status['wifi'], net_status['mqtt'], fan_info,
                  module="MAIN")
             
             # 上报周期性指标到 MQTT
@@ -198,11 +246,13 @@ class MainController:
                         self.network_manager.ha.publish_metrics(metrics, retain=False, qos=0)
                     except Exception:
                         pass
-                    # 分离的温湿度主题 -> 统一走 HA 助手发布
+                    # 分离的温湿度和风扇状态主题 -> 统一走 HA 助手发布
                     try:
                         self.network_manager.ha.publish_state(
                             temperature=env_temp if env_temp is not None else None,
                             humidity=env_hum if env_hum is not None else None,
+                            fan_rpm=fan_rpm,
+                            fan_speed_setting=fan_speed_setting,
                             retain=True,
                         )
                     except Exception:
