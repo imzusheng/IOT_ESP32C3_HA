@@ -48,6 +48,10 @@ class HomeAssistantHelper:
             device["model"] = model
         if sw:
             device["sw_version"] = sw
+        
+        # 添加自动界面配置提示
+        device["suggested_area"] = "设备控制"
+        device["configuration_url"] = f"http://{device_id}.local"
         return device
 
     # -------- 主题构建器 --------
@@ -185,7 +189,6 @@ class HomeAssistantHelper:
                 "availability": availability,
                 "unique_id": f"{device_id}_fan_rpm",
                 "unit_of_measurement": "RPM",
-                "device_class": "frequency",
                 "state_class": "measurement",
                 "device": device,
                 "name": f"{fan_name}转速",
@@ -578,6 +581,85 @@ class HomeAssistantHelper:
             self._mqtt_publish(topic_dm, "", retain=True, qos=0)
             # diag_topics.append(topic_dm)  # 清理旧实体,不计入统计
 
+            # 日志相关诊断实体
+            # 系统状态文本
+            system_status_cfg = {
+                "state_topic": self.state_topic("metrics"),
+                "value_template": "{{ value_json.status_text }}",
+                "availability": availability,
+                "unique_id": f"{device_id}_system_status",
+                "name": "系统状态",
+                "device": device,
+                "entity_category": "diagnostic",
+                "icon": "mdi:information",
+            }
+            topic_ss = f"{base}/sensor/{device_id}/system_status/config"
+            self._mqtt_publish(topic_ss, system_status_cfg, retain=True, qos=0)
+            diag_topics.append(topic_ss)
+
+            # 网络状态文本
+            network_status_cfg = {
+                "state_topic": self.state_topic("metrics"),
+                "value_template": "{{ value_json.network_status_text }}",
+                "availability": availability,
+                "unique_id": f"{device_id}_network_status",
+                "name": "网络状态",
+                "device": device,
+                "entity_category": "diagnostic",
+                "icon": "mdi:network",
+            }
+            topic_ns = f"{base}/sensor/{device_id}/network_status/config"
+            self._mqtt_publish(topic_ns, network_status_cfg, retain=True, qos=0)
+            diag_topics.append(topic_ns)
+
+            # 错误计数
+            error_count_cfg = {
+                "state_topic": self.state_topic("metrics"),
+                "value_template": "{{ value_json.error_count }}",
+                "availability": availability,
+                "unique_id": f"{device_id}_error_count",
+                "name": "错误计数",
+                "device": device,
+                "entity_category": "diagnostic",
+                "icon": "mdi:alert-circle",
+            }
+            topic_ec = f"{base}/sensor/{device_id}/error_count/config"
+            self._mqtt_publish(topic_ec, error_count_cfg, retain=True, qos=0)
+            diag_topics.append(topic_ec)
+
+            # 最后错误时间
+            last_error_cfg = {
+                "state_topic": self.state_topic("metrics"),
+                "value_template": "{{ value_json.last_error_time }}",
+                "availability": availability,
+                "unique_id": f"{device_id}_last_error_time",
+                "name": "最后错误时间",
+                "device": device,
+                "entity_category": "diagnostic",
+                "icon": "mdi:clock-alert",
+            }
+            topic_let = f"{base}/sensor/{device_id}/last_error_time/config"
+            self._mqtt_publish(topic_let, last_error_cfg, retain=True, qos=0)
+            diag_topics.append(topic_let)
+
+
+            # 风扇转速传感器（用于Gauge卡片显示）
+            fan_speed_sensor_cfg = {
+                "state_topic": self.state_topic("sensor/fan_speed"),
+                "availability": availability,
+                "unique_id": f"{device_id}_sensor_fan_speed",
+                "name": f"{fan_name}转速",
+                "device": device,
+                "entity_category": "config",
+                "icon": "mdi:fan",
+                "unit_of_measurement": "%",
+                "device_class": "none",
+                "suggested_display_precision": 0,
+                "suggested_unit_of_measurement": "%",
+            }
+            fan_speed_sensor_topic = f"{base}/sensor/{device_id}/fan_speed/config"
+            self._mqtt_publish(fan_speed_sensor_topic, fan_speed_sensor_cfg, retain=True, qos=0)
+            
 
             # 配置化按钮系统: 仅保留 reboot, 其余全部忽略(实现只读)
             token = self._get_security_token()
@@ -612,6 +694,12 @@ class HomeAssistantHelper:
                     "entity_category": "config",
                     "icon": btn_icon,
                 }
+                
+                # 为重启按钮添加确认弹窗
+                if btn_id == "reboot" or btn_type == "reboot":
+                    btn_cfg["confirmation"] = {
+                        "text": "确定要重启设备吗？此操作将断开所有连接。"
+                    }
                 btn_topic = f"{base}/button/{device_id}/{btn_id}/config"
                 self._mqtt_publish(btn_topic, btn_cfg, retain=True, qos=0)
                 button_topics.append(btn_topic)
@@ -619,7 +707,7 @@ class HomeAssistantHelper:
             # 发布一次只读配置快照
             self.publish_config_snapshot()
 
-            all_topics = [t_topic, h_topic, fan_rpm_topic, cfg_topic] + diag_topics + button_topics
+            all_topics = [t_topic, h_topic, fan_rpm_topic, cfg_topic, fan_speed_sensor_topic] + diag_topics + button_topics
             info("已发布 HA 发现配置: {}", ", ".join(all_topics), module="HA")
             return {"topics": all_topics}
         except Exception as e:
@@ -639,13 +727,13 @@ class HomeAssistantHelper:
         ok = True
         try:
             if temperature is not None:
-                ok = bool(self._mqtt_publish(self.state_topic("temperature"), temperature, retain=retain, qos=0)) and ok
+                ok = bool(self._mqtt_publish(self.state_topic("temperature"), str(temperature), retain=retain, qos=0)) and ok
             if humidity is not None:
-                ok = bool(self._mqtt_publish(self.state_topic("humidity"), humidity, retain=retain, qos=0)) and ok
+                ok = bool(self._mqtt_publish(self.state_topic("humidity"), str(humidity), retain=retain, qos=0)) and ok
             if fan_rpm is not None:
-                ok = bool(self._mqtt_publish(self.state_topic("fan_rpm"), fan_rpm, retain=retain, qos=0)) and ok
+                ok = bool(self._mqtt_publish(self.state_topic("fan_rpm"), str(fan_rpm), retain=retain, qos=0)) and ok
             if fan_speed_setting is not None:
-                ok = bool(self._mqtt_publish(self.state_topic("fan_speed_setting"), fan_speed_setting, retain=retain, qos=0)) and ok
+                ok = bool(self._mqtt_publish(self.state_topic("fan_speed_setting"), str(fan_speed_setting), retain=retain, qos=0)) and ok
         except Exception:
             ok = False
         return ok

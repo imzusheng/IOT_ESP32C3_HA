@@ -655,11 +655,25 @@ class NetworkManager:
         except Exception:
             t = str(topic)
         base = "cmnd/{}/".format(self.get_device_id())
+        
+        # 调试：记录所有MQTT消息
+        debug("收到MQTT消息: topic={}, msg={}", t, msg, module="NET")
+        
         try:
             if not t.startswith(base):
+                debug("MQTT消息不匹配命令前缀: {}", t, module="NET")
                 return
-            # 解析 JSON 负载
-            data = self._json_loads(msg) or {}
+            # 解析负载 - 对于 select 命令可能是字符串，其他命令是 JSON
+            data = self._json_loads(msg)
+            if data is None:
+                # 如果 JSON 解析失败，尝试作为字符串处理
+                try:
+                    if isinstance(msg, (bytes, bytearray)):
+                        data = msg.decode("utf-8")
+                    else:
+                        data = str(msg)
+                except Exception:
+                    data = str(msg)
             # 指令分发
             if t == base + "config/set":
                 # 权限校验

@@ -50,8 +50,6 @@ class _FanController:
         # 硬件对象
         self.pwm = None
         self.tach_pin_obj = None
-        self.timer = None
-        self.timer_manager = None
         
         # 状态变量
         self.current_speed = 0  # 当前PWM占空比 0-100
@@ -61,7 +59,6 @@ class _FanController:
         self._pulse_count = 0
         self._last_pulse_time = 0
         self._intervals = []
-        self._last_rpm_update = 0
         self._current_rpm = 0
 
     def _ensure_initialized(self):
@@ -70,18 +67,19 @@ class _FanController:
             return True
             
         try:
-            # 初始化PWM
+            # 初始化PWM - 参考测试脚本的简单方式
             self.pwm = machine.PWM(machine.Pin(self.pwm_pin), freq=self.pwm_freq)
             self.pwm.duty_u16(0)  # 初始关闭
             
-            # 初始化TACH输入
+            # 初始化TACH输入 - 参考测试脚本
             self.tach_pin_obj = machine.Pin(self.tach_pin, machine.Pin.IN, machine.Pin.PULL_UP)
             self.tach_pin_obj.irq(trigger=machine.Pin.IRQ_FALLING, handler=self._tach_irq_handler)
             
-            # 初始化硬件定时器用于RPM计算
-            from utils import get_hardware_timer_manager
-            self.timer_manager = get_hardware_timer_manager()
-            self.timer = self.timer_manager.create_timer(1000, self._timer_callback)  # 1秒更新一次RPM
+            # 重置计数器
+            self._pulse_count = 0
+            self._last_pulse_time = 0
+            self._intervals = []
+            self._current_rpm = 0
             
             self.is_initialized = True
             info(f"风扇控制器初始化成功: PWM=GPIO{self.pwm_pin}, TACH=GPIO{self.tach_pin}", module=MODULE_NAME)
@@ -92,16 +90,16 @@ class _FanController:
             return False
 
     def _tach_irq_handler(self, pin):
-        """TACH信号中断处理函数"""
+        """TACH信号中断处理函数 - 参考测试脚本逻辑"""
         now = time.ticks_us()
         
-        # 防抖处理
+        # 防抖处理 - 参考测试脚本
         if self._last_pulse_time > 0:
             dt = time.ticks_diff(now, self._last_pulse_time)
             if dt < MIN_TACH_INTERVAL_US:
                 return
                 
-            # 记录脉冲间隔
+            # 记录脉冲间隔用于周期法计算
             self._intervals.append(dt)
             if len(self._intervals) > INTERVALS_MAX_LEN:
                 del self._intervals[0]
@@ -109,32 +107,18 @@ class _FanController:
         self._last_pulse_time = now
         self._pulse_count += 1
 
-    def _timer_callback(self, timer):
-        """定时器回调函数, 计算RPM"""
+    def _update_rpm(self):
+        """更新RPM - 参考测试脚本的简单方法"""
         try:
-            # 计算RPM (基于脉冲计数法)
-            pulses = self._pulse_count
-            self._pulse_count = 0  # 重置计数器
-            
-            if pulses > 0:
-                # 1秒内的脉冲数转换为RPM
-                rpm = int((pulses * 60) / self.pulses_per_rev)
-                
-                # 合理性检查
-                if 0 <= rpm <= MAX_RPM:
-                    self._current_rpm = rpm
-                else:
-                    # 如果计数法异常, 尝试周期法
-                    rpm_period = self._calculate_rpm_from_intervals()
-                    if rpm_period is not None:
-                        self._current_rpm = rpm_period
-                    else:
-                        self._current_rpm = 0
+            # 使用周期法计算RPM - 参考测试脚本
+            rpm_period = self._calculate_rpm_from_intervals()
+            if rpm_period is not None:
+                self._current_rpm = rpm_period
             else:
-                self._current_rpm = 0
-                
+                # 如果周期法失败，使用简单的计数法
+                # 这里不重置计数器，让调用方决定何时重置
+                pass
         except Exception:
-            # 静默异常, 避免影响定时器稳定性
             pass
 
     def _calculate_rpm_from_intervals(self):
@@ -192,7 +176,18 @@ class _FanController:
         speed_percent = max(0, min(100, int(speed_percent)))
         
         try:
-            # 设置PWM占空比
+            # 低速起转辅助：从0%启动且目标转速很低时需要先给高转速启动
+            if speed_percent > 0 and self.current_speed == 0 and speed_percent <= 10:
+                # 先设置50%启动风扇
+                kickstart_duty = int(65535 * 50 / 100)
+                self.pwm.duty_u16(kickstart_duty)
+                time.sleep_ms(500)  # 等待500ms让风扇启动
+                info("风扇起转辅助：先设置50%启动", module=MODULE_NAME)
+                
+                # 等待风扇稳定后再设置目标转速
+                time.sleep_ms(200)
+            
+            # 设置目标PWM占空比
             duty = int(65535 * speed_percent / 100)
             self.pwm.duty_u16(duty)
             self.current_speed = speed_percent
@@ -213,10 +208,17 @@ class _FanController:
         return self.current_speed
 
     def get_rpm(self) -> int:
-        """获取当前实际转速 (RPM)"""
+        """获取当前实际转速 (RPM) - 参考测试脚本逻辑"""
         if not self.is_initialized:
             return 0
-        return self._current_rpm
+        
+        # 使用周期法计算RPM - 参考测试脚本
+        rpm_period = self._calculate_rpm_from_intervals()
+        if rpm_period is not None:
+            return rpm_period
+        
+        # 如果周期法失败，返回0
+        return 0
 
     def is_running(self) -> bool:
         """检查风扇是否在运行"""
@@ -237,11 +239,6 @@ class _FanController:
             if self.tach_pin_obj:
                 self.tach_pin_obj.irq(handler=None)
                 self.tach_pin_obj = None
-                
-            if self.timer and self.timer_manager:
-                self.timer_manager.release_timer(self.timer)
-                self.timer = None
-                self.timer_manager = None
                 
             self.is_initialized = False
             info("风扇控制器已清理", module=MODULE_NAME)
@@ -316,3 +313,4 @@ def cleanup():
     if _instance:
         _instance.cleanup()
         _instance = None
+

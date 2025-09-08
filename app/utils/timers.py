@@ -17,7 +17,7 @@ import machine
 from lib.logger import warning, error
 
 # 可配置常量
-MAX_HARDWARE_TIMERS = 8
+MAX_HARDWARE_TIMERS = 2  # ESP32C3 只有 2 个硬件定时器
 MODULE_NAME = "Timer"
 
 

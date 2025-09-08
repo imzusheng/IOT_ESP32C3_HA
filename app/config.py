@@ -119,11 +119,11 @@ CONFIG = {
         # 描述: 型号(可选)
         "model": "C3",
         # 描述: 固件版本(可选)
-        "sw_version": "2.3.0",
+        "sw_version": "2.4.0",
         # 描述: 传感器展示名称(可选)
-        "temp_name": "Temperature",
+        "temp_name": "环境温度",
         # 描述: 传感器展示名称(可选)
-        "humi_name": "Humidity",
+        "humi_name": "环境湿度",
         # 描述: 风扇展示名称(可选)
         "fan_name": "风扇",
         # 描述: LED开关状态

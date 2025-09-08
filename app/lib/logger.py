@@ -19,7 +19,7 @@ WARNING = 2
 ERROR = 3
 
 # 当前日志级别 (可根据需要修改)
-LOG_LEVEL = INFO
+LOG_LEVEL = DEBUG  # 显示所有日志级别
 
 # ANSI颜色代码
 COLOR_RED = "\033[1;31m"

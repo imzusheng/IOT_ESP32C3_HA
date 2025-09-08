@@ -1,0 +1,53 @@
+# Home Assistant Lovelace 配置示例
+# 风扇转速圆形控制面板 - 使用 Gauge 卡片
+
+# 在 Home Assistant 中，将此配置添加到您的仪表板中
+# 路径：配置 -> 仪表板 -> 编辑仪表板 -> 添加卡片 -> 手动
+
+type: gauge
+entity: sensor.esp32c3_7df23340_fan_speed
+name: 风扇转速
+unit: '%'
+min: 0
+max: 100
+severity:
+  green: 0
+  yellow: 30
+  red: 70
+needle: true
+
+# 可选：添加更多样式配置
+card_mod:
+  style: |
+    ha-card {
+      --ha-card-border-radius: 20px;
+      --gauge-color: var(--primary-color);
+      --gauge-background: rgba(0,0,0,0.1);
+    }
+
+# 如果您想要更复杂的圆形控制面板，可以使用以下配置：
+# type: custom:mini-graph-card
+# entity: sensor.esp32c3_7df23340_fan_speed
+# name: 风扇转速
+# unit: '%'
+# min: 0
+# max: 100
+# show:
+#   state: true
+#   graph: false
+#   fill: fade
+#   icon: true
+#   name: true
+#   labels: true
+#   extrema: true
+#   average: true
+#   gradient: true
+#   state: true
+#   graph: false
+#   fill: fade
+#   icon: true
+#   name: true
+#   labels: true
+#   extrema: true
+#   average: true
+#   gradient: true

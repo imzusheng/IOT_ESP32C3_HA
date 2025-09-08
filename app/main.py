@@ -138,8 +138,8 @@ class MainController:
 
     def _periodic_maintenance(self, current_time):
         """定期维护任务"""
-        # 每60秒执行一次
-        if time.ticks_diff(current_time, self.last_stats_time) >= 30000 or self.last_stats_time == 0:
+        # 间隔执行一次
+        if time.ticks_diff(current_time, self.last_stats_time) >= 10000 or self.last_stats_time == 0:
             self.last_stats_time = current_time
             
             # 垃圾回收
@@ -160,25 +160,19 @@ class MainController:
             env_hum = env_data["humidity"] if isinstance(env_data, dict) else None
             
             # 读取风扇状态
-            fan_rpm = None
-            fan_speed_setting = None
+            fan_rpm = "N/A"
+            fan_speed_setting = "N/A"
             fan_speed_percent = None
             if getattr(self, "fan_enabled", False):
                 try:
                     from hw.fan import get_rpm, get_speed
                     fan_rpm = get_rpm()
                     fan_speed_percent = get_speed()
-                    # 将转速百分比转换为设置选项
-                    if fan_speed_percent == 30:
-                        fan_speed_setting = "30%"
-                    elif fan_speed_percent == 60:
-                        fan_speed_setting = "60%"
-                    elif fan_speed_percent == 90:
-                        fan_speed_setting = "90%"
-                    else:
-                        fan_speed_setting = "30%"  # 默认值
+                    # 将转速百分比转换为设置选项（纯数字）
+                    fan_speed_setting = str(fan_speed_percent)  # 支持任意转速值
                 except Exception:
-                    pass
+                    fan_rpm = "N/A"
+                    fan_speed_setting = "N/A"
             
             state = self.state_machine.get_current_state() if self.state_machine else "INIT"
             net_status = self.network_manager.get_status()
@@ -215,11 +209,31 @@ class MainController:
                 except Exception:
                     config_text = {}
 
+                # 构建状态文本
+                status_text = f"运行中 ({state})"
+                network_status_text = "未知"
+                if net_status:
+                    wifi_status = net_status.get("wifi", "unknown")
+                    mqtt_status = net_status.get("mqtt", "unknown")
+                    network_status_text = f"WiFi:{wifi_status}, MQTT:{mqtt_status}"
+                
+                # 获取错误计数和最后错误时间
+                error_count = 0
+                last_error_time = "N/A"
+                if hasattr(self, 'state_machine') and self.state_machine:
+                    error_count = getattr(self.state_machine, 'error_count', 0)
+                    if error_count > 0:
+                        last_error_time = format_duration_ms(current_time - getattr(self.state_machine, 'state_start_time', current_time))
+
                 metrics = {
                     "uptime_ms": current_time,
                     "uptime_text": format_duration_ms(current_time),
                     "unix_s": self.network_manager.get_epoch_unix_s() if self.network_manager else None,
                     "state": state,
+                    "status_text": status_text,
+                    "network_status_text": network_status_text,
+                    "error_count": error_count,
+                    "last_error_time": last_error_time,
                     "config_text": config_text,
                     "mem": {
                         "free_kb": free_kb,
@@ -251,10 +265,14 @@ class MainController:
                         self.network_manager.ha.publish_state(
                             temperature=env_temp if env_temp is not None else None,
                             humidity=env_hum if env_hum is not None else None,
-                            fan_rpm=fan_rpm,
-                            fan_speed_setting=fan_speed_setting,
+                            fan_rpm=fan_rpm if fan_rpm is not None else "N/A",
+                            fan_speed_setting=fan_speed_setting if fan_speed_setting is not None else "N/A",
                             retain=True,
                         )
+                        # 发布风扇转速状态到传感器（用于Gauge卡片显示）
+                        if fan_speed_setting is not None and fan_speed_setting != getattr(self, '_last_fan_speed_setting', None):
+                            self.network_manager.mqtt_publish(f"device/{self.network_manager.get_device_id()}/state/sensor/fan_speed", fan_speed_setting, retain=True, qos=0)
+                            self._last_fan_speed_setting = fan_speed_setting
                     except Exception:
                         pass
             except Exception:
