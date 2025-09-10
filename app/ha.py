@@ -195,21 +195,15 @@ class HomeAssistantHelper:
                 "icon": "mdi:led-on",
             }
 
-            # 风扇控制 - 使用 fan 实体
+            # 风扇控制 - 使用 fan 实体，仅支持 percentage 控制
             fan_cfg = {
                 "name": f"{fan_name}控制",
                 "unique_id": f"{device_id}_fan",
                 "device": device,
                 "availability": availability,
-                "state_topic": self.state_topic("fan_state"),
-                "command_topic": self.command_topic("fan_state"),
-                "speed_state_topic": self.state_topic("fan_speed"),
-                "speed_command_topic": self.command_topic("fan_speed"),
                 "percentage_state_topic": self.state_topic("fan_speed_percent"),
                 "percentage_command_topic": self.command_topic("fan_speed_percent"),
-                "speeds": ["off", "10%", "30%", "60%", "90%"],
                 "percentage_value_template": "{{ value }}",
-                "speed_value_template": "{{ value }}",
             }
 
             base = self.discovery_prefix
@@ -405,17 +399,13 @@ class HomeAssistantHelper:
         except Exception:
             return False
 
-    def publish_state(self, temperature=None, humidity=None, fan_state=None, fan_speed=None, fan_speed_percent=None, led_status=None, retain=False):
+    def publish_state(self, temperature=None, humidity=None, fan_speed_percent=None, led_status=None, retain=False):
         ok = True
         try:
             if temperature is not None:
                 ok = bool(self._mqtt_publish(self.state_topic("temperature"), str(temperature), retain=retain, qos=0)) and ok
             if humidity is not None:
                 ok = bool(self._mqtt_publish(self.state_topic("humidity"), str(humidity), retain=retain, qos=0)) and ok
-            if fan_state is not None:
-                ok = bool(self._mqtt_publish(self.state_topic("fan_state"), str(fan_state), retain=retain, qos=0)) and ok
-            if fan_speed is not None:
-                ok = bool(self._mqtt_publish(self.state_topic("fan_speed"), str(fan_speed), retain=retain, qos=0)) and ok
             if fan_speed_percent is not None:
                 ok = bool(self._mqtt_publish(self.state_topic("fan_speed_percent"), str(fan_speed_percent), retain=retain, qos=0)) and ok
             if led_status is not None:

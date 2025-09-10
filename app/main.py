@@ -236,9 +236,9 @@ class MainController:
                         pass
                     # 发布温湿度、风扇状态和LED状态 -> 统一走 HA 助手发布
                     try:
-                        # 确定风扇模式和转速
-                        fan_state = "ON" if fan_speed_percent and fan_speed_percent > 0 else "OFF"
-                        fan_speed = f"{fan_speed_percent}%" if fan_speed_percent and fan_speed_percent > 0 else "off"
+                        # 限制风扇转速范围 (10-90%)
+                        if fan_speed_percent is not None:
+                            fan_speed_percent = max(10, min(90, fan_speed_percent))
                         
                         # 获取当前LED状态
                         led_status = None
@@ -251,8 +251,6 @@ class MainController:
                         self.network_manager.ha.publish_state(
                             temperature=env_temp if env_temp is not None else None,
                             humidity=env_hum if env_hum is not None else None,
-                            fan_state=fan_state,
-                            fan_speed=fan_speed,
                             fan_speed_percent=fan_speed_percent,
                             led_status=led_status,
                             retain=True,

@@ -548,8 +548,6 @@ class NetworkManager:
                 base + "/config/reboot",
                 base + "/reboot",
                 base + "/config/button/reboot",
-                base + "/fan_state",
-                base + "/fan_speed",
                 base + "/fan_speed_percent",
             ]
             for tp in topics:
@@ -683,76 +681,18 @@ class NetworkManager:
                     self._publish_config_stat({"ok": False, "msg": "invalid payload for set"})
                     return
                 self._publish_config_stat({"ok": bool(ok), "msg": "applied" if ok else "apply failed", "applied": data})
-            elif t == base + "fan_state":
-                # 风扇开关控制 (ON/OFF)
-                try:
-                    state = str(data).upper()
-                    if state == "ON":
-                        # 保持当前转速或使用默认转速
-                        from hw.fan import get_speed
-                        current_speed = get_speed()
-                        speed_percent = current_speed if current_speed > 0 else 30  # 默认30%
-                    elif state == "OFF":
-                        speed_percent = 0
-                    else:
-                        warning(f"未知风扇状态: {state}", module="NET")
-                        return
-                    
-                    from hw.fan import set_speed
-                    success = set_speed(speed_percent)
-                    
-                    if success:
-                        # 发布状态更新
-                        fan_state = "ON" if speed_percent > 0 else "OFF"
-                        fan_speed = f"{speed_percent}%" if speed_percent > 0 else "off"
-                        self.ha.publish_state(fan_state=fan_state, fan_speed=fan_speed, fan_speed_percent=speed_percent, retain=True)
-                        info(f"风扇状态设置为 {state}, 转速 {speed_percent}%", module="NET")
-                    else:
-                        warning(f"设置风扇状态失败: {state}", module="NET")
-                        
-                except Exception as e:
-                    error(f"处理风扇状态命令失败: {e}", module="NET")
-            elif t == base + "fan_speed":
-                # 风扇转速控制 (10%/30%/60%/90%/off) - 统一处理
-                try:
-                    speed_str = str(data).lower()
-                    if speed_str == "off":
-                        speed_percent = 0
-                    elif speed_str.endswith("%"):
-                        speed_percent = int(speed_str[:-1])
-                    else:
-                        speed_percent = int(speed_str) if speed_str.isdigit() else 0
-                    
-                    speed_percent = max(0, min(100, speed_percent))
-                    
-                    from hw.fan import set_speed
-                    success = set_speed(speed_percent)
-                    
-                    if success:
-                        # 发布状态更新
-                        fan_state = "ON" if speed_percent > 0 else "OFF"
-                        fan_speed = f"{speed_percent}%" if speed_percent > 0 else "off"
-                        self.ha.publish_state(fan_state=fan_state, fan_speed=fan_speed, fan_speed_percent=speed_percent, retain=True)
-                        info(f"风扇转速设置为 {speed_percent}%", module="NET")
-                    else:
-                        warning(f"设置风扇转速失败: {speed_percent}%", module="NET")
-                        
-                except Exception as e:
-                    error(f"处理风扇转速命令失败: {e}", module="NET")
             elif t == base + "fan_speed_percent":
-                # 风扇转速百分比控制 (0-100)
+                # 风扇转速百分比控制 (10-90)
                 try:
                     speed_percent = int(float(data))
-                    speed_percent = max(0, min(100, speed_percent))
+                    speed_percent = max(10, min(90, speed_percent))
                     
                     from hw.fan import set_speed
                     success = set_speed(speed_percent)
                     
                     if success:
                         # 发布状态更新
-                        fan_state = "ON" if speed_percent > 0 else "OFF"
-                        fan_speed = f"{speed_percent}%" if speed_percent > 0 else "off"
-                        self.ha.publish_state(fan_state=fan_state, fan_speed=fan_speed, fan_speed_percent=speed_percent, retain=True)
+                        self.ha.publish_state(fan_speed_percent=speed_percent, retain=True)
                         info(f"风扇转速百分比设置为 {speed_percent}%", module="NET")
                     else:
                         warning(f"设置风扇转速百分比失败: {speed_percent}%", module="NET")
