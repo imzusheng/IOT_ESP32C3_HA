@@ -1,0 +1,49 @@
+# Home Assistant 风扇控制面板 - 简化版本
+# 使用方法：
+# 1. 在 HA 中进入仪表板编辑模式
+# 2. 添加视图 → 手动
+# 3. 复制下面的 YAML 配置
+# 4. 使用实体选择器选择正确的实体
+
+title: 风扇控制面板
+path: fan-control
+icon: mdi:fan
+cards:
+  # 主要风扇控制卡片
+  - type: tile
+    entity: fan.zusheng_s_esp32c3_feng_shan_kong_zhi
+    name: 风扇控制
+    features:
+      - type: fan-speed
+
+  # 环境信息卡片
+  - type: entities
+    title: 环境信息
+    entities:
+      - sensor.esp32c3_3340_temperature
+      - sensor.esp32c3_3340_humidity
+      - sensor.zusheng_s_esp32c3_ledzhuang_tai
+
+  # 系统状态卡片
+  - type: entities
+    title: 系统状态
+    entities:
+      - sensor.zusheng_s_esp32c3_xi_tong_zhuang_tai
+      - sensor.zusheng_s_esp32c3_wang_luo_zhuang_tai
+      - sensor.zusheng_s_esp32c3_yun_xing_shi_chang
+
+  # 诊断信息卡片
+  - type: entities
+    title: 诊断信息
+    entities:
+      - sensor.zusheng_s_esp32c3_mcu_wen_du
+      - sensor.zusheng_s_esp32c3_nei_cun_shi_yong_lu
+      - sensor.zusheng_s_esp32c3_nei_cun_sheng_yu
+      - sensor.zusheng_s_esp32c3_cuo_wu_ji_shu
+      - sensor.zusheng_s_esp32c3_zui_hou_cuo_wu_shi_jian
+
+  # 控制按钮
+  - type: entities
+    title: 设备控制
+    entities:
+      - button.zusheng_s_esp32c3_zhong_qi_she_bei

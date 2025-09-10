@@ -160,19 +160,19 @@ class MainController:
             env_hum = env_data["humidity"] if isinstance(env_data, dict) else None
             
             # 读取风扇状态
-            fan_rpm = "N/A"
-            fan_speed_setting = "N/A"
-            fan_speed_percent = None
-            if getattr(self, "fan_enabled", False):
-                try:
-                    from hw.fan import get_rpm, get_speed
-                    fan_rpm = get_rpm()
-                    fan_speed_percent = get_speed()
-                    # 将转速百分比转换为设置选项（纯数字）
-                    fan_speed_setting = str(fan_speed_percent)  # 支持任意转速值
-                except Exception:
-                    fan_rpm = "N/A"
-                    fan_speed_setting = "N/A"
+            fan_rpm = 0
+            fan_speed_setting = "0"
+            fan_speed_percent = 0
+            try:
+                from hw.fan import get_rpm, get_speed
+                fan_rpm = get_rpm()
+                fan_speed_percent = get_speed()
+                fan_speed_setting = str(fan_speed_percent)
+            except Exception:
+                # 没有风扇时显示0值
+                fan_rpm = 0
+                fan_speed_percent = 0
+                fan_speed_setting = "0"
             
             state = self.state_machine.get_current_state() if self.state_machine else "INIT"
             net_status = self.network_manager.get_status()
@@ -187,27 +187,6 @@ class MainController:
             
             # 上报周期性指标到 MQTT
             try:
-                try:
-                    wifi_cfg = (self.config.get("wifi", {}) or {})
-                    mqtt_cfg = (self.config.get("mqtt", {}) or {})
-                    ntp_cfg = (self.config.get("ntp", {}) or {})
-                    ble_cfg = (self.config.get("ble", {}) or {})
-                    daemon_cfg = (self.config.get("daemon", {}) or {})
-
-                    mqtt_keep_s = mqtt_cfg.get("keepalive")
-                    mqtt_keep_ms = (int(mqtt_keep_s) * 1000) if mqtt_keep_s is not None else None
-
-                    config_text = {
-                        "mqtt_keepalive": format_duration_ms(mqtt_keep_ms) if mqtt_keep_ms is not None else "N/A",
-                        "wifi_scan_timeout": format_duration_ms(wifi_cfg.get("scan_timeout_ms")) if wifi_cfg else "N/A",
-                        "wifi_base_delay": format_duration_ms(wifi_cfg.get("base_delay_ms")) if wifi_cfg else "N/A",
-                        "wifi_max_delay": format_duration_ms(wifi_cfg.get("max_delay_ms")) if wifi_cfg else "N/A",
-                        "ntp_timeout": format_duration_ms(ntp_cfg.get("timeout")) if ntp_cfg else "N/A",
-                        "ble_adv_interval": format_duration_ms(((ble_cfg.get("adv", {}) or {}).get("interval_ms"))) if ble_cfg else "N/A",
-                        "wdt_timeout": format_duration_ms(daemon_cfg.get("wdt_timeout")) if daemon_cfg else "N/A",
-                    }
-                except Exception:
-                    config_text = {}
 
                 # 构建状态文本
                 status_text = f"运行中 ({state})"
@@ -234,7 +213,6 @@ class MainController:
                     "network_status_text": network_status_text,
                     "error_count": error_count,
                     "last_error_time": last_error_time,
-                    "config_text": config_text,
                     "mem": {
                         "free_kb": free_kb,
                         "percent": percent_used,
@@ -245,12 +223,8 @@ class MainController:
                         "humidity": env_hum,
                     },
                     "net": net_status,
-                    # 诊断字段: 与配置只读展示对齐
+                    # 诊断字段: 仅保留动态数据
                     "diag": {
-                        "main_loop_delay_ms": (self.config.get("system", {}) or {}).get("main_loop_delay", 0),
-                        "wdt_enabled": (self.config.get("daemon", {}) or {}).get("wdt_enabled", False),
-                        "wdt_timeout_ms": (self.config.get("daemon", {}) or {}).get("wdt_timeout", 0),
-                        
                         "loop_sleep_ms": 50,
                     }
                 }
@@ -260,19 +234,29 @@ class MainController:
                         self.network_manager.ha.publish_metrics(metrics, retain=False, qos=0)
                     except Exception:
                         pass
-                    # 分离的温湿度和风扇状态主题 -> 统一走 HA 助手发布
+                    # 发布温湿度、风扇状态和LED状态 -> 统一走 HA 助手发布
                     try:
+                        # 确定风扇模式和转速
+                        fan_state = "ON" if fan_speed_percent and fan_speed_percent > 0 else "OFF"
+                        fan_speed = f"{fan_speed_percent}%" if fan_speed_percent and fan_speed_percent > 0 else "off"
+                        
+                        # 获取当前LED状态
+                        led_status = None
+                        try:
+                            from hw.led import get_current_mode
+                            led_status = get_current_mode()
+                        except Exception:
+                            pass
+                        
                         self.network_manager.ha.publish_state(
                             temperature=env_temp if env_temp is not None else None,
                             humidity=env_hum if env_hum is not None else None,
-                            fan_rpm=fan_rpm if fan_rpm is not None else "N/A",
-                            fan_speed_setting=fan_speed_setting if fan_speed_setting is not None else "N/A",
+                            fan_state=fan_state,
+                            fan_speed=fan_speed,
+                            fan_speed_percent=fan_speed_percent,
+                            led_status=led_status,
                             retain=True,
                         )
-                        # 发布风扇转速状态到传感器（用于Gauge卡片显示）
-                        if fan_speed_setting is not None and fan_speed_setting != getattr(self, '_last_fan_speed_setting', None):
-                            self.network_manager.mqtt_publish(f"device/{self.network_manager.get_device_id()}/state/sensor/fan_speed", fan_speed_setting, retain=True, qos=0)
-                            self._last_fan_speed_setting = fan_speed_setting
                     except Exception:
                         pass
             except Exception:

@@ -35,7 +35,7 @@ DEFAULT_STARTUP_MODE = "cruise"
 # 所有模式均定义为"亮-灭"时间序列 (单位: ms)
 BLINK_SEQUENCE = [500, 500]
 PULSE_SEQUENCE = [150, 150, 150, 850]
-CRUISE_SEQUENCE = [50, 1500]
+CRUISE_SEQUENCE = [200, 200, 50, 3000]
 SOS_SEQUENCE = [
     200, 200, 200, 200, 200, 700,  # S
     600, 200, 600, 200, 600, 700,  # O
@@ -81,9 +81,9 @@ class _LEDPatternController:
 
         # 初始化硬件定时器
         self._init_hardware_timer()
-        # 初始化即进入默认模式, 避免外部依赖
+        # 初始化时关闭LED，等待状态机控制
         try:
-            self.play(DEFAULT_STARTUP_MODE)
+            self.play("off")
         except Exception:
             pass
 
@@ -207,6 +207,11 @@ def play(pattern_id: str):
     controller = _get_instance()
     controller.play(pattern_id)
 
+
+def get_current_mode() -> str:
+    """获取当前LED模式"""
+    controller = _get_instance()
+    return controller.current_pattern_id
 
 def cleanup():
     """

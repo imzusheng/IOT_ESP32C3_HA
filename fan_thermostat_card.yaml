@@ -1,0 +1,12 @@
+# Home Assistant 风扇控制卡片配置
+# 使用方法：
+# 1. 在 HA 中进入仪表板编辑模式
+# 2. 添加卡片 → 手动
+# 3. 复制下面的 YAML 配置
+# 4. 将实体ID替换为你的实际设备ID
+
+type: tile
+entity: fan.zusheng_s_esp32c3_feng_shan_kong_zhi
+name: 风扇控制
+features:
+  - type: fan-speed

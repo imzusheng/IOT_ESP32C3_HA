@@ -335,12 +335,6 @@ class NetworkManager:
                         self.publish_announce()
                         # 新增: 配置通道订阅与回调
                         self._setup_mqtt_config_channel()
-                        # 发布当前LED模式状态
-                        try:
-                            current_led_mode = self.config.get_nested("led_mode", "cruise")
-                            self.mqtt_publish(f"device/{self.get_device_id()}/state/select/led_mode", current_led_mode, retain=True, qos=0)
-                        except Exception:
-                            pass
                     except Exception:
                         pass
                     return True
@@ -414,12 +408,6 @@ class NetworkManager:
                         self.publish_announce()
                         # 新增: 配置通道订阅与回调
                         self._setup_mqtt_config_channel()
-                        # 发布当前LED模式状态
-                        try:
-                            current_led_mode = self.config.get_nested("led_mode", "cruise")
-                            self.mqtt_publish(f"device/{self.get_device_id()}/state/select/led_mode", current_led_mode, retain=True, qos=0)
-                        except Exception:
-                            pass
                     except Exception:
                         pass
                 if self.mqtt_connected:
@@ -560,6 +548,9 @@ class NetworkManager:
                 base + "/config/reboot",
                 base + "/reboot",
                 base + "/config/button/reboot",
+                base + "/fan_state",
+                base + "/fan_speed",
+                base + "/fan_speed_percent",
             ]
             for tp in topics:
                 try:
@@ -692,45 +683,82 @@ class NetworkManager:
                     self._publish_config_stat({"ok": False, "msg": "invalid payload for set"})
                     return
                 self._publish_config_stat({"ok": bool(ok), "msg": "applied" if ok else "apply failed", "applied": data})
-            elif t == base + "config/select/led_power":
-                # LED开关控制
+            elif t == base + "fan_state":
+                # 风扇开关控制 (ON/OFF)
                 try:
-                    value = data if isinstance(data, bool) else str(data).lower() == "true"
-                    ok = apply_overlay(path="led_enabled", value=value)
-                    self._publish_config_stat({"ok": bool(ok), "msg": "applied" if ok else "apply failed", "applied": {"led_enabled": value}})
+                    state = str(data).upper()
+                    if state == "ON":
+                        # 保持当前转速或使用默认转速
+                        from hw.fan import get_speed
+                        current_speed = get_speed()
+                        speed_percent = current_speed if current_speed > 0 else 30  # 默认30%
+                    elif state == "OFF":
+                        speed_percent = 0
+                    else:
+                        warning(f"未知风扇状态: {state}", module="NET")
+                        return
                     
-                    # 立即应用LED状态
-                    if ok:
-                        from hw.led import play
-                        if value:
-                            current_mode = self.config.get_nested("led_mode", "cruise")
-                            play(current_mode)
-                        else:
-                            play("off")
-                except Exception as e:
-                    self._publish_config_stat({"ok": False, "msg": str(e)})
-            elif t == base + "config/select/led_mode":
-                # LED模式选择
-                try:
-                    valid_modes = ["off", "blink", "pulse", "cruise", "sos"]
-                    mode = str(data) if str(data) in valid_modes else "cruise"
-                    ok = apply_overlay(path="led_mode", value=mode)
-                    self._publish_config_stat({"ok": bool(ok), "msg": "applied" if ok else "apply failed", "applied": {"led_mode": mode}})
+                    from hw.fan import set_speed
+                    success = set_speed(speed_percent)
                     
-                    # 立即应用LED模式
-                    if ok:
-                        from hw.led import play
-                        led_enabled = self.config.get_nested("led_enabled", True)
-                        if led_enabled:
-                            play(mode)
+                    if success:
+                        # 发布状态更新
+                        fan_state = "ON" if speed_percent > 0 else "OFF"
+                        fan_speed = f"{speed_percent}%" if speed_percent > 0 else "off"
+                        self.ha.publish_state(fan_state=fan_state, fan_speed=fan_speed, fan_speed_percent=speed_percent, retain=True)
+                        info(f"风扇状态设置为 {state}, 转速 {speed_percent}%", module="NET")
+                    else:
+                        warning(f"设置风扇状态失败: {state}", module="NET")
                         
-                        # 发布LED模式状态到Home Assistant
-                        try:
-                            self.mqtt_publish(f"device/{self.get_device_id()}/state/select/led_mode", mode, retain=True, qos=0)
-                        except Exception:
-                            pass
                 except Exception as e:
-                    self._publish_config_stat({"ok": False, "msg": str(e)})
+                    error(f"处理风扇状态命令失败: {e}", module="NET")
+            elif t == base + "fan_speed":
+                # 风扇转速控制 (10%/30%/60%/90%/off) - 统一处理
+                try:
+                    speed_str = str(data).lower()
+                    if speed_str == "off":
+                        speed_percent = 0
+                    elif speed_str.endswith("%"):
+                        speed_percent = int(speed_str[:-1])
+                    else:
+                        speed_percent = int(speed_str) if speed_str.isdigit() else 0
+                    
+                    speed_percent = max(0, min(100, speed_percent))
+                    
+                    from hw.fan import set_speed
+                    success = set_speed(speed_percent)
+                    
+                    if success:
+                        # 发布状态更新
+                        fan_state = "ON" if speed_percent > 0 else "OFF"
+                        fan_speed = f"{speed_percent}%" if speed_percent > 0 else "off"
+                        self.ha.publish_state(fan_state=fan_state, fan_speed=fan_speed, fan_speed_percent=speed_percent, retain=True)
+                        info(f"风扇转速设置为 {speed_percent}%", module="NET")
+                    else:
+                        warning(f"设置风扇转速失败: {speed_percent}%", module="NET")
+                        
+                except Exception as e:
+                    error(f"处理风扇转速命令失败: {e}", module="NET")
+            elif t == base + "fan_speed_percent":
+                # 风扇转速百分比控制 (0-100)
+                try:
+                    speed_percent = int(float(data))
+                    speed_percent = max(0, min(100, speed_percent))
+                    
+                    from hw.fan import set_speed
+                    success = set_speed(speed_percent)
+                    
+                    if success:
+                        # 发布状态更新
+                        fan_state = "ON" if speed_percent > 0 else "OFF"
+                        fan_speed = f"{speed_percent}%" if speed_percent > 0 else "off"
+                        self.ha.publish_state(fan_state=fan_state, fan_speed=fan_speed, fan_speed_percent=speed_percent, retain=True)
+                        info(f"风扇转速百分比设置为 {speed_percent}%", module="NET")
+                    else:
+                        warning(f"设置风扇转速百分比失败: {speed_percent}%", module="NET")
+                        
+                except Exception as e:
+                    error(f"处理风扇转速百分比命令失败: {e}", module="NET")
             elif t == base + "config/save":
                 # 权限校验
                 ok_auth, err = self._is_authorized_for_config(data)

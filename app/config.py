@@ -128,8 +128,6 @@ CONFIG = {
         "fan_name": "风扇",
         # 描述: LED开关状态
         "led_enabled": True,
-        # 描述: LED闪烁模式
-        "led_mode": "cruise",
         # 描述: 按钮配置列表
         "buttons": [
             {
@@ -138,17 +136,6 @@ CONFIG = {
                 "icon": "mdi:restart",
                 "type": "reboot",
                 "params": {"delay_ms": 0}
-            },
-            {
-                "id": "led_mode",
-                "name": "LED模式",
-                "icon": "mdi:palette",
-                "type": "select",
-                "params": {
-                    "feature": "led_mode",
-                    "options": ["off", "blink", "pulse", "cruise", "sos"],
-                    "default": "cruise"
-                }
             }
         ],
     },

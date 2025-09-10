@@ -227,6 +227,65 @@
    needle: true
    ```
 
+## Home Assistant 实体标识符问题
+
+### 实体ID不一致问题
+
+**问题描述**：
+
+在 Home Assistant 中，实体标识符的生成规则不一致，导致配置文件中的实体ID无法正确匹配：
+
+- **风扇控制**: `climate.zusheng_s_esp32c3_feng_shan_kong_zhi`
+- **温度传感器**: `sensor.esp32c3_3340_temperature`
+- **湿度传感器**: `sensor.esp32c3_3340_humidity`
+- **LED状态**: `sensor.zusheng_s_esp32c3_ledzhuang_tai`
+- **重启按钮**: `button.zusheng_s_esp32c3_zhong_qi_she_bei`
+
+**根本原因**：
+
+1. **设备ID生成**: 硬件ID `esp32c3_3340` (设备唯一ID的后8位十六进制)
+2. **设备名称转换**: `"Zusheng's ESP32C3"` → `zusheng_s_esp32c3`
+3. **实体名称转换**: 中文转拼音，如 `"风扇控制"` → `feng_shan_kong_zhi`
+
+**实体ID分布规律**：
+
+- **温度/湿度传感器**: 使用硬件ID `esp32c3_3340` (配置名称是英文)
+- **其他所有实体**: 使用设备名称 `zusheng_s_esp32c3` (配置名称包含中文)
+
+**解决方案**：
+
+使用正确的实体标识符更新配置文件：
+
+```yaml
+# 风扇控制
+entity: climate.zusheng_s_esp32c3_feng_shan_kong_zhi
+
+# 温度传感器
+entity: sensor.esp32c3_3340_temperature
+
+# 湿度传感器
+entity: sensor.esp32c3_3340_humidity
+
+# LED状态
+entity: sensor.zusheng_s_esp32c3_ledzhuang_tai
+
+# 重启按钮
+entity: button.zusheng_s_esp32c3_zhong_qi_she_bei
+```
+
+**优化建议**：
+
+为避免拼音转换和不一致问题，建议修改 `config.py` 中的设备名称和实体名称为纯英文：
+
+```python
+"ha": {
+    "device_name": "ESP32C3_3340",  # 使用设备ID作为设备名称
+    "temp_name": "Temperature",
+    "humi_name": "Humidity", 
+    "fan_name": "Fan",
+}
+```
+
 ## 更新日志
 
 ### 2025-09-08
